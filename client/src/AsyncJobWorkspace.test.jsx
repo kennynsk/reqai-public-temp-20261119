@@ -61,10 +61,11 @@ test('shows the guided workflow and hides expert settings by default', async () 
   expect(screen.getByRole('heading', { name: 'Подготовка требований' })).toBeInTheDocument();
   const steps = screen.getByRole('list', { name: 'Этапы подготовки требований' });
   expect(within(steps).getByText('Контекст')).toBeInTheDocument();
-  expect(within(steps).getByText('AI-ресерч')).toBeInTheDocument();
+  expect(within(steps).getByText('AI-исследование')).toBeInTheDocument();
   expect(screen.getByText('Необязательный шаг')).toBeInTheDocument();
   expect(screen.getByText('Настройки AI')).toBeInTheDocument();
   expect(screen.getByRole('combobox', { name: 'Модель', hidden: true })).not.toBeVisible();
+  expect(screen.queryByText('Декомпозиция ещё не выполнена')).not.toBeInTheDocument();
 });
 
 test('restores abandoned active session with clear activity feedback', async () => {
@@ -158,25 +159,70 @@ test('saves reviewed decomposition and starts linked research inside requirement
   mocks.createJob.mockResolvedValue({ jobId: 'research-1' });
   render(<AsyncJobWorkspace />);
   await selectHistoryEntry('Подготовка требований');
-  expect(await screen.findByText('Проверьте и отредактируйте требования')).toBeInTheDocument();
-  const contextSummary = screen.getByLabelText('Завершённый бизнес-контекст');
+  expect(await screen.findByRole('heading', { name: 'Проверка требований' })).toBeInTheDocument();
+  expect(screen.getByText('Шаг 2 из 4')).toBeInTheDocument();
+  expect(screen.queryByRole('list', { name: 'Этапы подготовки требований' })).not.toBeInTheDocument();
+  const contextSummary = screen.getByLabelText('Исходный бизнес-контекст');
   expect(contextSummary.closest('details')).not.toHaveAttribute('open');
   expect(screen.getByPlaceholderText('Опишите бизнес-задачу...')).not.toBeVisible();
   expect(screen.queryByText('Результат задачи')).not.toBeInTheDocument();
   fireEvent.click(contextSummary);
   expect(screen.getByPlaceholderText('Опишите бизнес-задачу...')).toBeVisible();
-  const researchButton = screen.getByRole('button', { name: 'Провести AI-Ресерч' });
+  const researchButton = screen.getByRole('button', { name: 'Улучшить требования с помощью AI' });
   expect(researchButton).toBeDisabled();
-  expect(researchButton.closest('.sticky')).toHaveClass('top-20');
-  fireEvent.click(screen.getAllByRole('button', { name: /Редактировать/ })[0]);
+  expect(researchButton.closest('.sticky')).toHaveClass('top-16');
+  expect(screen.queryByRole('tablist', { name: 'Категории требований' })).not.toBeInTheDocument();
+  const businessColumn = screen.getByRole('region', { name: 'Бизнес-требования' });
+  const functionalColumn = screen.getByRole('region', { name: 'Функциональные требования' });
+  const nonfunctionalColumn = screen.getByRole('region', { name: 'Нефункциональные требования' });
+  expect(within(businessColumn).getByText('Снизить срок обработки')).toBeInTheDocument();
+  expect(within(functionalColumn).getByText('Автоматизировать проверку')).toBeInTheDocument();
+  expect(within(nonfunctionalColumn).getByText('Нет сформированных требований')).toBeInTheDocument();
+  expect(screen.queryByLabelText('Новое требование: Бизнес-требования')).not.toBeInTheDocument();
+  fireEvent.click(within(functionalColumn).getByRole('button', { name: 'Добавить требование' }));
+  expect(screen.getByLabelText('Новое требование: Функциональные требования')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Отмена' }));
+  expect(screen.queryByLabelText('Новое требование: Функциональные требования')).not.toBeInTheDocument();
+  fireEvent.click(within(businessColumn).getByRole('button', { name: 'Действия для BT-1' }));
+  fireEvent.click(within(businessColumn).getByRole('button', { name: 'Редактировать' }));
   fireEvent.change(screen.getByLabelText('Текст требования BT-1'), { target: { value: 'Снизить срок обработки до одного дня' } });
   fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Сохранить версию' }));
-  await waitFor(() => expect(screen.getByRole('button', { name: 'Провести AI-Ресерч' })).toBeEnabled());
-  fireEvent.click(screen.getByRole('button', { name: 'Провести AI-Ресерч' }));
+  expect(screen.getByRole('button', { name: 'Сохранить проверенную версию' })).toHaveClass('bg-indigo-600');
+  expect(researchButton).not.toHaveClass('bg-emerald-600');
+  fireEvent.click(screen.getByRole('button', { name: 'Сохранить проверенную версию' }));
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Улучшить требования с помощью AI' })).toBeEnabled());
+  expect(screen.getByText('Изменения сохранены')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Улучшить требования с помощью AI' }));
   await waitFor(() => expect(mocks.createJob).toHaveBeenCalledWith(expect.objectContaining({ type: 'RESEARCH', inputArtifactId: 'version-1', parentJobId: 'j4', options: expect.objectContaining({ mode: 'REQUIREMENTS_INSIGHTS' }) })));
+  const activeResearchButton = await screen.findByRole('button', { name: 'AI-исследование выполняется…' });
+  expect(activeResearchButton).toBeDisabled();
+  fireEvent.click(activeResearchButton);
+  expect(mocks.createJob).toHaveBeenCalledTimes(1);
   expect(mocks.saveRequirementsVersion).toHaveBeenCalledTimes(1);
   expect(screen.getByRole('button', { name: 'Подготовка требований' })).toHaveAttribute('aria-current', 'page');
+});
+
+test('localizes an active-job admission rejection and restores the linked research action', async () => {
+  const content = JSON.stringify({ mode: 'DECOMPOSITION', decomposition: [{ content: {
+    business: [{ id: 'BT-1', text: 'Снизить срок обработки' }], functional: [], nonfunctional: [],
+  } }] });
+  mocks.listJobs.mockResolvedValue({ items: [{ jobId: 'j-limit', type: 'DECOMPOSITION', mode: 'DECOMPOSITION', status: 'SUCCEEDED', outcome: 'COMPLETE', createdAt: new Date().toISOString() }], nextCursor: null });
+  mocks.getJob.mockResolvedValue({ jobId: 'j-limit', type: 'DECOMPOSITION', mode: 'DECOMPOSITION', status: 'SUCCEEDED', outcome: 'COMPLETE', progress: 100 });
+  mocks.getResult.mockResolvedValue({ jobId: 'j-limit', type: 'DECOMPOSITION', outcome: 'COMPLETE', resultArtifactId: 'a-limit', modelAttempts: [] });
+  mocks.getResultContent.mockResolvedValue(content);
+  mocks.listRequirementsVersions.mockResolvedValue({ items: [{ versionId: 'version-limit' }] });
+  mocks.getRequirementsVersion.mockResolvedValue({ versionId: 'version-limit', sourceJobId: 'j-limit', createdAt: new Date().toISOString(), requirements: { business: [{ id: 'BT-1', text: 'Снизить срок обработки' }], functional: [], nonfunctional: [] } });
+  mocks.createJob.mockRejectedValue(Object.assign(new Error('Active job limit reached for user'), { code: 'USER_ACTIVE_JOB_LIMIT' }));
+
+  render(<AsyncJobWorkspace />);
+  await selectHistoryEntry('Подготовка требований');
+  const researchButton = await screen.findByRole('button', { name: 'Улучшить требования с помощью AI' });
+  fireEvent.click(researchButton);
+
+  expect(await screen.findByText('Другая задача уже выполняется. Дождитесь её завершения и попробуйте снова.')).toBeInTheDocument();
+  expect(screen.queryByText(/USER_ACTIVE_JOB_LIMIT|Active job limit reached for user/)).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Улучшить требования с помощью AI' })).toBeEnabled();
+  expect(mocks.createJob).toHaveBeenCalledTimes(1);
 });
 
 test('restores requirements insights and applies explicit accepted enhancements', async () => {
@@ -187,12 +233,68 @@ test('restores requirements insights and applies explicit accepted enhancements'
   mocks.getResultContent.mockResolvedValue(content);
   mocks.saveRequirementsVersion.mockResolvedValue({ versionId: 'final-v2', sourceJobId: 'ri1', createdAt: new Date().toISOString(), requirements: {} });
   render(<AsyncJobWorkspace />);
-  await selectHistoryEntry('AI-Ресерч требований');
-  expect(await screen.findByText('AI-Ресерчер')).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: 'Принять улучшение: Система должна автоматически обрабатывать заявку' }));
+  await selectHistoryEntry('AI-исследование требований');
+  expect(await screen.findByText('Результаты AI-исследования')).toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: 'Сформулируйте бизнес-задачу' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('list', { name: 'Этапы подготовки требований' })).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Все результаты · 1' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Тренды рынка · 1' })).toBeInTheDocument();
+  const insightCards = screen.getByRole('region', { name: 'Карточки результатов AI-исследования' });
+  expect(within(insightCards).getAllByRole('article')).toHaveLength(1);
+  const applicability = within(insightCards).getByRole('meter', { name: 'Применимость' });
+  expect(applicability).toHaveAttribute('aria-valuenow', '90');
+  expect(applicability).toHaveAttribute('aria-valuetext', 'Применимость 90%');
+  const applicabilitySegments = within(applicability).getAllByTestId('applicability-segment');
+  expect(applicabilitySegments).toHaveLength(5);
+  expect(applicabilitySegments.filter((segment) => segment.dataset.active === 'true')).toHaveLength(5);
+  expect(within(insightCards).getByTestId('insight-category-icon-trends')).toBeInTheDocument();
+  const insightCard = within(insightCards).getByRole('article');
+  expect(within(insightCard).getByTestId('insight-relations-i1')).toHaveTextContent('BT-1');
+  expect(within(insightCard).getByText('В функциональные')).toBeInTheDocument();
+  expect(within(insightCard).getByText('Клиенты ожидают быстрый ответ.')).not.toBeVisible();
+  expect(within(insightCard).getByText('Исследование рынка')).not.toBeVisible();
+  expect(within(insightCard).queryByText('Система должна автоматически обрабатывать заявку')).not.toBeInTheDocument();
+  fireEvent.click(within(insightCard).getByRole('button', { name: 'Показать предложение: В функциональные' }));
+  expect(within(insightCard).getByText('Система должна автоматически обрабатывать заявку')).toBeVisible();
+  const rejectEnhancement = within(insightCard).getByRole('button', { name: 'Отклонить улучшение: Система должна автоматически обрабатывать заявку' });
+  fireEvent.click(rejectEnhancement);
+  expect(rejectEnhancement).toHaveAttribute('aria-pressed', 'true');
+  const acceptEnhancement = screen.getByRole('button', { name: 'Принять улучшение: Система должна автоматически обрабатывать заявку' });
+  fireEvent.click(acceptEnhancement);
+  expect(acceptEnhancement).toHaveAttribute('aria-pressed', 'true');
+  fireEvent.click(within(insightCard).getByText('Подробнее'));
+  expect(within(insightCard).getByText('Клиенты ожидают быстрый ответ.')).toBeVisible();
+  expect(within(insightCard).getByText('Исследование рынка')).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: 'К требованиям' }));
+  const sourceRequirements = screen.getByRole('region', { name: 'Требования, переданные в AI-исследование' });
+  expect(within(sourceRequirements).getByRole('region', { name: 'Бизнес-требования' })).toHaveClass('border-t-blue-500');
+  expect(within(sourceRequirements).getByRole('region', { name: 'Функциональные требования' })).toHaveClass('border-t-violet-500');
+  expect(within(sourceRequirements).getByRole('region', { name: 'Нефункциональные требования' })).toHaveClass('border-t-amber-500');
+  expect(within(sourceRequirements).getByText('Что должно измениться для клиента и бизнеса')).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Действия для BT-1' })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'К результатам AI-исследования' }));
+  expect(screen.getByRole('button', { name: 'Принять улучшение: Система должна автоматически обрабатывать заявку' })).toHaveAttribute('aria-pressed', 'true');
   fireEvent.click(screen.getByRole('button', { name: 'Сохранить финальную версию' }));
   await waitFor(() => expect(mocks.saveRequirementsVersion).toHaveBeenCalledWith(expect.objectContaining({ sourceJobId: 'ri1', baseVersionId: 'base-v2', decisions: { acceptedEnhancementKeys: ['i1:0'], rejectedEnhancementKeys: [] } })));
   expect(mocks.saveRequirementsVersion.mock.calls[0][0].requirements.functional[0].text).toBe('Система должна автоматически обрабатывать заявку');
+});
+
+test('builds a compact fallback enhancement for historical insights without structured enhancements', async () => {
+  const content = JSON.stringify({ mode: 'REQUIREMENTS_INSIGHTS', baseRequirements: { business: [], functional: [], nonfunctional: [] }, inputRequirementsVersionId: 'base-old', insights: [{ id: 'old-risk', category: 'risks', title: 'Риск задержки', summary: 'Обработка может занимать больше допустимого времени.', applicability: 70 }] });
+  mocks.listJobs.mockResolvedValue({ items: [{ jobId: 'ri-old', type: 'RESEARCH', mode: 'REQUIREMENTS_INSIGHTS', status: 'SUCCEEDED', outcome: 'COMPLETE', createdAt: new Date().toISOString() }], nextCursor: null });
+  mocks.getJob.mockResolvedValue({ jobId: 'ri-old', type: 'RESEARCH', mode: 'REQUIREMENTS_INSIGHTS', status: 'SUCCEEDED', outcome: 'COMPLETE', progress: 100 });
+  mocks.getResult.mockResolvedValue({ jobId: 'ri-old', type: 'RESEARCH', mode: 'REQUIREMENTS_INSIGHTS', outcome: 'COMPLETE', resultArtifactId: 'ria-old', modelAttempts: [] });
+  mocks.getResultContent.mockResolvedValue(content);
+
+  render(<AsyncJobWorkspace />);
+  await selectHistoryEntry('AI-исследование требований');
+  const insightCards = await screen.findByRole('region', { name: 'Карточки результатов AI-исследования' });
+  expect(within(insightCards).getByText('В нефункциональные')).toBeInTheDocument();
+  fireEvent.click(within(insightCards).getByRole('button', { name: 'Показать предложение: В нефункциональные' }));
+  const fallbackText = insightCards.querySelector('.whitespace-pre-line');
+  expect(fallbackText).toBeVisible();
+  expect(fallbackText).toHaveTextContent('Риск задержки Обработка может занимать больше допустимого времени.');
+  expect(within(insightCards).getByRole('button', { name: /Отклонить улучшение: Риск задержки/ })).toBeInTheDocument();
 });
 
 test('restores persisted requirements revision from history drawer', async () => {
