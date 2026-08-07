@@ -194,6 +194,8 @@ function AddRequirementForm({ onAdd }) {
 
 function DecompositionResult({ value, latestVersion, onSave, onStartResearch, busy }) {
   const [requirements, setRequirements] = useState(() => latestVersion?.requirements?.business && latestVersion?.requirements?.functional && latestVersion?.requirements?.nonfunctional ? latestVersion.requirements : collectRequirements(value));
+  const hasSavedVersion = Boolean(latestVersion?.versionId);
+  const hasUnsavedChanges = !hasSavedVersion || JSON.stringify(requirements) !== JSON.stringify(latestVersion.requirements);
   const columns = [
     ['business', 'Бизнес-требования', 'Что должно измениться для клиента и бизнеса', 'border-t-blue-500', 'BT'],
     ['functional', 'Функциональные требования', 'Что система должна уметь делать', 'border-t-purple-500', 'FT'],
@@ -219,7 +221,17 @@ function DecompositionResult({ value, latestVersion, onSave, onStartResearch, bu
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <div><div className="text-xs font-semibold text-indigo-600 mb-1">ШАГ 2</div><h2 className="text-lg font-bold text-gray-900">Проверьте и отредактируйте требования</h2><p className="text-sm text-gray-500 mt-1">Research не запускается автоматически. Сначала сохраните проверенную версию.</p></div>
+        <div><div className="text-xs font-semibold text-indigo-600 mb-1">ШАГ 2</div><h2 className="text-lg font-bold text-gray-900">Проверьте и отредактируйте требования</h2><p className="text-sm text-gray-500 mt-1">AI-ресерч необязателен и доступен после сохранения проверенной версии.</p></div>
+      </div>
+      <div className="sticky top-20 z-30 bg-white/95 backdrop-blur rounded-2xl shadow-md border border-gray-200 p-4 flex items-center justify-between gap-4 flex-wrap">
+        <div>
+          <p className="font-semibold text-gray-900">Проверенная версия</p>
+          <p id="research-save-status" className="text-sm text-gray-500 mt-1">{!hasSavedVersion ? 'Сначала сохраните проверенные требования.' : hasUnsavedChanges ? 'Есть несохранённые изменения.' : `Сохранена ${new Date(latestVersion.createdAt).toLocaleString()}`}</p>
+        </div>
+        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+          <button disabled={busy || !hasUnsavedChanges} onClick={() => onSave({ requirements, baseVersionId: latestVersion?.versionId || null })} className="w-full sm:w-auto px-4 py-2.5 border border-indigo-300 text-indigo-700 text-sm font-semibold rounded-xl hover:bg-indigo-50 disabled:border-slate-200 disabled:text-slate-400 disabled:bg-slate-50">{hasSavedVersion ? 'Сохранить изменения' : 'Сохранить версию'}</button>
+          <button aria-label="Провести AI-Ресерч" aria-describedby="research-save-status" title={!hasSavedVersion || hasUnsavedChanges ? 'Сначала сохраните текущую версию требований' : 'Необязательный следующий шаг'} disabled={busy || !hasSavedVersion || hasUnsavedChanges} onClick={() => onStartResearch({ requirementsVersionId: latestVersion.versionId })} className="w-full sm:w-auto px-5 py-2.5 bg-emerald-600 text-white text-sm font-semibold rounded-xl hover:bg-emerald-700 disabled:bg-gray-300 flex items-center justify-center gap-2"><Search className="w-4 h-4" />Провести AI-ресерч <span className="font-normal opacity-80">· необязательно</span></button>
+        </div>
       </div>
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {columns.map(([key, title, subtitle, color]) => (
@@ -233,16 +245,6 @@ function DecompositionResult({ value, latestVersion, onSave, onStartResearch, bu
             <div className="mt-4"><AddRequirementForm onAdd={(text) => addRequirement(key, text)} /></div>
           </div>
         ))}
-      </div>
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-5 flex items-center justify-between gap-4 flex-wrap">
-        <div>
-          <p className="font-semibold text-gray-900">Проверенная версия требований</p>
-          <p className="text-sm text-gray-500 mt-1">{latestVersion ? `Сохранена ${new Date(latestVersion.createdAt).toLocaleString()}` : 'Версия ещё не сохранена'}</p>
-        </div>
-        <div className="flex gap-3 flex-wrap">
-          <button disabled={busy} onClick={() => onSave({ requirements, baseVersionId: latestVersion?.versionId || null })} className="px-4 py-2.5 border border-indigo-300 text-indigo-700 text-sm font-semibold rounded-xl hover:bg-indigo-50 disabled:opacity-50">Сохранить версию</button>
-          <button disabled={busy} onClick={() => onStartResearch({ requirements, baseVersionId: latestVersion?.versionId || null })} className="px-5 py-2.5 bg-emerald-600 text-white text-sm font-semibold rounded-xl hover:bg-emerald-700 disabled:bg-gray-300 flex items-center gap-2"><Search className="w-4 h-4" />Провести AI-Ресерч</button>
-        </div>
       </div>
     </div>
   );
@@ -602,23 +604,21 @@ export default function AsyncJobWorkspace() {
     } finally { setVersionBusy(false); }
   }
 
-  async function startResearchFromDecomposition({ requirements: nextRequirements, baseVersionId = null }) {
+  async function startResearchFromDecomposition({ requirementsVersionId }) {
     const parentJobId = result?.jobId;
-    if (!parentJobId) return;
+    if (!parentJobId || !requirementsVersionId) return;
     setVersionBusy(true);
     setError('');
     try {
-      const saved = await enterpriseApi.saveRequirementsVersion({ sourceJobId: parentJobId, baseVersionId, requirements: nextRequirements, decisions: {} });
       const accepted = await enterpriseApi.createJob({
         type: 'RESEARCH',
-        inputArtifactId: saved.versionId,
+        inputArtifactId: requirementsVersionId,
         parentJobId,
         options: { mode: 'REQUIREMENTS_INSIGHTS', model, temperature: Number(temperature), allCategories: true },
       });
       localStorage.setItem('reqai.activeJob', accepted.jobId);
       setWorkspace('requirements');
       setMode('DECOMPOSITION');
-      setRequirementsVersions((current) => [saved, ...current.filter((item) => item.versionId !== saved.versionId)]);
       setJob(await enterpriseApi.getJob(accepted.jobId));
       await refresh();
     } catch (cause) { setError(`${cause.code || 'ERROR'}: ${cause.message}`); }
@@ -660,6 +660,19 @@ export default function AsyncJobWorkspace() {
     </button>
   );
 
+  const contextComplete = Boolean(result && (job?.type === 'DECOMPOSITION' || ['DECOMPOSITION', 'DECOMPOSITION_WITH_INSIGHTS'].includes(result.mode)));
+  const contextFormBody = <>
+    {commonInput}
+    <div className="mt-4"><AiSettingsDisclosure model={model}><ModelControls models={models} model={model} setModel={setModel} temperature={temperature} setTemperature={setTemperature} /></AiSettingsDisclosure></div>
+    <div className="flex items-end justify-between mt-5 flex-col sm:flex-row gap-4">
+      <p className="text-xs text-gray-400 max-w-lg">AI создаст бизнес-, функциональные и нефункциональные требования. Их можно будет отредактировать перед необязательным исследованием.</p>
+      <div className="w-full sm:w-auto flex flex-col sm:flex-row gap-2">
+        {submitButton}
+        {normalActiveJob && <button onClick={cancelActiveJob} className="w-full sm:w-auto px-4 py-3 rounded-lg border border-slate-300 bg-white text-sm font-semibold text-slate-600 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">Отменить</button>}
+      </div>
+    </div>
+  </>;
+
   return (
     <div className="min-h-screen bg-gray-50">
       <nav className="bg-white/95 backdrop-blur border-b border-gray-200 sticky top-0 z-50">
@@ -680,20 +693,23 @@ export default function AsyncJobWorkspace() {
         <main className="max-w-7xl mx-auto px-4 py-6">
           <div className="mb-6"><h1 className="text-2xl md:text-3xl font-bold text-gray-900">Подготовка требований</h1><p className="text-sm text-slate-500 mt-1">От бизнес-контекста до проверенной финальной версии</p></div>
           <WorkflowStepper currentStage={currentStage} completedStage={completedStage} />
-          <section className="bg-white rounded-2xl shadow-sm border border-gray-200 p-4 md:p-6 mb-6">
+          {contextComplete ? <details className="group bg-white rounded-2xl shadow-sm border border-emerald-200 mb-6">
+            <summary aria-label="Завершённый бизнес-контекст" className="list-none cursor-pointer p-4 flex items-center justify-between gap-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded-2xl">
+              <span className="flex items-center gap-3 min-w-0"><span className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0"><Check className="w-4 h-4" /></span><span className="min-w-0"><span className="block text-sm font-bold text-slate-900">Контекст готов</span><span className="block text-xs text-slate-500 truncate mt-0.5">{requirements.trim() || 'Бизнес-контекст сохранён в исходной задаче'}</span></span></span>
+              <span className="text-sm font-semibold text-indigo-600 whitespace-nowrap">Изменить контекст</span>
+            </summary>
+            <div className="border-t border-slate-200 p-4 md:p-6">
+              <div className="text-xs font-semibold text-indigo-600 mb-1">ЭТАП 1 · БИЗНЕС-КОНТЕКСТ</div>
+              <h2 className="text-lg md:text-xl font-bold text-gray-900 mb-1">Изменить бизнес-задачу</h2>
+              <p className="text-sm text-slate-500 mb-4">После изменений запустите декомпозицию повторно.</p>
+              {contextFormBody}
+            </div>
+          </details> : <section className="bg-white rounded-2xl shadow-sm border border-gray-200 p-4 md:p-6 mb-6">
             <div className="text-xs font-semibold text-indigo-600 mb-1">ЭТАП 1 · БИЗНЕС-КОНТЕКСТ</div>
             <h2 className="text-lg md:text-xl font-bold text-gray-900 mb-1">Сформулируйте бизнес-задачу</h2>
             <p className="text-sm text-slate-500 mb-4">Опишите цель, ограничения и ожидаемый результат обычным языком.</p>
-            {commonInput}
-            <div className="mt-4"><AiSettingsDisclosure model={model}><ModelControls models={models} model={model} setModel={setModel} temperature={temperature} setTemperature={setTemperature} /></AiSettingsDisclosure></div>
-            <div className="flex items-end justify-between mt-5 flex-col sm:flex-row gap-4">
-              <p className="text-xs text-gray-400 max-w-lg">AI создаст бизнес-, функциональные и нефункциональные требования. Их можно будет отредактировать перед необязательным исследованием.</p>
-              <div className="w-full sm:w-auto flex flex-col sm:flex-row gap-2">
-                {submitButton}
-                {normalActiveJob && <button onClick={cancelActiveJob} className="w-full sm:w-auto px-4 py-3 rounded-lg border border-slate-300 bg-white text-sm font-semibold text-slate-600 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">Отменить</button>}
-              </div>
-            </div>
-          </section>
+            {contextFormBody}
+          </section>}
           {error && <div className="mb-6 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg p-3 whitespace-pre-wrap">{error}</div>}
           <div className="space-y-6">
             <JobStateCard job={job} onCancel={cancelActiveJob} />
@@ -749,11 +765,13 @@ export default function AsyncJobWorkspace() {
 }
 
 function ResultPanel({ result, resultContent, download, latestVersion, onSaveRequirements, onStartResearch, onSaveFinal, busy }) {
-  const embeddedInsights = safeJson(resultContent)?.mode === 'REQUIREMENTS_INSIGHTS';
+  const parsedContent = safeJson(resultContent);
+  const embeddedInsights = parsedContent?.mode === 'REQUIREMENTS_INSIGHTS';
+  const decompositionResult = result.type === 'DECOMPOSITION' || ['DECOMPOSITION', 'DECOMPOSITION_WITH_INSIGHTS'].includes(result.mode) || ['DECOMPOSITION', 'DECOMPOSITION_WITH_INSIGHTS'].includes(parsedContent?.mode) || Array.isArray(parsedContent?.decomposition);
   const status = primaryStatus(result);
   return (
     <section className="space-y-4">
-      {!embeddedInsights && <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+      {!embeddedInsights && !decompositionResult && <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
         <div className="flex justify-between items-center gap-4 flex-wrap">
           <div><p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Результат задачи</p><div className="flex items-center gap-2 mt-1"><h2 className="text-xl font-semibold text-slate-800">{MODE_LABELS[result.mode] || TYPE_LABELS[result.type] || 'Исследование'}</h2><span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${status.tone}`}>{status.label}</span></div></div>
         </div>
