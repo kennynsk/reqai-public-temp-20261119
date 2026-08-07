@@ -1,0 +1,5 @@
+import { context, propagation, trace, SpanStatusCode } from '@opentelemetry/api';
+const tracer=trace.getTracer('reqai-enterprise','1.0.0');
+export function telemetryMiddleware(req,res,next){const parent=propagation.extract(context.active(),req.headers);const span=tracer.startSpan(`${req.method} ${req.route?.path||req.path}`,{attributes:{'http.request.method':req.method,'url.path':req.path}},parent);context.with(trace.setSpan(parent,span),()=>{res.on('finish',()=>{span.setAttribute('http.response.status_code',res.statusCode);if(res.statusCode>=500)span.setStatus({code:SpanStatusCode.ERROR});span.end();});next();});}
+export function injectTrace(carrier={}){propagation.inject(context.active(),carrier);return carrier;}
+export function withExtractedTrace(carrier,name,fn){const parent=propagation.extract(context.active(),carrier||{});return context.with(parent,()=>tracer.startActiveSpan(name,async span=>{try{return await fn();}catch(error){span.recordException(error);span.setStatus({code:SpanStatusCode.ERROR});throw error;}finally{span.end();}}));}

@@ -1,0 +1,19 @@
+# Enterprise qualification and rollout evidence
+
+OpenSpec qualification tasks are closed only from immutable JSON evidence generated against the approved on-prem environment. Mock runs never qualify production tasks.
+
+## Prerequisites
+
+- 100 short-lived IAM/NGAM bearer tokens in a permission-restricted JSON file;
+- pre-uploaded tenant-owned input artifact and a cross-tenant fixture job;
+- exact Kubernetes contexts for both data centers and an isolated qualification namespace;
+- approved incident/change ID exported as `QUAL_CHANGE_ID`;
+- provider quota sheet with measured RPM, TPM, context, output and connection limits.
+
+## Commands
+
+Run `npm run qualify:load` for 100 users, 30 jobs/min and 5/10-category traffic. Run `npm run qualify:soak` for a 24-hour minimum 100 MB run and an approved database growth/query/backup/restore verifier. Run `npm run qualify:security` for IAM/RBAC/tenant checks. Failure and DC drills use `npm run qualify:drill` and `npm run qualify:failover`; both require the explicit `QUAL_ALLOW_DISRUPTION=YES-I-UNDERSTAND` guard and reviewed command argv. `npm run qualify:rollout-gate` refuses final rollout evidence until all qualification kinds, compatibility-window expiry and external security/operations sign-off IDs are present.
+
+Evidence is written with create-only semantics under `qualification/evidence/`; it includes a SHA-256 digest but never tokens, prompts, results or credentials. Operations and security reviewers sign the evidence externally and reference its `evidenceId` in the architecture decision and rollout record.
+
+The remaining gates are: Temporal replicas/UI/schema in both DCs; load and provider calibration; 100 MB soak with DB backup/restore; pod/API/worker/Temporal/Kafka/PostgreSQL disruptions; controlled DC outage with measured RPO/RTO; security suite; additive migration; decomposition and research canaries; incremental SSE/webhook enablement; full `/api/v1` routing; compatibility-window expiry; endpoint removal and formal sign-off.

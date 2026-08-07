@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:reqai:event:job-event:v1",
+  "title": "ReqAI Job Event v1",
+  "type": "object",
+  "required": [
+    "eventId",
+    "schemaVersion",
+    "eventType",
+    "tenantId",
+    "jobId",
+    "sequence",
+    "occurredAt",
+    "source",
+    "data"
+  ],
+  "properties": {
+    "eventId": { "type": "string", "format": "uuid" },
+    "schemaVersion": { "const": "1.0" },
+    "eventType": {
+      "type": "string",
+      "enum": [
+        "job.accepted",
+        "job.queued",
+        "job.started",
+        "job.progressed",
+        "job.retry_wait",
+        "job.completed",
+        "job.failed",
+        "job.cancel_requested",
+        "job.cancelled"
+      ]
+    },
+    "tenantId": { "type": "string", "minLength": 1 },
+    "jobId": { "type": "string", "format": "uuid" },
+    "sequence": { "type": "integer", "minimum": 1 },
+    "occurredAt": { "type": "string", "format": "date-time" },
+    "correlationId": { "type": ["string", "null"] },
+    "source": {
+      "type": "object",
+      "required": ["service", "site"],
+      "properties": {
+        "service": { "type": "string" },
+        "site": { "type": "string" },
+        "instance": { "type": ["string", "null"] }
+      },
+      "additionalProperties": false
+    },
+    "data": {
+      "type": "object",
+      "required": ["status"],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["ACCEPTED", "QUEUED", "RUNNING", "RETRY_WAIT", "SUCCEEDED", "FAILED", "CANCEL_REQUESTED", "CANCELLED"]
+        },
+        "outcome": { "type": ["string", "null"], "enum": ["COMPLETE", "PARTIAL", null] },
+        "progress": { "type": "number", "minimum": 0, "maximum": 100 },
+        "currentStep": { "type": ["string", "null"] },
+        "message": { "type": ["string", "null"] },
+        "reasonCode": { "type": ["string", "null"] },
+        "resultArtifactId": { "type": ["string", "null"], "format": "uuid" },
+        "resultUrl": { "type": ["string", "null"] }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": false
+}

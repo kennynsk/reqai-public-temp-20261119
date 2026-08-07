@@ -1,0 +1,404 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "ReqAI Enterprise API",
+    "version": "1.0.0",
+    "description": "Versioned asynchronous job and artifact API. Large content is represented by artifact references."
+  },
+  "servers": [{ "url": "/" }],
+  "security": [{ "bearerAuth": [] }],
+  "paths": {
+    "/api/v1/jobs": {
+      "post": {
+        "operationId": "createJob",
+        "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/CreateJobRequest" } }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Job accepted",
+            "headers": {
+              "Location": { "schema": { "type": "string" } },
+              "Retry-After": { "schema": { "type": "integer", "minimum": 1 } }
+            },
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JobAccepted" } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "429": { "$ref": "#/components/responses/Overloaded" },
+          "503": { "$ref": "#/components/responses/Unavailable" }
+        }
+      },
+      "get": {
+        "operationId": "listJobs",
+        "parameters": [
+          { "name": "cursor", "in": "query", "schema": { "type": "string" } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 20 } },
+          { "name": "status", "in": "query", "schema": { "$ref": "#/components/schemas/JobStatus" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tenant and user scoped job history",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JobPage" } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/v1/jobs/{jobId}": {
+      "get": {
+        "operationId": "getJob",
+        "parameters": [{ "$ref": "#/components/parameters/JobId" }],
+        "responses": {
+          "200": { "description": "Current authoritative job state", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Job" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/v1/jobs/{jobId}/result": {
+      "get": {
+        "operationId": "getJobResult",
+        "parameters": [{ "$ref": "#/components/parameters/JobId" }],
+        "responses": {
+          "200": { "description": "Completed or partial result metadata", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JobResult" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/api/v1/jobs/{jobId}/result/content": {
+      "get": {
+        "operationId": "downloadJobResult",
+        "parameters": [{ "$ref": "#/components/parameters/JobId" }],
+        "responses": {
+          "200": { "description": "Streamed result artifact", "content": { "application/octet-stream": { "schema": { "type": "string", "contentEncoding": "binary" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/v1/jobs/{jobId}/cancel": {
+      "post": {
+        "operationId": "cancelJob",
+        "parameters": [{ "$ref": "#/components/parameters/JobId" }],
+        "responses": {
+          "202": { "description": "Cancellation requested", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Job" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/api/v1/jobs/{jobId}/retry": {
+      "post": {
+        "operationId": "retryJob",
+        "parameters": [{ "$ref": "#/components/parameters/JobId" }, { "$ref": "#/components/parameters/IdempotencyKey" }],
+        "responses": {
+          "202": { "description": "Retry accepted as a linked attempt", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JobAccepted" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/api/v1/jobs/{jobId}/events": {
+      "get": {
+        "operationId": "streamJobEvents",
+        "parameters": [
+          { "$ref": "#/components/parameters/JobId" },
+          { "name": "Last-Event-ID", "in": "header", "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "SSE progress stream", "content": { "text/event-stream": { "schema": { "type": "string" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/v1/artifacts": {
+      "post": {
+        "operationId": "uploadArtifact",
+        "parameters": [
+          { "name": "X-Content-SHA256", "in": "header", "required": true, "schema": { "type": "string", "pattern": "^[a-fA-F0-9]{64}$" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/octet-stream": { "schema": { "type": "string", "contentEncoding": "binary", "maxLength": 104857600 } } }
+        },
+        "responses": {
+          "201": { "description": "Artifact stored", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Artifact" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "413": { "$ref": "#/components/responses/PayloadTooLarge" }
+        }
+      }
+    },
+    "/api/v1/artifacts/{artifactId}": {
+      "get": {
+        "operationId": "downloadArtifact",
+        "parameters": [{ "$ref": "#/components/parameters/ArtifactId" }],
+        "responses": {
+          "200": { "description": "Streamed artifact content", "content": { "application/octet-stream": { "schema": { "type": "string", "contentEncoding": "binary" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/v1/requirements/versions": {
+      "post": {
+        "operationId": "createRequirementsVersion",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateRequirementsVersion" } } } },
+        "responses": {
+          "201": { "description": "Immutable reviewed requirements version created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RequirementsVersion" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/api/v1/requirements/versions/{versionId}": {
+      "get": {
+        "operationId": "getRequirementsVersion",
+        "parameters": [{ "$ref": "#/components/parameters/RequirementsVersionId" }],
+        "responses": {
+          "200": { "description": "Persisted requirements version", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RequirementsVersion" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/v1/jobs/{jobId}/requirements/versions": {
+      "get": {
+        "operationId": "listJobRequirementsVersions",
+        "parameters": [{ "$ref": "#/components/parameters/JobId" }],
+        "responses": {
+          "200": {
+            "description": "Requirements versions derived from the job",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": { "type": "array", "items": { "$ref": "#/components/schemas/RequirementsVersion" } }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT" }
+    },
+    "parameters": {
+      "IdempotencyKey": { "name": "Idempotency-Key", "in": "header", "required": true, "schema": { "type": "string", "minLength": 16, "maxLength": 128 } },
+      "JobId": { "name": "jobId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
+      "ArtifactId": { "name": "artifactId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
+      "RequirementsVersionId": { "name": "versionId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+    },
+    "schemas": {
+      "JobType": { "type": "string", "enum": ["DECOMPOSITION", "RESEARCH"] },
+      "FeatureMode": { "type": "string", "enum": ["DECOMPOSITION", "DECOMPOSITION_WITH_INSIGHTS", "REQUIREMENTS_INSIGHTS", "STANDARD_RESEARCH", "AGENT_RESEARCH", "MODEL_COMPARE", "AGENT_COMPARE", "PROMPT_TEST"] },
+      "JobStatus": { "type": "string", "enum": ["ACCEPTED", "QUEUED", "RUNNING", "RETRY_WAIT", "SUCCEEDED", "FAILED", "CANCEL_REQUESTED", "CANCELLED"] },
+      "JobOutcome": { "type": ["string", "null"], "enum": ["COMPLETE", "PARTIAL", null] },
+      "CreateJobRequest": {
+        "type": "object",
+        "required": ["type", "inputArtifactId"],
+        "properties": {
+          "type": { "$ref": "#/components/schemas/JobType" },
+          "inputArtifactId": { "type": "string", "format": "uuid" },
+          "parentJobId": { "type": "string", "format": "uuid" },
+          "options": { "$ref": "#/components/schemas/JobOptions" }
+        },
+        "additionalProperties": false
+      },
+      "ModelVariant": {
+        "type": "object",
+        "required": ["model"],
+        "properties": {
+          "model": { "type": "string" },
+          "temperature": { "type": "number", "minimum": 0, "maximum": 2, "default": 0.2 }
+        },
+        "additionalProperties": false
+      },
+      "JobOptions": {
+        "type": "object",
+        "properties": {
+          "mode": { "$ref": "#/components/schemas/FeatureMode" },
+          "model": { "type": "string" },
+          "temperature": { "type": "number", "minimum": 0, "maximum": 2, "default": 0.2 },
+          "researchCategories": { "type": "array", "maxItems": 10, "items": { "type": "string", "minLength": 1 } },
+          "researchKinds": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "enum": ["trends", "competitors", "practices"] } },
+          "allCategories": { "type": "boolean", "default": true },
+          "variantA": { "$ref": "#/components/schemas/ModelVariant" },
+          "variantB": { "$ref": "#/components/schemas/ModelVariant" },
+          "compareTarget": { "type": "string", "enum": ["CATEGORIES", "RESEARCH"] },
+          "researchKind": { "type": "string", "enum": ["trends", "competitors", "practices"] },
+          "inputFormat": { "type": "string", "enum": ["TEXT", "PROMPT_JSON"] }
+        },
+        "additionalProperties": false
+      },
+      "JobAccepted": {
+        "type": "object",
+        "required": ["jobId", "status", "statusUrl", "eventsUrl"],
+        "properties": {
+          "jobId": { "type": "string", "format": "uuid" },
+          "status": { "$ref": "#/components/schemas/JobStatus" },
+          "statusUrl": { "type": "string" },
+          "eventsUrl": { "type": "string" },
+          "idempotencyReplayed": { "type": "boolean" }
+        }
+      },
+      "Job": {
+        "type": "object",
+        "required": ["jobId", "type", "status", "outcome", "progress", "createdAt", "updatedAt"],
+        "properties": {
+          "jobId": { "type": "string", "format": "uuid" },
+          "parentJobId": { "type": ["string", "null"], "format": "uuid" },
+          "inputArtifactId": { "type": "string", "format": "uuid" },
+          "type": { "$ref": "#/components/schemas/JobType" },
+          "mode": { "anyOf": [{ "$ref": "#/components/schemas/FeatureMode" }, { "type": "null" }] },
+          "status": { "$ref": "#/components/schemas/JobStatus" },
+          "outcome": { "$ref": "#/components/schemas/JobOutcome" },
+          "progress": { "type": "number", "minimum": 0, "maximum": 100 },
+          "currentStep": { "type": ["string", "null"] },
+          "message": { "type": ["string", "null"] },
+          "resultArtifactId": { "type": ["string", "null"], "format": "uuid" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "JobPage": {
+        "type": "object",
+        "required": ["items", "nextCursor"],
+        "properties": {
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/Job" } },
+          "nextCursor": { "type": ["string", "null"] }
+        }
+      },
+      "ModelAttempt": {
+        "type": "object",
+        "required": ["stepId", "model", "attempt", "result"],
+        "properties": {
+          "stepId": { "type": "string" },
+          "requestedModel": { "type": "string" },
+          "model": { "type": "string" },
+          "attempt": { "type": "integer", "minimum": 1 },
+          "result": { "type": "string", "enum": ["SUCCEEDED", "FAILED", "CANCELLED"] },
+          "reasonCode": { "type": ["string", "null"] },
+          "tokenUsage": { "type": ["object", "null"], "additionalProperties": { "type": "integer" } }
+        }
+      },
+      "JobResult": {
+        "type": "object",
+        "required": ["jobId", "status", "outcome", "failedSteps", "modelAttempts"],
+        "properties": {
+          "jobId": { "type": "string", "format": "uuid" },
+          "parentJobId": { "type": ["string", "null"], "format": "uuid" },
+          "inputArtifactId": { "type": "string", "format": "uuid" },
+          "type": { "$ref": "#/components/schemas/JobType" },
+          "status": { "$ref": "#/components/schemas/JobStatus" },
+          "outcome": { "$ref": "#/components/schemas/JobOutcome" },
+          "mode": { "anyOf": [{ "$ref": "#/components/schemas/FeatureMode" }, { "type": "null" }] },
+          "summary": { "type": ["string", "null"] },
+          "resultArtifactId": { "type": ["string", "null"], "format": "uuid" },
+          "resultContentUrl": { "type": ["string", "null"] },
+          "failedSteps": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
+          "modelAttempts": { "type": "array", "items": { "$ref": "#/components/schemas/ModelAttempt" } }
+        }
+      },
+      "Artifact": {
+        "type": "object",
+        "required": ["artifactId", "size", "sha256", "createdAt"],
+        "properties": {
+          "artifactId": { "type": "string", "format": "uuid" },
+          "size": { "type": "integer", "minimum": 0, "maximum": 104857600 },
+          "sha256": { "type": "string", "pattern": "^[a-fA-F0-9]{64}$" },
+          "contentType": { "type": "string" },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "RequirementItem": {
+        "type": "object",
+        "required": ["id", "text"],
+        "properties": { "id": { "type": "string" }, "text": { "type": "string" }, "fromResearch": { "type": "boolean" } },
+        "additionalProperties": false
+      },
+      "RequirementsGroups": {
+        "type": "object",
+        "required": ["business", "functional", "nonfunctional"],
+        "properties": {
+          "business": { "type": "array", "maxItems": 500, "items": { "$ref": "#/components/schemas/RequirementItem" } },
+          "functional": { "type": "array", "maxItems": 500, "items": { "$ref": "#/components/schemas/RequirementItem" } },
+          "nonfunctional": { "type": "array", "maxItems": 500, "items": { "$ref": "#/components/schemas/RequirementItem" } }
+        },
+        "additionalProperties": false
+      },
+      "CreateRequirementsVersion": {
+        "type": "object",
+        "required": ["sourceJobId", "requirements"],
+        "properties": {
+          "sourceJobId": { "type": "string", "format": "uuid" },
+          "baseVersionId": { "type": ["string", "null"], "format": "uuid" },
+          "requirements": { "$ref": "#/components/schemas/RequirementsGroups" },
+          "decisions": { "type": "object", "additionalProperties": true }
+        },
+        "additionalProperties": false
+      },
+      "RequirementsVersion": {
+        "type": "object",
+        "required": ["versionId", "sourceJobId", "requirements", "createdAt"],
+        "properties": {
+          "versionId": { "type": "string", "format": "uuid" },
+          "sourceJobId": { "type": "string", "format": "uuid" },
+          "baseVersionId": { "type": ["string", "null"], "format": "uuid" },
+          "researchJobId": { "type": ["string", "null"], "format": "uuid" },
+          "requirements": { "$ref": "#/components/schemas/RequirementsGroups" },
+          "decisions": { "type": "object", "additionalProperties": true },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "ApiError": {
+        "type": "object",
+        "required": ["error"],
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": ["code", "message", "requestId"],
+            "properties": {
+              "code": { "type": "string" },
+              "message": { "type": "string" },
+              "requestId": { "type": "string" },
+              "retryable": { "type": "boolean" },
+              "details": { "type": "object", "additionalProperties": true }
+            }
+          }
+        }
+      }
+    },
+    "responses": {
+      "BadRequest": { "description": "Invalid request", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
+      "Unauthorized": { "description": "Authentication required", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
+      "Forbidden": { "description": "Insufficient privileges", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
+      "NotFound": { "description": "Resource not found or not visible", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
+      "Conflict": { "description": "State conflict", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
+      "Overloaded": { "description": "Admission or rate limit reached", "headers": { "Retry-After": { "schema": { "type": "integer" } } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
+      "PayloadTooLarge": { "description": "Artifact exceeds configured limit", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
+      "Unavailable": { "description": "Service unavailable or not accepting new jobs", "headers": { "Retry-After": { "schema": { "type": "integer" } } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } }
+    }
+  }
+}
