@@ -57,7 +57,8 @@ async function openToolsAndSelect(name) {
 
 test('shows the guided workflow and hides expert settings by default', async () => {
   render(<AsyncJobWorkspace />);
-  expect(await screen.findByRole('button', { name: 'Бизнес-требования' })).toHaveAttribute('aria-current', 'page');
+  expect(await screen.findByRole('button', { name: 'Подготовка требований' })).toHaveAttribute('aria-current', 'page');
+  expect(screen.getByRole('heading', { name: 'Подготовка требований' })).toBeInTheDocument();
   const steps = screen.getByRole('list', { name: 'Этапы подготовки требований' });
   expect(within(steps).getByText('Контекст')).toBeInTheDocument();
   expect(within(steps).getByText('AI-ресерч')).toBeInTheDocument();
@@ -72,7 +73,7 @@ test('restores abandoned active session with clear activity feedback', async () 
   render(<AsyncJobWorkspace />);
   expect(await screen.findByText('Проводим исследование…')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Исследование выполняется…' })).toBeDisabled();
-  expect(screen.getByRole('button', { name: 'Бизнес-требования' })).toHaveAttribute('aria-current', 'page');
+  expect(screen.getByRole('button', { name: 'Подготовка требований' })).toHaveAttribute('aria-current', 'page');
   expect(document.body).not.toHaveTextContent('40%');
 });
 
@@ -86,7 +87,7 @@ test('opens compact history drawer, filters jobs and renders localized partial s
   expect(within(visibleDrawer).getByText('Готово частично')).toBeInTheDocument();
   fireEvent.click(within(visibleDrawer).getByRole('button', { name: 'Декомпозиция' }));
   expect(within(visibleDrawer).queryByText('Исследование', { exact: true })).not.toBeInTheDocument();
-  expect(within(visibleDrawer).getByText('Бизнес-требования', { exact: true })).toBeInTheDocument();
+  expect(within(visibleDrawer).getByText('Подготовка требований', { exact: true })).toBeInTheDocument();
 });
 
 test('cancels active job and reconciles authoritative REST state', async () => {
@@ -113,6 +114,24 @@ test('opens prompt testing from secondary tools and submits recommended defaults
   expect(mocks.createJob.mock.calls[0][0]).toMatchObject({ type: 'RESEARCH', options: { mode: 'PROMPT_TEST', inputFormat: 'PROMPT_JSON', model: 'GC-Max' } });
 });
 
+test.each([
+  ['Исследование'],
+  ['Сравнение (модели, температура)'],
+  ['Агентное сравнение'],
+  ['Агентное исследование'],
+  ['Тестирование промптов'],
+])('uses the shared primary visual shell for «%s»', async (toolName) => {
+  render(<AsyncJobWorkspace />);
+  await screen.findByText('Дополнительные инструменты', { exact: true });
+  await openToolsAndSelect(toolName);
+  const heading = screen.getByRole('heading', { name: toolName });
+  expect(heading.closest('main')).toHaveClass('max-w-7xl', 'px-4', 'py-6');
+  const card = screen.getByText(toolName === 'Тестирование промптов' ? 'Запрос для проверки' : 'Исходные данные').closest('section');
+  expect(card).toHaveClass('bg-white', 'rounded-2xl', 'border-gray-200', 'shadow-sm');
+  expect(screen.getByText('Настройки AI')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /Анализировать требования|Запустить задачу/ })).toHaveClass('bg-indigo-600');
+});
+
 test('saves reviewed decomposition and starts linked research inside requirements workspace', async () => {
   const content = JSON.stringify({ mode: 'DECOMPOSITION', decomposition: [{ content: {
     business: [{ id: 'BT-1', text: 'Снизить срок обработки' }], functional: [{ id: 'FT-1', text: 'Автоматизировать проверку' }], nonfunctional: [],
@@ -125,14 +144,14 @@ test('saves reviewed decomposition and starts linked research inside requirement
   mocks.saveRequirementsVersion.mockResolvedValue({ versionId: 'version-1', sourceJobId: 'j4', requirements: {}, createdAt: new Date().toISOString() });
   mocks.createJob.mockResolvedValue({ jobId: 'research-1' });
   render(<AsyncJobWorkspace />);
-  await selectHistoryEntry('Бизнес-требования');
+  await selectHistoryEntry('Подготовка требований');
   expect(await screen.findByText('Проверьте и отредактируйте требования')).toBeInTheDocument();
   fireEvent.click(screen.getAllByRole('button', { name: /Редактировать/ })[0]);
   fireEvent.change(screen.getByLabelText('Текст требования BT-1'), { target: { value: 'Снизить срок обработки до одного дня' } });
   fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
   fireEvent.click(screen.getByRole('button', { name: 'Провести AI-Ресерч' }));
   await waitFor(() => expect(mocks.createJob).toHaveBeenCalledWith(expect.objectContaining({ type: 'RESEARCH', inputArtifactId: 'version-1', parentJobId: 'j4', options: expect.objectContaining({ mode: 'REQUIREMENTS_INSIGHTS' }) })));
-  expect(screen.getByRole('button', { name: 'Бизнес-требования' })).toHaveAttribute('aria-current', 'page');
+  expect(screen.getByRole('button', { name: 'Подготовка требований' })).toHaveAttribute('aria-current', 'page');
 });
 
 test('restores requirements insights and applies explicit accepted enhancements', async () => {
@@ -160,7 +179,7 @@ test('restores persisted requirements revision from history drawer', async () =>
   mocks.listRequirementsVersions.mockResolvedValue({ items: [{ versionId: 'v5' }] });
   mocks.getRequirementsVersion.mockResolvedValue({ versionId: 'v5', sourceJobId: 'j5', createdAt: new Date().toISOString(), requirements: { business: [{ id: 'BT-1', text: 'Сохранённая редакция' }], functional: [], nonfunctional: [] } });
   render(<AsyncJobWorkspace />);
-  await selectHistoryEntry('Бизнес-требования');
+  await selectHistoryEntry('Подготовка требований');
   expect(await screen.findByText('Сохранённая редакция')).toBeInTheDocument();
   expect(screen.queryByText('Исходная версия')).not.toBeInTheDocument();
 });

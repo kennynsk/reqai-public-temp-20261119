@@ -32,12 +32,12 @@ const RESEARCH_MODES = [
   ['PROMPT_TEST', 'Тестирование промптов'],
 ];
 const MODE_LABELS = {
-  DECOMPOSITION: 'Бизнес-требования',
-  DECOMPOSITION_WITH_INSIGHTS: 'Бизнес-требования',
+  DECOMPOSITION: 'Подготовка требований',
+  DECOMPOSITION_WITH_INSIGHTS: 'Подготовка требований',
   REQUIREMENTS_INSIGHTS: 'AI-Ресерч требований',
   ...Object.fromEntries(RESEARCH_MODES),
 };
-const TYPE_LABELS = { DECOMPOSITION: 'Бизнес-требования', RESEARCH: 'Исследование' };
+const TYPE_LABELS = { DECOMPOSITION: 'Подготовка требований', RESEARCH: 'Исследование' };
 const STATUS_LABELS = { ACCEPTED: 'Ожидает запуска', QUEUED: 'В очереди', RUNNING: 'Выполняется', RETRY_WAIT: 'Повторяем этап', SUCCEEDED: 'Готово', FAILED: 'Не выполнено', CANCEL_REQUESTED: 'Отменяется', CANCELLED: 'Отменено' };
 const OUTCOME_LABELS = { COMPLETE: 'Готово', PARTIAL: 'Готово частично', FAILED: 'Не выполнено' };
 const STATUS_TONES = { ACCEPTED: 'bg-slate-100 text-slate-600', QUEUED: 'bg-slate-100 text-slate-600', RUNNING: 'bg-indigo-100 text-indigo-700', RETRY_WAIT: 'bg-amber-100 text-amber-700', SUCCEEDED: 'bg-emerald-100 text-emerald-700', FAILED: 'bg-red-100 text-red-700', CANCEL_REQUESTED: 'bg-amber-100 text-amber-700', CANCELLED: 'bg-slate-100 text-slate-600' };
@@ -383,13 +383,13 @@ function ModelControls({ models, model, setModel, temperature, setTemperature })
     <div className="grid gap-3 md:grid-cols-2">
       <label className="block">
         <span className="text-sm font-semibold text-slate-700 mb-1.5 block">Модель</span>
-        <select value={model} onChange={(event) => setModel(event.target.value)} className="w-full h-10 px-3 border-2 border-slate-200 rounded-lg focus:border-blue-500 focus:outline-none">
+        <select value={model} onChange={(event) => setModel(event.target.value)} className="w-full h-10 px-3 border-2 border-slate-200 rounded-lg bg-white focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100">
           {models.map((value) => <option key={value}>{value}</option>)}
         </select>
       </label>
       <label className="block">
         <span className="text-sm font-semibold text-slate-700 mb-1.5 block">Температура</span>
-        <input type="number" min="0" max="2" step="0.1" value={temperature} onChange={(event) => setTemperature(event.target.value)} className="w-full h-10 px-3 border-2 border-slate-200 rounded-lg focus:border-blue-500 focus:outline-none" />
+        <input type="number" min="0" max="2" step="0.1" value={temperature} onChange={(event) => setTemperature(event.target.value)} className="w-full h-10 px-3 border-2 border-slate-200 rounded-lg bg-white focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
       </label>
     </div>
   );
@@ -644,9 +644,9 @@ export default function AsyncJobWorkspace() {
     <>
       <label className="block mb-4">
         {!isDecomposition && <span className="text-lg font-semibold text-slate-700 mb-2 block">Введите бизнес-требования</span>}
-        <textarea value={requirements} onChange={(event) => setRequirements(event.target.value)} placeholder={isDecomposition ? 'Опишите бизнес-задачу...' : 'Например: Разработать приложение с функциями оплаты, отслеживания и программы лояльности...'} className={`w-full px-4 py-3 border-2 border-slate-200 rounded-lg focus:border-blue-500 focus:outline-none resize-none bg-slate-50/50 ${isDecomposition ? 'h-32' : 'h-64'}`} />
+        <textarea value={requirements} onChange={(event) => setRequirements(event.target.value)} placeholder={isDecomposition ? 'Опишите бизнес-задачу...' : 'Например: Разработать приложение с функциями оплаты, отслеживания и программы лояльности...'} className={`w-full px-4 py-3 border-2 border-slate-200 rounded-lg focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100 resize-none bg-slate-50/50 ${isDecomposition ? 'h-32' : 'h-48'}`} />
       </label>
-      <label className="inline-flex items-center gap-2 text-sm text-slate-500 cursor-pointer hover:text-blue-600">
+      <label className="inline-flex items-center gap-2 text-sm text-slate-500 cursor-pointer hover:text-indigo-600">
         <FileUp className="w-4 h-4" /><span>{file ? file.name : 'Приложить файл до 100 МБ'}</span>
         <input aria-label="Файл требований" type="file" className="sr-only" onChange={(event) => setFile(event.target.files[0])} />
       </label>
@@ -654,7 +654,7 @@ export default function AsyncJobWorkspace() {
   );
 
   const submitButton = (
-    <button disabled={!canSubmit || busy || activeJob || (researchKinds.length === 0 && ['STANDARD_RESEARCH', 'AGENT_COMPARE'].includes(mode))} onClick={submit} className={`text-white py-3 px-6 rounded-lg font-semibold disabled:bg-slate-300 disabled:cursor-not-allowed flex items-center justify-center gap-2 ${isDecomposition ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-blue-600 hover:bg-blue-700'} ${isDecomposition ? '' : 'w-full'}`}>
+    <button disabled={!canSubmit || busy || activeJob || (researchKinds.length === 0 && ['STANDARD_RESEARCH', 'AGENT_COMPARE'].includes(mode))} onClick={submit} className="w-full sm:w-auto text-white py-3 px-6 rounded-lg font-semibold disabled:bg-slate-300 disabled:cursor-not-allowed flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2">
       {busy ? <><Loader2 className="w-5 h-5 animate-spin" />Загрузка {Math.round(upload * 100)}%</> : activeJob ? <><Loader2 className="w-5 h-5 animate-spin" />{job.type === 'DECOMPOSITION' ? 'Декомпозиция выполняется…' : 'Исследование выполняется…'}</> : <>{isDecomposition ? <Sparkles className="w-4 h-4" /> : <Search className="w-5 h-5" />}{submitLabel}</>}
     </button>
   );
@@ -665,7 +665,7 @@ export default function AsyncJobWorkspace() {
         <div className="max-w-7xl mx-auto px-4">
           <div className="flex items-center min-h-16 gap-3 sm:gap-6">
             <span className="text-base font-extrabold text-gray-900 tracking-tight mr-auto sm:mr-3">ReqAI</span>
-            <button onClick={() => { setWorkspace('requirements'); setMode('DECOMPOSITION'); }} aria-current={workspace === 'requirements' ? 'page' : undefined} className={`h-16 px-1 text-sm font-semibold border-b-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${workspace === 'requirements' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Бизнес-требования</button>
+            <button onClick={() => { setWorkspace('requirements'); setMode('DECOMPOSITION'); }} aria-current={workspace === 'requirements' ? 'page' : undefined} className={`h-16 px-1 text-sm font-semibold border-b-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${workspace === 'requirements' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Подготовка требований</button>
             <details className="relative group">
               <summary aria-label="Дополнительные инструменты" title="Дополнительные инструменты" className={`list-none cursor-pointer p-2 sm:px-3 sm:py-2 rounded-lg text-sm font-semibold flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${workspace === 'tools' ? 'bg-indigo-50 text-indigo-700' : 'text-gray-500 hover:bg-gray-50'}`}><Wrench className="w-4 h-4" /><span className="hidden sm:inline">Дополнительные инструменты</span></summary>
               <div className="absolute right-0 top-full mt-2 w-72 rounded-xl border border-slate-200 bg-white shadow-xl p-2 z-50">{RESEARCH_MODES.map(([key, label]) => <button key={key} onClick={(event) => { setWorkspace('tools'); setMode(key); event.currentTarget.closest('details').removeAttribute('open'); }} className={`w-full text-left px-3 py-2.5 rounded-lg text-sm ${mode === key && workspace === 'tools' ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-slate-600 hover:bg-slate-50'}`}>{label}</button>)}</div>
@@ -677,7 +677,7 @@ export default function AsyncJobWorkspace() {
 
       {workspace === 'requirements' ? (
         <main className="max-w-7xl mx-auto px-4 py-6">
-          <div className="mb-6"><h1 className="text-2xl md:text-3xl font-bold text-gray-900">Бизнес-требования</h1><p className="text-sm text-slate-500 mt-1">От бизнес-контекста до проверенной финальной версии</p></div>
+          <div className="mb-6"><h1 className="text-2xl md:text-3xl font-bold text-gray-900">Подготовка требований</h1><p className="text-sm text-slate-500 mt-1">От бизнес-контекста до проверенной финальной версии</p></div>
           <WorkflowStepper currentStage={currentStage} completedStage={completedStage} />
           <section className="bg-white rounded-2xl shadow-sm border border-gray-200 p-4 md:p-6 mb-6">
             <div className="text-xs font-semibold text-indigo-600 mb-1">ЭТАП 1 · БИЗНЕС-КОНТЕКСТ</div>
@@ -698,35 +698,35 @@ export default function AsyncJobWorkspace() {
           </div>
         </main>
       ) : (
-        <main className="min-h-[calc(100vh-4rem)] bg-gradient-to-br from-slate-50 to-slate-100 px-4 py-6 md:p-8">
-          <div className="max-w-6xl mx-auto w-full">
-            <div className="mb-6"><div className="text-xs font-semibold text-indigo-600 mb-1">ДОПОЛНИТЕЛЬНЫЙ ИНСТРУМЕНТ</div><h1 className="text-2xl md:text-3xl font-bold text-slate-800 mb-2">{MODE_LABELS[mode]}</h1><p className="text-slate-600">Расширенный анализ вне основного сценария подготовки требований</p></div>
+        <main className="max-w-7xl mx-auto px-4 py-6">
+          <div className="w-full">
+            <div className="mb-6"><div className="text-xs font-semibold text-indigo-600 mb-1">ДОПОЛНИТЕЛЬНЫЙ ИНСТРУМЕНТ</div><h1 className="text-2xl md:text-3xl font-bold text-gray-900">{MODE_LABELS[mode]}</h1><p className="text-sm text-slate-500 mt-1">Расширенный анализ вне основного сценария подготовки требований</p></div>
             <div className="space-y-6">
-              <section className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 md:p-6">
+              <section className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4 md:p-6">
                 {mode === 'PROMPT_TEST' ? <>
-                  <h3 className="text-xl font-semibold text-slate-800 mb-1">Запрос для проверки</h3><p className="text-sm text-slate-500 mb-4">Введите основной запрос. Системный промпт и модель доступны в настройках AI.</p>
-                  <label className="block mb-6"><span className="text-sm font-semibold text-slate-700 mb-2 block">Запрос к LLM</span><textarea aria-label="Пользовательский промпт" value={userPrompt} onChange={(event) => setUserPrompt(event.target.value)} placeholder="Введите пользовательский промпт..." className="w-full h-40 px-3 py-2 border-2 border-slate-200 rounded-lg focus:border-blue-500 focus:outline-none resize-none" /></label>
+                  <h2 className="text-lg md:text-xl font-bold text-gray-900 mb-1">Запрос для проверки</h2><p className="text-sm text-slate-500 mb-4">Введите основной запрос. Системный промпт и модель доступны в настройках AI.</p>
+                  <label className="block mb-6"><span className="text-sm font-semibold text-slate-700 mb-2 block">Запрос к LLM</span><textarea aria-label="Пользовательский промпт" value={userPrompt} onChange={(event) => setUserPrompt(event.target.value)} placeholder="Введите пользовательский промпт..." className="w-full h-40 px-4 py-3 border-2 border-slate-200 rounded-lg bg-slate-50/50 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100 resize-none" /></label>
                 </> : <>
-                  <h3 className="text-xl font-semibold text-slate-800 mb-4">{MODE_LABELS[mode]}</h3>
+                  <h2 className="text-lg md:text-xl font-bold text-gray-900 mb-1">Исходные данные</h2><p className="text-sm text-slate-500 mb-4">Добавьте требования или бизнес-контекст для анализа.</p>
                   {commonInput}
                 </>}
 
                 <AiSettingsDisclosure model={model}><div className="space-y-5">
                 {mode !== 'MODEL_COMPARE' && <ModelControls models={models} model={model} setModel={setModel} temperature={temperature} setTemperature={setTemperature} />}
-                {mode === 'PROMPT_TEST' && <label className="block"><span className="text-sm font-semibold text-slate-700 mb-2 block">Системный промпт</span><textarea aria-label="Системный промпт" value={systemPrompt} onChange={(event) => setSystemPrompt(event.target.value)} placeholder="Вставьте системный промпт (role: system)..." className="w-full h-32 px-3 py-2 border border-slate-200 rounded-lg focus:border-blue-500 focus:outline-none resize-none bg-white" /></label>}
+                {mode === 'PROMPT_TEST' && <label className="block"><span className="text-sm font-semibold text-slate-700 mb-2 block">Системный промпт</span><textarea aria-label="Системный промпт" value={systemPrompt} onChange={(event) => setSystemPrompt(event.target.value)} placeholder="Вставьте системный промпт (role: system)..." className="w-full h-32 px-3 py-2 border-2 border-slate-200 rounded-lg focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100 resize-none bg-white" /></label>}
                 {['STANDARD_RESEARCH', 'AGENT_RESEARCH', 'AGENT_COMPARE'].includes(mode) && <div className="space-y-4">
-                  <label className="block"><span className="text-sm font-semibold text-slate-700 mb-2 block">Категории (необязательно, по одной на строку)</span><textarea value={categories} onChange={(event) => setCategories(event.target.value)} className="w-full h-24 px-3 py-2 border-2 border-slate-200 rounded-lg focus:border-blue-500 focus:outline-none resize-none" /></label>
-                  <label className="flex items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={allCategories} onChange={(event) => setAllCategories(event.target.checked)} /> Все категории</label>
-                  {(mode === 'STANDARD_RESEARCH' || mode === 'AGENT_COMPARE') && <div className="flex flex-wrap gap-4">{Object.entries(RESEARCH_KIND_LABELS).map(([kind, label]) => <label key={kind} className="flex items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={researchKinds.includes(kind)} onChange={(event) => setResearchKinds((current) => event.target.checked ? [...new Set([...current, kind])] : current.filter((item) => item !== kind))} />{label}</label>)}</div>}
+                  <label className="block"><span className="text-sm font-semibold text-slate-700 mb-2 block">Категории (необязательно, по одной на строку)</span><textarea value={categories} onChange={(event) => setCategories(event.target.value)} className="w-full h-24 px-3 py-2 border-2 border-slate-200 rounded-lg focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100 resize-none bg-white" /></label>
+                  <label className="flex items-center gap-2 text-sm text-slate-700"><input className="accent-indigo-600" type="checkbox" checked={allCategories} onChange={(event) => setAllCategories(event.target.checked)} /> Все категории</label>
+                  {(mode === 'STANDARD_RESEARCH' || mode === 'AGENT_COMPARE') && <div className="flex flex-wrap gap-4">{Object.entries(RESEARCH_KIND_LABELS).map(([kind, label]) => <label key={kind} className="flex items-center gap-2 text-sm text-slate-700"><input className="accent-indigo-600" type="checkbox" checked={researchKinds.includes(kind)} onChange={(event) => setResearchKinds((current) => event.target.checked ? [...new Set([...current, kind])] : current.filter((item) => item !== kind))} />{label}</label>)}</div>}
                 </div>}
 
                 {mode === 'MODEL_COMPARE' && <div className="space-y-6">
-                  <div className="mb-6 flex gap-2"><button onClick={() => setCompareTarget('CATEGORIES')} className={`px-3 py-2 rounded-lg text-sm font-semibold border-2 ${compareTarget === 'CATEGORIES' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-slate-200'}`}>Категории</button><button onClick={() => setCompareTarget('RESEARCH')} className={`px-3 py-2 rounded-lg text-sm font-semibold border-2 ${compareTarget === 'RESEARCH' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-slate-200'}`}>Исследование</button></div>
-                  {compareTarget === 'RESEARCH' && <label className="block mt-4"><span className="text-sm font-semibold text-slate-700 mb-2 block">Тип исследования</span><select value={researchKind} onChange={(event) => setResearchKind(event.target.value)} className="w-full px-3 py-2 border-2 border-slate-200 rounded-lg">{Object.entries(RESEARCH_KIND_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>}
-                  <div className="grid gap-6 md:grid-cols-2">{[['A', variantA, setVariantA], ['B', variantB, setVariantB]].map(([label, value, setter]) => <fieldset key={label} className="border border-slate-200 rounded-lg p-4"><legend className="px-1 text-sm font-semibold text-slate-600">Вариант {label}</legend><label className="block mb-4"><span className="text-sm font-semibold text-slate-700 mb-2 block">Модель</span><select value={value.model} onChange={(event) => setter({ ...value, model: event.target.value })} className="w-full px-3 py-2 border-2 border-slate-200 rounded-lg">{models.map((item) => <option key={item}>{item}</option>)}</select></label><label className="block"><span className="text-sm font-semibold text-slate-700 mb-2 block">Температура</span><input aria-label={`Температура ${label}`} type="number" min="0" max="2" step="0.1" value={value.temperature} onChange={(event) => setter({ ...value, temperature: Number(event.target.value) })} className="w-full px-3 py-2 border-2 border-slate-200 rounded-lg" /></label></fieldset>)}</div>
+                  <div className="mb-6 flex flex-wrap gap-2"><button onClick={() => setCompareTarget('CATEGORIES')} className={`px-3 py-2 rounded-lg text-sm font-semibold border-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${compareTarget === 'CATEGORIES' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-200'}`}>Категории</button><button onClick={() => setCompareTarget('RESEARCH')} className={`px-3 py-2 rounded-lg text-sm font-semibold border-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${compareTarget === 'RESEARCH' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-200'}`}>Исследование</button></div>
+                  {compareTarget === 'RESEARCH' && <label className="block mt-4"><span className="text-sm font-semibold text-slate-700 mb-2 block">Тип исследования</span><select value={researchKind} onChange={(event) => setResearchKind(event.target.value)} className="w-full px-3 py-2 border-2 border-slate-200 rounded-lg bg-white focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100">{Object.entries(RESEARCH_KIND_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>}
+                  <div className="grid gap-4 md:grid-cols-2">{[['A', variantA, setVariantA], ['B', variantB, setVariantB]].map(([label, value, setter]) => <fieldset key={label} className="border border-slate-200 bg-white rounded-xl p-4"><legend className="px-1 text-sm font-semibold text-slate-600">Вариант {label}</legend><label className="block mb-4"><span className="text-sm font-semibold text-slate-700 mb-2 block">Модель</span><select value={value.model} onChange={(event) => setter({ ...value, model: event.target.value })} className="w-full px-3 py-2 border-2 border-slate-200 rounded-lg bg-white focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100">{models.map((item) => <option key={item}>{item}</option>)}</select></label><label className="block"><span className="text-sm font-semibold text-slate-700 mb-2 block">Температура</span><input aria-label={`Температура ${label}`} type="number" min="0" max="2" step="0.1" value={value.temperature} onChange={(event) => setter({ ...value, temperature: Number(event.target.value) })} className="w-full px-3 py-2 border-2 border-slate-200 rounded-lg bg-white focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100" /></label></fieldset>)}</div>
                 </div>}
                 </div></AiSettingsDisclosure>
-                <div className="mt-6">{submitButton}</div>
+                <div className="mt-6 flex justify-end">{submitButton}</div>
                 {error && <div className="mt-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg p-3">{error}</div>}
               </section>
               <JobStateCard job={job} onCancel={() => enterpriseApi.cancelJob(job.jobId).then(() => load(job.jobId))} />
