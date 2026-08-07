@@ -396,8 +396,7 @@ function ModelControls({ models, model, setModel, temperature, setTemperature })
 }
 
 function JobStateCard({ job, onCancel }) {
-  if (!job) return null;
-  if (job.status === 'SUCCEEDED') return null;
+  if (!job || ['ACCEPTED', 'QUEUED', 'RUNNING', 'SUCCEEDED'].includes(job.status)) return null;
   const failed = job.status === 'FAILED';
   const cancelled = job.status === 'CANCELLED';
   const active = !TERMINAL.has(job.status);
@@ -638,6 +637,8 @@ export default function AsyncJobWorkspace() {
 
   const canSubmit = mode === 'PROMPT_TEST' ? userPrompt.trim() : file || requirements.trim();
   const activeJob = job && !TERMINAL.has(job.status);
+  const normalActiveJob = job && ['ACCEPTED', 'QUEUED', 'RUNNING'].includes(job.status);
+  const cancelActiveJob = () => enterpriseApi.cancelJob(job.jobId).then(() => load(job.jobId));
   const submitLabel = isDecomposition ? 'Декомпозировать требования' : mode === 'STANDARD_RESEARCH' ? 'Анализировать требования' : 'Запустить задачу';
 
   const commonInput = mode !== 'PROMPT_TEST' && (
@@ -687,12 +688,15 @@ export default function AsyncJobWorkspace() {
             <div className="mt-4"><AiSettingsDisclosure model={model}><ModelControls models={models} model={model} setModel={setModel} temperature={temperature} setTemperature={setTemperature} /></AiSettingsDisclosure></div>
             <div className="flex items-end justify-between mt-5 flex-col sm:flex-row gap-4">
               <p className="text-xs text-gray-400 max-w-lg">AI создаст бизнес-, функциональные и нефункциональные требования. Их можно будет отредактировать перед необязательным исследованием.</p>
-              <div className="w-full sm:w-auto">{submitButton}</div>
+              <div className="w-full sm:w-auto flex flex-col sm:flex-row gap-2">
+                {submitButton}
+                {normalActiveJob && <button onClick={cancelActiveJob} className="w-full sm:w-auto px-4 py-3 rounded-lg border border-slate-300 bg-white text-sm font-semibold text-slate-600 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">Отменить</button>}
+              </div>
             </div>
           </section>
           {error && <div className="mb-6 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg p-3 whitespace-pre-wrap">{error}</div>}
           <div className="space-y-6">
-            <JobStateCard job={job} onCancel={() => enterpriseApi.cancelJob(job.jobId).then(() => load(job.jobId))} />
+            <JobStateCard job={job} onCancel={cancelActiveJob} />
             {!job && <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8 text-center"><h3 className="text-base font-semibold text-gray-700 mb-2">Декомпозиция ещё не выполнена</h3><p className="text-sm text-gray-400">Нажмите «Декомпозировать требования», чтобы получить бизнес-, функциональные и нефункциональные требования.</p></div>}
             {result && <ResultPanel result={result} resultContent={resultContent} download={download} latestVersion={requirementsVersions[0] || null} onSaveRequirements={saveRequirementsVersion} onStartResearch={startResearchFromDecomposition} onSaveFinal={saveRequirementsVersion} busy={versionBusy} />}
           </div>
@@ -726,10 +730,13 @@ export default function AsyncJobWorkspace() {
                   <div className="grid gap-4 md:grid-cols-2">{[['A', variantA, setVariantA], ['B', variantB, setVariantB]].map(([label, value, setter]) => <fieldset key={label} className="border border-slate-200 bg-white rounded-xl p-4"><legend className="px-1 text-sm font-semibold text-slate-600">Вариант {label}</legend><label className="block mb-4"><span className="text-sm font-semibold text-slate-700 mb-2 block">Модель</span><select value={value.model} onChange={(event) => setter({ ...value, model: event.target.value })} className="w-full px-3 py-2 border-2 border-slate-200 rounded-lg bg-white focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100">{models.map((item) => <option key={item}>{item}</option>)}</select></label><label className="block"><span className="text-sm font-semibold text-slate-700 mb-2 block">Температура</span><input aria-label={`Температура ${label}`} type="number" min="0" max="2" step="0.1" value={value.temperature} onChange={(event) => setter({ ...value, temperature: Number(event.target.value) })} className="w-full px-3 py-2 border-2 border-slate-200 rounded-lg bg-white focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100" /></label></fieldset>)}</div>
                 </div>}
                 </div></AiSettingsDisclosure>
-                <div className="mt-6 flex justify-end">{submitButton}</div>
+                <div className="mt-6 flex flex-col sm:flex-row justify-end gap-2">
+                  {submitButton}
+                  {normalActiveJob && <button onClick={cancelActiveJob} className="w-full sm:w-auto px-4 py-3 rounded-lg border border-slate-300 bg-white text-sm font-semibold text-slate-600 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">Отменить</button>}
+                </div>
                 {error && <div className="mt-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg p-3">{error}</div>}
               </section>
-              <JobStateCard job={job} onCancel={() => enterpriseApi.cancelJob(job.jobId).then(() => load(job.jobId))} />
+              <JobStateCard job={job} onCancel={cancelActiveJob} />
               {result && <ResultPanel result={result} resultContent={resultContent} download={download} latestVersion={requirementsVersions[0] || null} onSaveRequirements={saveRequirementsVersion} onStartResearch={startResearchFromDecomposition} onSaveFinal={saveRequirementsVersion} busy={versionBusy} />}
             </div>
           </div>

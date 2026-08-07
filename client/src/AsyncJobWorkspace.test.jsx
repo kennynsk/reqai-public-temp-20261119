@@ -71,8 +71,11 @@ test('restores abandoned active session with clear activity feedback', async () 
   localStorage.setItem('reqai.activeJob', 'j1');
   mocks.getJob.mockResolvedValue({ jobId: 'j1', type: 'RESEARCH', mode: 'REQUIREMENTS_INSIGHTS', status: 'RUNNING', progress: 40 });
   render(<AsyncJobWorkspace />);
-  expect(await screen.findByText('Проводим исследование…')).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'Исследование выполняется…' })).toBeDisabled();
+  expect(await screen.findByRole('button', { name: 'Исследование выполняется…' })).toBeDisabled();
+  expect(screen.queryByText('Проводим исследование…')).not.toBeInTheDocument();
+  expect(screen.getAllByText('Исследование выполняется…')).toHaveLength(1);
+  expect(screen.getByRole('button', { name: 'Отменить' })).toBeInTheDocument();
+  expect(screen.queryByText('Результат появится на странице автоматически.')).not.toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Подготовка требований' })).toHaveAttribute('aria-current', 'page');
   expect(document.body).not.toHaveTextContent('40%');
 });
@@ -96,8 +99,18 @@ test('cancels active job and reconciles authoritative REST state', async () => {
   localStorage.setItem('reqai.activeJob', 'j3');
   mocks.cancelJob.mockResolvedValue({});
   render(<AsyncJobWorkspace />);
+  expect(await screen.findByRole('button', { name: 'Декомпозиция выполняется…' })).toBeDisabled();
+  expect(screen.queryByText('Декомпозируем требования…')).not.toBeInTheDocument();
   fireEvent.click(await screen.findByText('Отменить'));
   await waitFor(() => expect(mocks.cancelJob).toHaveBeenCalledWith('j3'));
+});
+
+test('shows a dedicated state card only for an exceptional retry state', async () => {
+  localStorage.setItem('reqai.activeJob', 'retry-1');
+  mocks.getJob.mockResolvedValue({ jobId: 'retry-1', type: 'DECOMPOSITION', mode: 'DECOMPOSITION', status: 'RETRY_WAIT', progress: 35 });
+  render(<AsyncJobWorkspace />);
+  expect(await screen.findByText('Повторяем проблемный этап…')).toBeInTheDocument();
+  expect(screen.getByText('Результат появится на странице автоматически.')).toBeInTheDocument();
 });
 
 test('opens prompt testing from secondary tools and submits recommended defaults', async () => {
