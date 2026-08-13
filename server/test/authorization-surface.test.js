@@ -4,7 +4,7 @@ import test from 'node:test';
 
 const routes = await readFile(new URL('../src/routes/api-v1-routes.js', import.meta.url), 'utf8');
 test('history, result, artifact and SSE endpoints are authenticated and owner/tenant scoped', () => {
-  for (const path of ["'/api/v1/jobs'", "'/api/v1/jobs/:jobId/result'", "'/api/v1/artifacts/:artifactId'", "'/api/v1/jobs/:jobId/events'"]) {
+  for (const path of ["'/api/v1/jobs'", "'/api/v1/jobs/:jobId/result'", "'/api/v1/artifacts/:artifactId'", "'/api/v1/jobs/:jobId/events'", "'/api/v1/jobs/:jobId/trace'"]) {
     const offset = routes.indexOf(path); assert.ok(offset > 0, `${path} missing`); assert.match(routes.slice(offset, offset + 250), /requireAnyRole/);
   }
   assert.match(routes, /ownerScope\(req\.auth\)/); assert.match(routes, /jobQueryService\.get\(\{ auth: req\.auth/);

@@ -123,6 +123,35 @@
         }
       }
     },
+    "/api/v1/jobs/{jobId}/trace": {
+      "get": {
+        "operationId": "getJobTrace",
+        "parameters": [
+          { "$ref": "#/components/parameters/JobId" },
+          { "name": "cursor", "in": "query", "schema": { "type": "string" } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 50 } }
+        ],
+        "responses": {
+          "200": { "description": "Safe, ordered diagnostic timeline", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JobTrace" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/v1/jobs/{jobId}/trace/{entryId}": {
+      "get": {
+        "operationId": "getJobTraceEntryDetail",
+        "parameters": [{ "$ref": "#/components/parameters/JobId" }, { "$ref": "#/components/parameters/TraceEntryId" }],
+        "responses": {
+          "200": { "description": "Audited trace-entry detail or an explicit unavailable state", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JobTraceDetail" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "413": { "$ref": "#/components/responses/PayloadTooLarge" }
+        }
+      }
+    },
     "/api/v1/artifacts": {
       "post": {
         "operationId": "uploadArtifact",
@@ -207,6 +236,7 @@
     "parameters": {
       "IdempotencyKey": { "name": "Idempotency-Key", "in": "header", "required": true, "schema": { "type": "string", "minLength": 16, "maxLength": 128 } },
       "JobId": { "name": "jobId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
+      "TraceEntryId": { "name": "entryId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
       "ArtifactId": { "name": "artifactId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
       "RequirementsVersionId": { "name": "versionId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
     },
@@ -319,6 +349,54 @@
           "resultContentUrl": { "type": ["string", "null"] },
           "failedSteps": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
           "modelAttempts": { "type": "array", "items": { "$ref": "#/components/schemas/ModelAttempt" } }
+        }
+      },
+      "JobTraceEntry": {
+        "type": "object",
+        "required": ["id", "source", "category", "name", "status", "detail"],
+        "properties": {
+          "id": { "type": "string" },
+          "source": { "type": "string" },
+          "sequence": { "type": ["integer", "null"] },
+          "category": { "type": "string" },
+          "name": { "type": "string" },
+          "status": { "type": "string" },
+          "stepId": { "type": ["string", "null"] },
+          "startedAt": { "type": ["string", "null"], "format": "date-time" },
+          "completedAt": { "type": ["string", "null"], "format": "date-time" },
+          "durationMs": { "type": ["integer", "null"], "minimum": 0 },
+          "metadata": { "type": "object", "additionalProperties": true },
+          "detail": { "type": "object", "properties": { "state": { "type": "string", "enum": ["AVAILABLE", "NOT_RECORDED", "EXPIRED", "REDACTED"] }, "kind": { "type": ["string", "null"] }, "visibility": { "type": "string" } } }
+        }
+      },
+      "JobTrace": {
+        "type": "object",
+        "required": ["jobId", "status", "timeline", "nextCursor"],
+        "properties": {
+          "jobId": { "type": "string", "format": "uuid" },
+          "type": { "$ref": "#/components/schemas/JobType" },
+          "mode": { "anyOf": [{ "$ref": "#/components/schemas/FeatureMode" }, { "type": "null" }] },
+          "status": { "$ref": "#/components/schemas/JobStatus" },
+          "outcome": { "$ref": "#/components/schemas/JobOutcome" },
+          "currentStep": { "type": ["string", "null"] },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "startedAt": { "type": ["string", "null"], "format": "date-time" },
+          "completedAt": { "type": ["string", "null"], "format": "date-time" },
+          "durationMs": { "type": ["integer", "null"], "minimum": 0 },
+          "skillUsage": { "type": "string" },
+          "timeline": { "type": "array", "items": { "$ref": "#/components/schemas/JobTraceEntry" } },
+          "nextCursor": { "type": ["string", "null"] }
+        }
+      },
+      "JobTraceDetail": {
+        "type": "object",
+        "required": ["entryId", "state", "content"],
+        "properties": {
+          "entryId": { "type": "string", "format": "uuid" },
+          "state": { "type": "string", "enum": ["AVAILABLE", "NOT_RECORDED", "EXPIRED", "REDACTED"] },
+          "kind": { "type": "string" },
+          "contentType": { "type": "string" },
+          "content": {}
         }
       },
       "Artifact": {

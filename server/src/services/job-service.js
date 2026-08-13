@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 
 import { ApiError } from '../errors/api-error.js';
 import { injectTrace } from '../observability/telemetry.js';
+import { logEvent } from '../middleware/safe-logging.js';
 
 const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9._:-]{16,128}$/;
 
@@ -34,7 +35,7 @@ function validateComparison(config, comparison) {
   }));
 }
 
-export function createJobService({ config, jobRepository, operationalRepository, requirementsVersionService, clock = () => new Date(), uuid = randomUUID }) {
+export function createJobService({ config, jobRepository, operationalRepository, requirementsVersionService, jobTraceRepository, clock = () => new Date(), uuid = randomUUID }) {
   return {
     async create({ auth, idempotencyKey, body, requestId }) {
       if (!config.asyncEnabled || !jobRepository) {
@@ -136,6 +137,13 @@ export function createJobService({ config, jobRepository, operationalRepository,
           metadata: { type: body.type, parentJobId: body.parentJobId || null, inputArtifactId: body.inputArtifactId },
         },
       });
+      if (!result.replayed && jobTraceRepository) {
+        const append = (entry) => jobTraceRepository.append({ tenantId: auth.tenantId, jobId: result.job.id, ...entry }).catch((error) => {
+          logEvent('warn', 'job.trace.append.failed', { jobId: result.job.id, category: entry.category, errorType: error?.name || 'Error' });
+        });
+        await append({ category: 'LIFECYCLE', name: 'Task created', status: 'COMPLETED', startedAt: now, completedAt: now, durationMs: 0, metadata: { type: body.type, mode: body.options?.mode || null, requestId } });
+        await append({ category: 'INSTRUCTIONS', name: 'Adapted Skill instructions', status: 'INFO', startedAt: now, completedAt: now, durationMs: 0, metadata: { skillUsage: 'NOT_APPLICABLE' } });
+      }
       return result;
     },
 
@@ -149,6 +157,7 @@ export function createJobService({ config, jobRepository, operationalRepository,
         event: { id: uuid(), payload: { jobId, tenantId: auth.tenantId, status: 'CANCEL_REQUESTED', occurredAt: clock().toISOString() } },
         audit: { id: uuid(), actorId: auth.userId, actorRoles: auth.roles, requestId, sourceSite: config.process.siteId },
       });
+      if (!result.replayed && jobTraceRepository) await jobTraceRepository.append({ tenantId: auth.tenantId, jobId, category: 'LIFECYCLE', name: 'Cancellation requested', status: 'INFO', startedAt: clock(), completedAt: clock(), durationMs: 0, metadata: { requestId } }).catch((error) => logEvent('warn', 'job.trace.append.failed', { jobId, category: 'LIFECYCLE', errorType: error?.name || 'Error' }));
       return result;
     },
 
@@ -161,7 +170,7 @@ export function createJobService({ config, jobRepository, operationalRepository,
       const now = clock();
       const newJobId = uuid();
       const retryBody = { retryOf: jobId, type: original.type, inputArtifactId: original.input_artifact_id };
-      return jobRepository.createAccepted({
+      const result = await jobRepository.createAccepted({
         tenantId: auth.tenantId,
         ownerUserId: original.owner_user_id,
         idempotencyKey,
@@ -186,6 +195,8 @@ export function createJobService({ config, jobRepository, operationalRepository,
         event: { id: uuid(), type: 'job.accepted', payload: { jobId: newJobId, retryOf: jobId, tenantId: auth.tenantId, status: 'ACCEPTED', occurredAt: now.toISOString() } },
         audit: { id: uuid(), action: 'job.retry', actorRoles: auth.roles, requestId, metadata: { retryOf: jobId } },
       });
+      if (!result.replayed && jobTraceRepository) await jobTraceRepository.append({ tenantId: auth.tenantId, jobId: result.job.id, category: 'RETRY', name: 'Task retry created', status: 'INFO', startedAt: now, completedAt: now, durationMs: 0, metadata: { retryOf: jobId, requestId } }).catch((error) => logEvent('warn', 'job.trace.append.failed', { jobId: result.job.id, category: 'RETRY', errorType: error?.name || 'Error' }));
+      return result;
     },
   };
 }

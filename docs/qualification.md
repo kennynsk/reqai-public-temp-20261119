@@ -16,4 +16,12 @@ Run `npm run qualify:load` for 100 users, 30 jobs/min and 5/10-category traffic.
 
 Evidence is written with create-only semantics under `qualification/evidence/`; it includes a SHA-256 digest but never tokens, prompts, results or credentials. Operations and security reviewers sign the evidence externally and reference its `evidenceId` in the architecture decision and rollout record.
 
+For the permanent-task/Debug change, run `npm run qualify:task-routing` against the local Compose
+frontend or an approved environment via `REQAI_BASE_URL`. It covers creation → canonical `jobId` →
+`/tasks/{jobId}`, direct SPA deep-link loading, two independent SSE readers receiving the same
+ordered event, shared persisted state, and bounded trace pagination. Server contract tests cover
+unchanged `/api/v1/jobs` identity, redaction, audit, retention, role/owner and tenant isolation;
+client tests cover linked-research routing, legacy-selection conflicts, back/forward races, SSE
+cursor resume, Debug accessibility and removal of the old inline technical block.
+
 The remaining gates are: Temporal replicas/UI/schema in both DCs; load and provider calibration; 100 MB soak with DB backup/restore; pod/API/worker/Temporal/Kafka/PostgreSQL disruptions; controlled DC outage with measured RPO/RTO; security suite; additive migration; decomposition and research canaries; incremental SSE/webhook enablement; full `/api/v1` routing; compatibility-window expiry; endpoint removal and formal sign-off.

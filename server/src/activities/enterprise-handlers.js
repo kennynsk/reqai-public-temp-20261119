@@ -66,6 +66,7 @@ export function createEnterpriseActivityHandlers({ artifactRepository, modelExec
     ];
     return withExtractedTrace(input.traceContext, `temporal.activity.${stepId}`, () => modelExecutor.execute({
       tenantId: input.tenantId,
+      ownerUserId: input.ownerUserId,
       jobId: input.jobId,
       stepId,
       messages,

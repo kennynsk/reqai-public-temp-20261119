@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   Ban,
   BookOpen,
+  Bug,
   Check,
   CheckCircle2,
   ChevronDown,
@@ -105,6 +106,20 @@ function userFacingError(cause) {
   if (cause?.code === 'USER_ACTIVE_JOB_LIMIT') return 'Другая задача уже выполняется. Дождитесь её завершения и попробуйте снова.';
   return `${cause?.code || 'ERROR'}: ${cause?.message || 'Не удалось выполнить действие'}`;
 }
+
+function jobIdFromPath(pathname = window.location.pathname) {
+  const match = pathname.match(/^\/tasks\/([^/]+)\/?$/);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+function formatDuration(value) {
+  if (value == null) return '—';
+  if (value < 1000) return `${value} мс`;
+  const seconds = Math.round(value / 1000);
+  return seconds < 60 ? `${seconds} с` : `${Math.floor(seconds / 60)} мин ${seconds % 60} с`;
+}
+
+const TRACE_TONES = { RUNNING: 'bg-indigo-100 text-indigo-700', COMPLETED: 'bg-emerald-100 text-emerald-700', SUCCEEDED: 'bg-emerald-100 text-emerald-700', FAILED: 'bg-red-100 text-red-700', PENDING: 'bg-slate-100 text-slate-600', INFO: 'bg-slate-100 text-slate-600' };
 
 function WorkflowStepper({ currentStage = 1, completedStage = 0, skippedStages = [] }) {
   const stages = [
@@ -775,7 +790,81 @@ function HistoryDrawer({ open, onClose, history, filter, setFilter, activeJobId,
   </div>;
 }
 
+function DebugPanel({ open, onClose, jobId, observations, refreshKey, triggerRef, onDownload }) {
+  const panelRef = useRef(null);
+  const [trace, setTrace] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [expanded, setExpanded] = useState(() => new Set());
+  const [details, setDetails] = useState({});
+
+  const load = useCallback(async ({ cursor = null, append = false } = {}) => {
+    if (!jobId) return;
+    setLoading(true); setError('');
+    try {
+      const page = await enterpriseApi.getJobTrace(jobId, { cursor, limit: 50 });
+      setTrace((current) => append && current ? { ...page, timeline: [...current.timeline, ...page.timeline] } : page);
+    } catch (cause) { setError(userFacingError(cause)); }
+    finally { setLoading(false); }
+  }, [jobId]);
+
+  useEffect(() => { if (open) load(); }, [load, open, refreshKey]);
+  useEffect(() => {
+    if (!open) return undefined;
+    const previous = document.activeElement;
+    const returnTarget = triggerRef?.current || previous;
+    const handleKey = (event) => {
+      if (event.key === 'Escape') onClose();
+      if (event.key === 'Tab' && panelRef.current) {
+        const controls = [...panelRef.current.querySelectorAll('button,[href],[tabindex]:not([tabindex="-1"])')].filter((node) => !node.disabled);
+        if (!controls.length) return;
+        const first = controls[0]; const last = controls.at(-1);
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+      }
+    };
+    window.addEventListener('keydown', handleKey);
+    requestAnimationFrame(() => panelRef.current?.querySelector('button')?.focus());
+    return () => { window.removeEventListener('keydown', handleKey); returnTarget?.focus?.(); };
+  }, [onClose, open, triggerRef]);
+
+  async function toggle(entry) {
+    const next = new Set(expanded);
+    if (next.has(entry.id)) next.delete(entry.id); else next.add(entry.id);
+    setExpanded(next);
+    if (!next.has(entry.id) || details[entry.id] || entry.source !== 'TRACE' || entry.detail?.state !== 'AVAILABLE') return;
+    try { const value = await enterpriseApi.getJobTraceDetail(jobId, entry.id); setDetails((current) => ({ ...current, [entry.id]: value })); }
+    catch (cause) { setDetails((current) => ({ ...current, [entry.id]: { state: 'ERROR', message: userFacingError(cause) } })); }
+  }
+
+  if (!open) return null;
+  const localEntries = observations.map((item, index) => ({ id: `client:${index}:${item.timestamp}`, source: 'CLIENT_LOCAL', category: 'SSE', name: item.type, status: item.type === 'disconnected' || item.type === 'parse-error' ? 'FAILED' : 'INFO', startedAt: item.timestamp, completedAt: item.timestamp, durationMs: 0, metadata: item, detail: { state: 'NOT_RECORDED' } }));
+  const entries = [...(trace?.timeline || []), ...localEntries].sort((a, b) => new Date(a.startedAt || 0) - new Date(b.startedAt || 0));
+  return <div className="fixed inset-0 z-[80]" role="dialog" aria-modal="true" aria-label="Debug текущей задачи">
+    <button aria-label="Закрыть Debug" onClick={onClose} className="absolute inset-0 bg-slate-950/35 backdrop-blur-[1px]" />
+    <aside ref={panelRef} className="absolute right-0 top-0 h-full w-full lg:max-w-2xl bg-white shadow-2xl flex flex-col overflow-hidden">
+      <header className="px-5 py-4 border-b border-slate-200 flex items-start justify-between gap-4">
+        <div><p className="text-xs font-semibold text-indigo-600 uppercase tracking-wide">Диагностика</p><h2 className="font-bold text-slate-900 text-lg">Debug задачи</h2><p className="font-mono text-xs text-slate-500 mt-1 break-all">{jobId}</p></div>
+        <button aria-label="Закрыть" onClick={onClose} className="p-2 rounded-lg text-slate-500 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"><X className="w-5 h-5" /></button>
+      </header>
+      <div className="flex-1 overflow-y-auto p-4 md:p-5">
+        {error && <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+        {trace && <section aria-label="Сводка трассировки" className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+          {[['Статус', trace.status], ['Этап', trace.currentStep || '—'], ['Создана', trace.createdAt ? new Date(trace.createdAt).toLocaleString() : '—'], ['Длительность', formatDuration(trace.durationMs)]].map(([label, value]) => <div key={label} className="rounded-xl bg-slate-50 border border-slate-200 p-3"><dt className="text-[11px] uppercase tracking-wide text-slate-400">{label}</dt><dd className="text-xs font-semibold text-slate-700 mt-1 break-words">{value}</dd></div>)}
+        </section>}
+        <div className="flex items-center justify-between gap-3 mb-3"><h3 className="font-semibold text-slate-900">Timeline</h3><div className="flex gap-2">{onDownload && <button onClick={onDownload} className="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-600"><Download className="inline w-3.5 h-3.5 mr-1" />JSON</button>}<button onClick={() => load()} disabled={loading} className="px-3 py-1.5 rounded-lg border border-indigo-200 text-xs font-semibold text-indigo-700 disabled:opacity-50">Обновить</button></div></div>
+        {loading && !trace ? <div className="py-12 text-center text-sm text-slate-500"><Loader2 className="w-5 h-5 animate-spin mx-auto mb-2" />Загрузка трассировки…</div> : entries.length === 0 ? <p className="py-12 text-center text-sm text-slate-400">События пока не записаны.</p> : <ol className="space-y-3" aria-label="Timeline выполнения задачи">{entries.map((entry) => {
+          const isOpen = expanded.has(entry.id); const detail = details[entry.id];
+          return <li key={entry.id} className="relative pl-5 before:absolute before:left-[5px] before:top-4 before:bottom-[-14px] before:w-px before:bg-slate-200 last:before:hidden"><span className="absolute left-0 top-4 w-2.5 h-2.5 rounded-full bg-indigo-500 ring-4 ring-white" /><div className="rounded-xl border border-slate-200 bg-white overflow-hidden"><button aria-expanded={isOpen} onClick={() => toggle(entry)} className="w-full p-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500"><div className="flex justify-between gap-3"><div className="min-w-0"><div className="flex gap-2 items-center flex-wrap"><span className="font-semibold text-sm text-slate-800">{entry.name}</span><span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${TRACE_TONES[entry.status] || TRACE_TONES.INFO}`}>{entry.status}</span>{entry.source === 'CLIENT_LOCAL' && <span className="text-[10px] text-violet-700 bg-violet-50 rounded-full px-2 py-0.5">текущая вкладка</span>}</div><p className="text-xs text-slate-400 mt-1">{entry.category}{entry.stepId ? ` · ${entry.stepId}` : ''}</p></div><div className="text-right shrink-0"><time className="text-[11px] text-slate-400">{entry.startedAt ? new Date(entry.startedAt).toLocaleTimeString() : '—'}</time><p className="text-[11px] text-slate-500 mt-1">{formatDuration(entry.durationMs)}</p></div></div></button>{isOpen && <div className="border-t border-slate-100 bg-slate-50 p-3 space-y-2"><p className="text-xs text-slate-500">Детали: {entry.detail?.state === 'NOT_RECORDED' ? 'не записаны' : entry.detail?.state === 'EXPIRED' ? 'срок хранения истёк' : entry.detail?.state === 'REDACTED' ? 'скрыты политикой доступа' : entry.detail?.state || '—'}</p><pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-slate-900 p-3 text-[11px] text-slate-100">{JSON.stringify(detail?.content ?? detail ?? entry.metadata ?? {}, null, 2)}</pre></div>}</div></li>;
+        })}</ol>}
+        {trace?.nextCursor && <button disabled={loading} onClick={() => load({ cursor: trace.nextCursor, append: true })} className="mt-4 w-full px-4 py-2.5 rounded-xl border border-indigo-200 text-indigo-700 text-sm font-semibold disabled:opacity-50">Загрузить ещё</button>}
+      </div>
+    </aside>
+  </div>;
+}
+
 export default function AsyncJobWorkspace() {
+  const [routeJobId, setRouteJobId] = useState(() => jobIdFromPath());
   const [mode, setMode] = useState('DECOMPOSITION');
   const [workspace, setWorkspace] = useState('requirements');
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -808,6 +897,12 @@ export default function AsyncJobWorkspace() {
   const [cursor, setCursor] = useState(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [routeUnavailable, setRouteUnavailable] = useState(false);
+  const [debugOpen, setDebugOpen] = useState(false);
+  const [debugRefreshKey, setDebugRefreshKey] = useState(0);
+  const [sseObservations, setSseObservations] = useState([]);
+  const debugTriggerRef = useRef(null);
+  const routeJobIdRef = useRef(routeJobId);
   const jobId = job?.jobId;
   const isDecomposition = mode === 'DECOMPOSITION' || mode === 'DECOMPOSITION_WITH_INSIGHTS';
   const type = isDecomposition ? 'DECOMPOSITION' : 'RESEARCH';
@@ -823,6 +918,19 @@ export default function AsyncJobWorkspace() {
   const completedStage = finalVersionReady || directFinalReady ? 4 : linkedResearchComplete ? 3 : linkedResearch ? 2 : decompositionReady ? 1 : 0;
   const handleEditorDirty = useCallback((dirty) => { editorDirtyRef.current = dirty; }, []);
 
+  const navigate = useCallback((id, { replace = false } = {}) => {
+    const path = id ? `/tasks/${encodeURIComponent(id)}` : '/';
+    window.history[replace ? 'replaceState' : 'pushState']({}, '', path);
+    routeJobIdRef.current = id || null;
+    setRouteJobId(id || null);
+  }, []);
+
+  useEffect(() => {
+    const onPopState = () => { const id = jobIdFromPath(); routeJobIdRef.current = id; setRouteJobId(id); };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
   function loadRemoteRequirementsVersion() {
     if (!remoteRequirementsVersions) return;
     editorDirtyRef.current = false;
@@ -835,11 +943,17 @@ export default function AsyncJobWorkspace() {
     return Promise.all((page.items || []).map((item) => item.requirements ? item : enterpriseApi.getRequirementsVersion(item.versionId)));
   }, []);
 
-  const loadResult = useCallback(async (id) => {
-    const metadata = await enterpriseApi.getResult(id);
+  const loadResult = useCallback(async (id, signal) => {
+    const metadata = await enterpriseApi.getResult(id, { signal });
+    if (routeJobIdRef.current !== id) return;
     setResult(metadata);
-    setResultContent(metadata.resultArtifactId && enterpriseApi.getResultContent ? await enterpriseApi.getResultContent(id) : '');
-    setRequirementsVersions(await loadRequirementsVersions(id));
+    const [content, versions] = await Promise.all([
+      metadata.resultArtifactId && enterpriseApi.getResultContent ? enterpriseApi.getResultContent(id) : '',
+      loadRequirementsVersions(id),
+    ]);
+    if (routeJobIdRef.current !== id) return;
+    setResultContent(content);
+    setRequirementsVersions(versions);
     setRemoteRequirementsVersions(null);
     loadedResultJobIdRef.current = id;
   }, [loadRequirementsVersions]);
@@ -848,20 +962,7 @@ export default function AsyncJobWorkspace() {
     const page = await enterpriseApi.listJobs({ limit: 20 });
     setHistory(page.items);
     setCursor(page.nextCursor);
-    const selectedJobId = localStorage.getItem('reqai.activeJob') || localStorage.getItem('reqai.viewedJob');
-    if (selectedJobId) {
-      try {
-        const value = await enterpriseApi.getJob(selectedJobId);
-        setJob(value);
-        setWorkspace(workspaceForMode(value.mode, value.type));
-        if (value.mode) setMode(value.mode === 'REQUIREMENTS_INSIGHTS' ? 'DECOMPOSITION' : value.mode);
-        if (TERMINAL.has(value.status)) {
-          localStorage.removeItem('reqai.activeJob');
-          if (value.status === 'SUCCEEDED') await loadResult(value.jobId);
-        }
-      } catch { localStorage.removeItem('reqai.activeJob'); localStorage.removeItem('reqai.viewedJob'); }
-    }
-  }, [loadResult]);
+  }, []);
 
   useEffect(() => {
     Promise.all([
@@ -878,10 +979,47 @@ export default function AsyncJobWorkspace() {
   }, [refresh]);
 
   useEffect(() => {
+    if (routeJobId || window.location.pathname !== '/') return;
+    const legacyId = localStorage.getItem('reqai.activeJob') || localStorage.getItem('reqai.viewedJob');
+    localStorage.removeItem('reqai.activeJob'); localStorage.removeItem('reqai.viewedJob');
+    if (legacyId) navigate(legacyId, { replace: true });
+  }, [navigate, routeJobId]);
+
+  useEffect(() => {
+    routeJobIdRef.current = routeJobId;
+    setDebugOpen(false); setSseObservations([]); setRouteUnavailable(false); setError('');
+    if (!routeJobId) {
+      setJob(null); setResult(null); setResultContent(''); setRequirementsVersions([]); setRemoteRequirementsVersions(null);
+      loadedResultJobIdRef.current = null;
+      return undefined;
+    }
+    const controller = new AbortController();
+    (async () => {
+      try {
+        const selected = await enterpriseApi.getJob(routeJobId, { signal: controller.signal });
+        if (controller.signal.aborted || routeJobIdRef.current !== routeJobId) return;
+        setJob(selected); setWorkspace(workspaceForMode(selected.mode, selected.type));
+        if (selected.mode) setMode(selected.mode === 'REQUIREMENTS_INSIGHTS' ? 'DECOMPOSITION' : selected.mode);
+        setResult(null); setResultContent(''); setRequirementsVersions([]); setRemoteRequirementsVersions(null);
+        loadedResultJobIdRef.current = null; editorDirtyRef.current = false;
+        if (selected.status === 'SUCCEEDED') await loadResult(routeJobId, controller.signal);
+      } catch (cause) {
+        if (controller.signal.aborted) return;
+        if (routeJobIdRef.current === routeJobId) { setRouteUnavailable(true); setJob(null); setError(userFacingError(cause)); }
+      }
+    })();
+    return () => controller.abort();
+  }, [loadResult, routeJobId]);
+
+  useEffect(() => {
     if (!jobId) return undefined;
     const controller = new AbortController();
-    subscribeJobEvents(jobId, { signal: controller.signal, onEvent: async (event) => {
-      if (event.jobId && event.jobId !== jobId) return;
+    subscribeJobEvents(jobId, { signal: controller.signal, onObservation: (observation) => {
+      if (routeJobIdRef.current !== jobId) return;
+      setSseObservations((current) => [...current.slice(-99), observation]);
+    }, onEvent: async (event) => {
+      if (routeJobIdRef.current !== jobId || (event.jobId && event.jobId !== jobId)) return;
+      setDebugRefreshKey((value) => value + 1);
       if (event.eventType === 'requirements.version-created') {
         const versions = await loadRequirementsVersions(jobId);
         if (editorDirtyRef.current) setRemoteRequirementsVersions(versions);
@@ -892,33 +1030,19 @@ export default function AsyncJobWorkspace() {
         return;
       }
       if (event.eventType === 'linked-research.created' && event.linkedJobId) {
-        const linkedJob = await enterpriseApi.getJob(event.linkedJobId);
-        localStorage.setItem('reqai.activeJob', linkedJob.jobId);
-        localStorage.setItem('reqai.viewedJob', linkedJob.jobId);
-        setWorkspace('requirements');
-        setMode('DECOMPOSITION');
-        setJob(linkedJob);
-        setResult(null);
-        setResultContent('');
-        setRequirementsVersions([]);
-        setRemoteRequirementsVersions(null);
-        loadedResultJobIdRef.current = null;
-        editorDirtyRef.current = false;
-        await refresh();
+        navigate(event.linkedJobId);
         return;
       }
       const next = event.job || await enterpriseApi.getJob(jobId);
       if (next.jobId !== jobId) return;
       setJob(next);
       if (TERMINAL.has(next.status)) {
-        localStorage.removeItem('reqai.activeJob');
-        localStorage.setItem('reqai.viewedJob', next.jobId);
         if (next.status === 'SUCCEEDED' && loadedResultJobIdRef.current !== next.jobId) await loadResult(next.jobId);
         if (event.type !== 'reconcile') await refresh();
       }
     } });
     return () => controller.abort();
-  }, [jobId, loadRequirementsVersions, loadResult, refresh]);
+  }, [jobId, loadRequirementsVersions, loadResult, navigate, refresh]);
 
   const options = useMemo(() => {
     const base = { mode, model, temperature: Number(temperature), allCategories };
@@ -940,40 +1064,20 @@ export default function AsyncJobWorkspace() {
     try {
       const artifact = await enterpriseApi.uploadArtifact(input, setUpload);
       const accepted = await enterpriseApi.createJob({ type, inputArtifactId: artifact.artifactId, options });
-      localStorage.setItem('reqai.activeJob', accepted.jobId);
-      localStorage.setItem('reqai.viewedJob', accepted.jobId);
-      setJob(await enterpriseApi.getJob(accepted.jobId));
-      setResult(null);
-      setResultContent('');
-      setRequirementsVersions([]);
-      setRemoteRequirementsVersions(null);
-      loadedResultJobIdRef.current = null;
-      editorDirtyRef.current = false;
+      navigate(accepted.jobId);
       await refresh();
     } catch (cause) { setError(`${cause.code || 'ERROR'}: ${cause.message}`); }
     finally { setBusy(false); }
   }
 
-  async function load(id) {
-    const selected = await enterpriseApi.getJob(id);
-    setJob(selected);
-    setWorkspace(workspaceForMode(selected.mode, selected.type));
-    if (selected.mode) setMode(selected.mode === 'REQUIREMENTS_INSIGHTS' ? 'DECOMPOSITION' : selected.mode);
-    setResult(null);
-    setResultContent('');
-    setRequirementsVersions([]);
-    setRemoteRequirementsVersions(null);
-    loadedResultJobIdRef.current = null;
-    editorDirtyRef.current = false;
-    localStorage.setItem('reqai.viewedJob', id);
-    if (selected.status === 'SUCCEEDED') await loadResult(id);
+  function load(id) {
+    navigate(id);
     setHistoryOpen(false);
   }
 
   function startNewTask() {
     if (editorDirtyRef.current && !window.confirm('Есть несохранённые изменения. Начать новую задачу и отбросить их?')) return;
-    localStorage.removeItem('reqai.activeJob');
-    localStorage.removeItem('reqai.viewedJob');
+    navigate(null);
     setWorkspace('requirements');
     setMode('DECOMPOSITION');
     setRequirements('');
@@ -1021,17 +1125,7 @@ export default function AsyncJobWorkspace() {
         parentJobId,
         options: { mode: 'REQUIREMENTS_INSIGHTS', model, temperature: Number(temperature), allCategories: true },
       });
-      localStorage.setItem('reqai.activeJob', accepted.jobId);
-      localStorage.setItem('reqai.viewedJob', accepted.jobId);
-      setWorkspace('requirements');
-      setMode('DECOMPOSITION');
-      setJob(await enterpriseApi.getJob(accepted.jobId));
-      setResult(null);
-      setResultContent('');
-      setRequirementsVersions([]);
-      setRemoteRequirementsVersions(null);
-      loadedResultJobIdRef.current = null;
-      editorDirtyRef.current = false;
+      navigate(accepted.jobId);
       await refresh();
     } catch (cause) { setError(userFacingError(cause)); }
     finally {
@@ -1053,7 +1147,7 @@ export default function AsyncJobWorkspace() {
   const canSubmit = mode === 'PROMPT_TEST' ? userPrompt.trim() : file || requirements.trim();
   const activeJob = job && !TERMINAL.has(job.status);
   const normalActiveJob = job && ['ACCEPTED', 'QUEUED', 'RUNNING'].includes(job.status);
-  const cancelActiveJob = () => enterpriseApi.cancelJob(job.jobId).then(() => load(job.jobId));
+  const cancelActiveJob = () => enterpriseApi.cancelJob(job.jobId).then(() => enterpriseApi.getJob(job.jobId)).then((next) => setJob(next));
   const submitLabel = isDecomposition ? 'Декомпозировать требования' : mode === 'STANDARD_RESEARCH' ? 'Анализировать требования' : 'Запустить задачу';
 
   const commonInput = mode !== 'PROMPT_TEST' && (
@@ -1100,12 +1194,13 @@ export default function AsyncJobWorkspace() {
               <div className="absolute right-0 top-full mt-2 w-72 rounded-xl border border-slate-200 bg-white shadow-xl p-2 z-50">{RESEARCH_MODES.map(([key, label]) => <button key={key} onClick={(event) => { setWorkspace('tools'); setMode(key); event.currentTarget.closest('details').removeAttribute('open'); }} className={`w-full text-left px-3 py-2.5 rounded-lg text-sm ${mode === key && workspace === 'tools' ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-slate-600 hover:bg-slate-50'}`}>{label}</button>)}</div>
             </details>
             {workspace === 'requirements' && job && TERMINAL.has(job.status) && <button aria-label="Новая задача" onClick={startNewTask} className="p-2 sm:px-3 sm:py-2 rounded-lg text-sm font-semibold text-indigo-600 hover:bg-indigo-50 flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"><Plus className="w-4 h-4" /><span className="hidden sm:inline">Новая задача</span></button>}
+            {job && <button ref={debugTriggerRef} aria-label="Debug" onClick={() => setDebugOpen(true)} className="p-2 sm:px-3 sm:py-2 rounded-lg text-sm font-semibold text-violet-700 hover:bg-violet-50 flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500"><Bug className="w-4 h-4" /><span className="hidden sm:inline">Debug</span></button>}
             <button aria-label="История" onClick={() => setHistoryOpen(true)} className="p-2 sm:px-3 sm:py-2 rounded-lg text-sm font-semibold text-gray-600 hover:bg-gray-100 flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"><History className="w-4 h-4" /><span className="hidden sm:inline">История</span></button>
           </div>
         </div>
       </nav>
 
-      {workspace === 'requirements' ? (
+      {routeUnavailable ? <main className="max-w-3xl mx-auto px-4 py-16"><section className="rounded-2xl border border-red-200 bg-white p-8 text-center"><AlertTriangle className="w-10 h-10 text-red-500 mx-auto mb-3" /><h1 className="text-xl font-bold text-slate-900">Задача недоступна</h1><p className="text-sm text-slate-500 mt-2">Проверьте адрес или права доступа. Другая задача не была открыта автоматически.</p><button onClick={() => navigate(null)} className="mt-5 px-4 py-2.5 rounded-lg bg-indigo-600 text-white text-sm font-semibold">Создать новую задачу</button></section></main> : workspace === 'requirements' ? (
         <main className="max-w-7xl mx-auto px-4 py-6">
           {(contextComplete || activeLinkedResearch || (linkedResearch && result)) && <WorkflowStepper currentStage={currentStage} completedStage={completedStage} skippedStages={directFinalReady ? [3] : []} />}
           {activeLinkedResearch && !contextComplete ? <section className="bg-white rounded-2xl border border-slate-200 p-5 md:p-6 mb-5 flex items-center justify-between gap-5 flex-wrap">
@@ -1147,7 +1242,7 @@ export default function AsyncJobWorkspace() {
           <div className="space-y-6">
             {remoteRequirementsVersions && <section role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-4 flex items-center justify-between gap-4 flex-wrap"><div><p className="text-sm font-semibold text-amber-900">Доступна новая сохранённая версия</p><p className="text-xs text-amber-700 mt-1">Она создана в другом клиенте. Текущие несохранённые изменения оставлены без изменений.</p></div><button onClick={loadRemoteRequirementsVersion} className="px-4 py-2 rounded-lg border border-amber-300 bg-white text-sm font-semibold text-amber-800 hover:bg-amber-100">Загрузить новую версию</button></section>}
             <JobStateCard job={job} onCancel={cancelActiveJob} />
-            {result && <ResultPanel result={result} resultContent={resultContent} download={download} latestVersion={requirementsVersions[0] || null} onSaveRequirements={saveRequirementsVersion} onStartResearch={startResearchFromDecomposition} onSaveFinal={saveRequirementsVersion} onDirtyChange={handleEditorDirty} busy={versionBusy} researchBusy={linkedResearchBusy} />}
+            {result && <ResultPanel result={result} resultContent={resultContent} latestVersion={requirementsVersions[0] || null} onSaveRequirements={saveRequirementsVersion} onStartResearch={startResearchFromDecomposition} onSaveFinal={saveRequirementsVersion} onDirtyChange={handleEditorDirty} busy={versionBusy} researchBusy={linkedResearchBusy} />}
           </div>
         </main>
       ) : (
@@ -1186,18 +1281,19 @@ export default function AsyncJobWorkspace() {
                 {error && <div className="mt-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg p-3">{error}</div>}
               </section>
               <JobStateCard job={job} onCancel={cancelActiveJob} />
-              {result && <ResultPanel result={result} resultContent={resultContent} download={download} latestVersion={requirementsVersions[0] || null} onSaveRequirements={saveRequirementsVersion} onStartResearch={startResearchFromDecomposition} onSaveFinal={saveRequirementsVersion} onDirtyChange={handleEditorDirty} busy={versionBusy} researchBusy={linkedResearchBusy} />}
+              {result && <ResultPanel result={result} resultContent={resultContent} latestVersion={requirementsVersions[0] || null} onSaveRequirements={saveRequirementsVersion} onStartResearch={startResearchFromDecomposition} onSaveFinal={saveRequirementsVersion} onDirtyChange={handleEditorDirty} busy={versionBusy} researchBusy={linkedResearchBusy} />}
             </div>
           </div>
         </main>
       )}
 
       <HistoryDrawer open={historyOpen} onClose={() => setHistoryOpen(false)} history={history} filter={historyFilter} setFilter={setHistoryFilter} activeJobId={jobId} onSelect={load} cursor={cursor} onLoadMore={async () => { const page = await enterpriseApi.listJobs({ limit: 20, cursor }); setHistory((current) => [...current, ...page.items]); setCursor(page.nextCursor); }} />
+      <DebugPanel open={debugOpen} onClose={() => setDebugOpen(false)} jobId={jobId} observations={sseObservations} refreshKey={debugRefreshKey} triggerRef={debugTriggerRef} onDownload={result?.resultArtifactId ? download : null} />
     </div>
   );
 }
 
-function ResultPanel({ result, resultContent, download, latestVersion, onSaveRequirements, onStartResearch, onSaveFinal, onDirtyChange, busy, researchBusy = false }) {
+function ResultPanel({ result, resultContent, latestVersion, onSaveRequirements, onStartResearch, onSaveFinal, onDirtyChange, busy, researchBusy = false }) {
   const parsedContent = safeJson(resultContent);
   const embeddedInsights = parsedContent?.mode === 'REQUIREMENTS_INSIGHTS';
   const decompositionResult = result.type === 'DECOMPOSITION' || ['DECOMPOSITION', 'DECOMPOSITION_WITH_INSIGHTS'].includes(result.mode) || ['DECOMPOSITION', 'DECOMPOSITION_WITH_INSIGHTS'].includes(parsedContent?.mode) || Array.isArray(parsedContent?.decomposition);
@@ -1211,7 +1307,6 @@ function ResultPanel({ result, resultContent, download, latestVersion, onSaveReq
         {result.outcome === 'PARTIAL' && <div className="mt-4 flex gap-2 text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3"><AlertTriangle className="w-5 h-5 shrink-0" /><p className="text-sm">Частичный результат: некоторые этапы завершились ошибкой.</p></div>}
       </div>}
       <ResultView key={`${result.jobId}:${latestVersion?.versionId || 'base'}`} metadata={result} content={resultContent || result.summary || ''} latestVersion={latestVersion} onSaveRequirements={onSaveRequirements} onStartResearch={onStartResearch} onSaveFinal={onSaveFinal} onDirtyChange={onDirtyChange} busy={busy} researchBusy={researchBusy} />
-      <details className="bg-white rounded-xl border border-slate-200 p-4"><summary className="text-sm font-semibold text-slate-700 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded">Техническая информация</summary><div className="mt-4 text-sm text-slate-600 space-y-4"><dl className="grid gap-2 sm:grid-cols-2"><div><dt className="text-xs text-slate-400">Статус API</dt><dd className="font-mono text-xs mt-1">{result.status || 'SUCCEEDED'}</dd></div><div><dt className="text-xs text-slate-400">Результат API</dt><dd className="font-mono text-xs mt-1">{result.outcome || '—'}</dd></div></dl>{result.resultArtifactId && <button onClick={download} className="inline-flex items-center gap-2 px-3 py-2 border border-slate-200 rounded-lg text-sm font-semibold text-slate-600 hover:border-indigo-300"><Download className="w-4 h-4" />Скачать JSON</button>}<div><p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">Модели и попытки</p>{(result.modelAttempts || []).length ? <ul className="text-xs space-y-2">{result.modelAttempts.map((attempt, index) => <li key={index}>{attempt.stepId}: {attempt.requestedModel} → {attempt.model}, {attempt.result}{attempt.reasonCode ? ` (${attempt.reasonCode})` : ''}</li>)}</ul> : <p className="text-xs text-slate-400">Данные о попытках отсутствуют.</p>}</div></div></details>
     </section>
   );
 }

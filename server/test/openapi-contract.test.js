@@ -17,6 +17,8 @@ const requiredOperations = {
   'POST /api/v1/jobs/{jobId}/cancel': ['202', '401', '404', '409'],
   'POST /api/v1/jobs/{jobId}/retry': ['202', '401', '403', '404', '409'],
   'GET /api/v1/jobs/{jobId}/events': ['200', '401', '404'],
+  'GET /api/v1/jobs/{jobId}/trace': ['200', '400', '401', '404'],
+  'GET /api/v1/jobs/{jobId}/trace/{entryId}': ['200', '401', '403', '404', '413'],
   'POST /api/v1/artifacts': ['201', '400', '401', '413'],
   'GET /api/v1/artifacts/{artifactId}': ['200', '401', '404'],
   'POST /api/v1/requirements/versions': ['201', '400', '401', '404', '409'],
@@ -49,5 +51,13 @@ test('OpenAPI v1 declares lifecycle and partial-result contracts', () => {
   }
   assert.ok(spec.components.schemas.JobOutcome.enum.includes('PARTIAL'));
   assert.ok(spec.components.schemas.JobResult.properties.modelAttempts);
+  assert.ok(spec.components.schemas.JobTrace.properties.timeline);
   assert.ok(spec.components.schemas.RequirementsVersion.required.includes('requirements'));
+});
+
+test('jobId remains the only durable identifier and no parallel task API is introduced', () => {
+  assert.equal(spec.components.schemas.Job.properties.taskId, undefined);
+  assert.equal(spec.components.schemas.JobAccepted.properties.taskId, undefined);
+  assert.equal(Object.keys(spec.paths).some((path) => path.startsWith('/api/v1/tasks')), false);
+  assert.equal(spec.components.schemas.JobTrace.properties.jobId.format, 'uuid');
 });

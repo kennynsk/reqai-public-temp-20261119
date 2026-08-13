@@ -215,25 +215,25 @@ User-facing copy SHALL use consistent Russian product language across the primar
 - **THEN** equivalent concepts use the same Russian terminology and capitalization
 
 ### Requirement: User-facing status language
-The frontend SHALL display one localized primary status for each job and result. Raw lifecycle values, model attempts, and provider metadata SHALL appear only inside an optional technical-details disclosure.
+The frontend SHALL display one localized primary status for each task and result. Raw lifecycle values, model attempts, provider metadata, and technical trace data SHALL appear only inside the separate optional Debug surface and SHALL NOT be rendered inline below the primary workflow.
 
-For an active decomposition or research job, the frontend SHALL present progress messaging only once in the disabled primary action, with cancellation available beside it. A separate state card SHALL be reserved for failure, retry-wait, cancellation-requested, or cancelled states.
+For an active decomposition or research task, the frontend SHALL present progress messaging only once in the disabled primary action, with cancellation available beside it. A separate state card SHALL be reserved for failure, retry-wait, cancellation-requested, or cancelled states.
 
 #### Scenario: Job is actively running
-- **WHEN** a decomposition or research job is accepted, queued, or running
+- **WHEN** a decomposition or research task is accepted, queued, or running
 - **THEN** the primary action shows a spinner and one localized activity label, cancellation remains available beside it, and no duplicate activity card is rendered below
 
 #### Scenario: Job enters an exceptional state
-- **WHEN** a job fails, waits for retry, has cancellation requested, or is cancelled
+- **WHEN** a task fails, waits for retry, has cancellation requested, or is cancelled
 - **THEN** a dedicated state card explains that exceptional state without duplicating a normal running message
 
 #### Scenario: Completed result is displayed
-- **WHEN** a job succeeds with a complete result
+- **WHEN** a task succeeds with a complete result
 - **THEN** the primary status reads «Готово» and does not simultaneously display raw `SUCCEEDED` or `COMPLETE` identifiers
 
 #### Scenario: Partial or failed result is displayed
-- **WHEN** a job completes partially or fails
-- **THEN** the primary status communicates that outcome in Russian and technical diagnostics remain available separately
+- **WHEN** a task completes partially or fails
+- **THEN** the primary status communicates that outcome in Russian and technical diagnostics remain available through Debug
 
 ### Requirement: Responsive and accessible interaction
 The workflow indicator, secondary navigation, history drawer, result sections, disclosures, and decision controls SHALL remain operable at narrow and desktop widths and SHALL expose meaningful accessible names, focus behavior, and selected/expanded states.
@@ -247,15 +247,15 @@ The workflow indicator, secondary navigation, history drawer, result sections, d
 - **THEN** focus is visible, controls are reachable in logical order, and drawers or section navigation can be operated without pointer input
 
 ### Requirement: Durable behavior compatibility
-The redesign SHALL preserve existing durable job submission, active-job restoration, cancellation, artifact download, requirements-version lineage, and completed-result restoration behavior. A final version SHALL remain manually editable. Each saved manual revision SHALL reference its immediate base version and preserve the decisions and research-enhancement lineage of the final version it revises.
+The redesign SHALL preserve existing durable task submission, URL-based active-task restoration, cancellation, artifact download, requirements-version lineage, and completed-result restoration behavior. A final version SHALL remain manually editable. Each saved manual revision SHALL reference its immediate base version and preserve the decisions and research-enhancement lineage of the final version it revises.
 
 #### Scenario: Page reloads during a job
-- **WHEN** the page reloads with a persisted active job identifier
-- **THEN** the correct workspace and workflow stage are restored from authoritative job state
+- **WHEN** the page reloads at `/tasks/{jobId}` while the task is active
+- **THEN** the correct workspace and workflow stage are restored from authoritative task state identified by the URL
 
 #### Scenario: User returns to an older result
 - **WHEN** a completed history entry is selected
-- **THEN** the result and any persisted reviewed requirements versions are restored without a new provider call
+- **THEN** its canonical task URL, result, and any persisted reviewed requirements versions are restored without a new provider call
 
 #### Scenario: User edits research-assisted final requirements
 - **WHEN** the user edits and saves a final version produced from AI-research decisions

@@ -8,6 +8,7 @@ const directory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 const jobs = await readFile(path.join(directory, '002_jobs.sql'), 'utf8');
 const operations = await readFile(path.join(directory, '003_artifacts_events_operations.sql'), 'utf8');
 const requirementsVersions = await readFile(path.join(directory, '007_requirements_versions.sql'), 'utf8');
+const jobTrace = await readFile(path.join(directory, '008_job_trace.sql'), 'utf8');
 
 test('job migration defines tenant-aware lifecycle and idempotency constraints', () => {
   for (const table of ['jobs', 'idempotency_keys', 'job_steps', 'job_dependencies', 'job_attempts']) {
@@ -35,4 +36,15 @@ test('operations migration isolates artifacts and adds durable delivery state', 
   assert.match(operations, /size_bytes <= 104857600/);
   assert.match(operations, /UNIQUE \(aggregate_id, sequence\)/);
   assert.match(operations, /artifacts_retention_idx/);
+});
+
+test('job trace migration is append-only, ordered, retained and tenant isolated', () => {
+  assert.match(jobTrace, /CREATE TABLE \{\{APP_SCHEMA\}\}\.job_trace_entries/);
+  assert.match(jobTrace, /job_id uuid NOT NULL REFERENCES \{\{APP_SCHEMA\}\}\.jobs/);
+  assert.match(jobTrace, /UNIQUE \(job_id, sequence\)/);
+  assert.match(jobTrace, /job_trace_entries_retention_idx/);
+  assert.match(jobTrace, /ENABLE ROW LEVEL SECURITY/);
+  assert.match(jobTrace, /FORCE ROW LEVEL SECURITY/);
+  assert.match(jobTrace, /REVOKE UPDATE, DELETE/);
+  assert.doesNotMatch(jobTrace, /task_id/);
 });

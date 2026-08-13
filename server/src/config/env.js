@@ -210,6 +210,11 @@ export function loadConfig(env = process.env, { loadFiles = env === process.env 
       heartbeatMs: integer(env, 'SSE_HEARTBEAT_MS', 15000, { min: 1000, max: 120000 }),
       pollMs: integer(env, 'SSE_POLL_INTERVAL_MS', 1000, { min: 100, max: 30000 }),
     },
+    diagnostics: {
+      captureProtected: bool(env, 'DIAGNOSTIC_CAPTURE_PROTECTED', false),
+      maxPageSize: integer(env, 'DIAGNOSTIC_TRACE_MAX_PAGE_SIZE', 100, { min: 10, max: 500 }),
+      maxDetailBytes: integer(env, 'DIAGNOSTIC_DETAIL_MAX_BYTES', 1_048_576, { min: 1024, max: 10_485_760 }),
+    },
     temporal: {
       address: requiredString(env, 'TEMPORAL_ADDRESS', asyncEnabled),
       namespace: optionalString(env, 'TEMPORAL_NAMESPACE', 'reqai'),

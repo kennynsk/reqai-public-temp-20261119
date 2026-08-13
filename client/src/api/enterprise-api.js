@@ -24,8 +24,10 @@ async function request(path, { method = 'GET', headers = {}, body, signal } = {}
 export const enterpriseApi = {
   getCapabilities: () => request('/api/v1'),
   listJobs: (query = {}) => request(`/api/v1/jobs?${new URLSearchParams(Object.entries(query).filter(([, value]) => value != null))}`),
-  getJob: (id) => request(`/api/v1/jobs/${id}`),
-  getResult: (id) => request(`/api/v1/jobs/${id}/result`),
+  getJob: (id, options = {}) => request(`/api/v1/jobs/${id}`, options),
+  getResult: (id, options = {}) => request(`/api/v1/jobs/${id}/result`, options),
+  getJobTrace: (id, query = {}, options = {}) => request(`/api/v1/jobs/${id}/trace?${new URLSearchParams(Object.entries(query).filter(([, value]) => value != null))}`, options),
+  getJobTraceDetail: (id, entryId, options = {}) => request(`/api/v1/jobs/${id}/trace/${entryId}`, options),
   async getResultContent(id) {
     const response = await fetch(`/api/v1/jobs/${id}/result/content`, { headers: token() ? { Authorization: `Bearer ${token()}` } : {} });
     if (!response.ok) throw new EnterpriseApiError(`HTTP ${response.status}`, { status: response.status });
@@ -68,12 +70,14 @@ export async function digestFile(file) {
   return hash.digest('hex');
 }
 
-export async function subscribeJobEvents(jobId, { lastEventId = 0, signal, onEvent }) {
+export async function subscribeJobEvents(jobId, { lastEventId = 0, signal, onEvent, onObservation }) {
   let cursor = lastEventId;
   while (!signal.aborted) {
     try {
+      await onObservation?.({ type: cursor ? 'reconnect' : 'connect', jobId, cursor, timestamp: new Date().toISOString() });
       const response = await fetch(`/api/v1/jobs/${jobId}/events`, { headers: { Accept: 'text/event-stream', 'Last-Event-ID': String(cursor), ...(token() ? { Authorization: `Bearer ${token()}` } : {}) }, signal });
       if (!response.ok) throw new Error(`SSE HTTP ${response.status}`);
+      await onObservation?.({ type: 'connected', jobId, cursor, timestamp: new Date().toISOString() });
       const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = '';
       while (!signal.aborted) {
         const { done, value } = await reader.read(); if (done) break;
@@ -81,15 +85,24 @@ export async function subscribeJobEvents(jobId, { lastEventId = 0, signal, onEve
         while ((end = buffer.indexOf('\n\n')) >= 0) {
           const block = buffer.slice(0, end); buffer = buffer.slice(end + 2);
           const id = block.match(/^id: (.+)$/m)?.[1]; const data = block.match(/^data: (.+)$/m)?.[1];
-          if (id) cursor = Number(id); if (data) await onEvent?.(JSON.parse(data));
+          if (id) cursor = Number(id);
+          if (data) {
+            try { await onEvent?.(JSON.parse(data)); }
+            catch (error) { await onObservation?.({ type: 'parse-error', jobId, cursor, errorType: error?.name || 'Error', timestamp: new Date().toISOString() }); }
+          }
         }
       }
-    } catch {
+    } catch (error) {
       if (signal.aborted) return;
-      await new Promise((resolve) => setTimeout(resolve, 1500));
+      await onObservation?.({ type: 'disconnected', jobId, cursor, errorType: error?.name || 'Error', timestamp: new Date().toISOString() });
+      await new Promise((resolve) => { const timer = setTimeout(resolve, 1500); signal.addEventListener('abort', () => { clearTimeout(timer); resolve(); }, { once: true }); });
     } finally {
       if (!signal.aborted) {
-        try { await onEvent?.({ type: 'reconcile', jobId, job: await enterpriseApi.getJob(jobId) }); } catch { /* retry on next cycle */ }
+        try {
+          const job = await enterpriseApi.getJob(jobId, { signal });
+          await onObservation?.({ type: 'reconcile', jobId, cursor, timestamp: new Date().toISOString() });
+          await onEvent?.({ type: 'reconcile', jobId, job });
+        } catch { /* retry on next cycle */ }
       }
     }
   }

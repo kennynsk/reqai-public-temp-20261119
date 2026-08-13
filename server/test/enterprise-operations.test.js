@@ -23,9 +23,16 @@ test('operational mode is scoped per data center and readiness drains only selec
 
 test('retention excludes legal-hold and active-job artifacts, deletes in a batch and emits metrics', async () => {
   const sql = [];
-  const repository = new RetentionRepository(poolWith((statement) => { sql.push(statement); if (statement.includes('WITH expired')) return { rows: [{ id: '00000000-0000-4000-8000-000000000001' }] }; return { rows: [], rowCount: 1 }; }));
+  const repository = new RetentionRepository(poolWith((statement) => {
+    sql.push(statement);
+    if (statement.includes('DELETE FROM "reqai".job_trace_entries')) return { rows: [{ id: '00000000-0000-4000-8000-000000000002' }] };
+    if (statement.includes('WITH expired')) return { rows: [{ id: '00000000-0000-4000-8000-000000000001' }] };
+    return { rows: [], rowCount: 1 };
+  }));
   const deleted = await repository.cleanup({ tenantId: 't', batchSize: 25, siteId: 'dc-a' });
   assert.equal(deleted.length, 1);
-  assert.match(sql[0], /legal_hold=false/); assert.match(sql[0], /status IN \('ACCEPTED','QUEUED','RUNNING'/); assert.match(sql[0], /LIMIT \$2/);
+  assert.match(sql[0], /job_trace_entries/); assert.match(sql[0], /expires_at<=now\(\)/); assert.match(sql[0], /LIMIT \$2/);
+  assert.match(sql[1], /legal_hold=false/); assert.match(sql[1], /status IN \('ACCEPTED','QUEUED','RUNNING'/); assert.match(sql[1], /LIMIT \$2/);
   assert.match(renderMetrics(), /reqai_retention_deleted_total 1/);
+  assert.match(renderMetrics(), /reqai_trace_retention_deleted_total 1/);
 });

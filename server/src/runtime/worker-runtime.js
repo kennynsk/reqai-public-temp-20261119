@@ -14,6 +14,7 @@ import { JobRepository } from '../repositories/job-repository.js';
 import { ArtifactRepository } from '../repositories/artifact-repository.js';
 import { AttemptRepository } from '../repositories/attempt-repository.js';
 import { ModelCoordinationRepository } from '../repositories/model-coordination-repository.js';
+import { JobTraceRepository } from '../repositories/job-trace-repository.js';
 import { createWorkflowDispatcher } from '../services/workflow-dispatcher.js';
 import { createKafkaOutboxPublisher } from '../services/kafka-outbox-publisher.js';
 import { createWebhookDispatcher } from '../services/webhook-dispatcher.js';
@@ -22,6 +23,7 @@ import { temporalTlsOptions } from '../workflow/temporal-workflow-engine.js';
 import { createCheckpointedActivities } from '../activities/checkpointed-activities.js';
 import { createEnterpriseActivityHandlers } from '../activities/enterprise-handlers.js';
 import { createModelExecutor } from '../services/model-executor.js';
+import { createDiagnosticCaptureService } from '../services/diagnostic-capture-service.js';
 import { createGigaChatClient } from '../provider/create-gigachat-client.js';
 import { GigaChatProvider } from '../provider/gigachat-provider.js';
 import { ZaiProvider } from '../provider/zai-provider.js';
@@ -114,14 +116,16 @@ export async function startWorkerRuntime(config, { ConnectionClass = NativeConne
     const artifactRepository = new ArtifactRepository(pool, { schema: config.database.schema, artifactSchema: config.database.artifactSchema });
     const attempts = new AttemptRepository(pool, { schema: config.database.schema });
     const coordination = new ModelCoordinationRepository(pool, { schema: config.database.schema, siteId: config.process.siteId, failureThreshold: config.llm.circuitFailureThreshold, windowMs: config.llm.circuitWindowMs, openMs: config.llm.circuitOpenMs });
+    const jobTraceRepository = new JobTraceRepository(pool, { schema: config.database.schema });
+    const diagnosticCapture = createDiagnosticCaptureService({ config, artifactRepository, jobTraceRepository });
     const provider = config.llm.providerMode === 'mock'
       ? new MockLlmProvider({ delayMs: config.llm.mockDelayMs })
       : config.llm.providerMode === 'zai'
         ? new ZaiProvider({ apiKey: config.llm.apiKey, baseUrl: config.llm.baseUrl })
         : new GigaChatProvider(createGigaChatClient(config), { modelAliases: config.llm.modelAliases });
-    const modelExecutor = createModelExecutor({ provider, coordination, attempts });
+    const modelExecutor = createModelExecutor({ provider, coordination, attempts, jobTraceRepository, diagnosticCapture });
     const handlers = createEnterpriseActivityHandlers({ artifactRepository, modelExecutor, config });
-    activities = createCheckpointedActivities({ jobRepository, handlers, siteId: config.process.siteId });
+    activities = createCheckpointedActivities({ jobRepository, jobTraceRepository, diagnosticCapture, handlers, siteId: config.process.siteId });
   }
   const worker = await WorkerClass.create({
     connection,

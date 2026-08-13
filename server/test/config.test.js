@@ -10,6 +10,8 @@ test('enterprise config parses documented defaults without infrastructure in leg
   assert.deepEqual(config.llm.availableModels, ['glm-5.2', 'glm-5-turbo', 'glm-4.7', 'glm-4.7-flash']);
   assert.deepEqual(config.llm.models, ['glm-5.2', 'glm-5-turbo', 'glm-4.7']);
   assert.equal(config.jobs.inputMaxBytes, 104857600);
+  assert.equal(config.diagnostics.captureProtected, false);
+  assert.equal(config.diagnostics.maxPageSize, 100);
   assert.equal(config.slo.availabilityPercent, 99.5);
   assert.ok(Object.isFrozen(config));
 });

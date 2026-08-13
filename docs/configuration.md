@@ -149,6 +149,20 @@ Retryable classes are timeout, network, HTTP `429` and `5xx`. HTTP `400`, `401`,
 | `WEBHOOK_RETRY_MAX_DELAY_MS` | `300000` | ≥ initial and ≤3,600,000 | ConfigMap |
 | `WEBHOOK_ALLOWED_EVENTS` | `job.completed,job.failed,job.cancelled` | supported terminal event list | ConfigMap |
 
+## Debug diagnostics
+
+| Variable | Default | Validation | Owner |
+|---|---:|---|---|
+| `DIAGNOSTIC_CAPTURE_PROTECTED` | `false` | boolean; enable only in an approved diagnostic environment | ConfigMap |
+| `DIAGNOSTIC_TRACE_MAX_PAGE_SIZE` | `100` | 10–500 | ConfigMap |
+| `DIAGNOSTIC_DETAIL_MAX_BYTES` | `1048576` | 1,024–10,485,760 | ConfigMap |
+
+The base trace stores and returns safe semantic metadata. Full prompts, adapted instructions,
+intermediate payloads and error stacks are not implied to exist when protected capture is off;
+Debug labels them as not recorded. Protected artifact reads require a diagnostic role, stack
+traces require `system-admin`, and every permitted protected read creates an audit event.
+Responses are redacted again and bounded by `DIAGNOSTIC_DETAIL_MAX_BYTES`.
+
 ## Retention and SLO
 
 | Variable | Default | Validation | Owner |
@@ -170,6 +184,10 @@ Retryable classes are timeout, network, HTTP `429` and `5xx`. HTTP `400`, `401`,
 | `SLO_ACTIVITY_RECOVERY_MS` | `120000` | positive | ConfigMap |
 | `FAILOVER_RPO_TARGET_SECONDS` | `300` | positive | ConfigMap |
 | `FAILOVER_RTO_TARGET_SECONDS` | `1800` | positive | ConfigMap |
+
+Trace metadata uses `expires_at` and is removed in bounded tenant-scoped maintenance batches.
+Referenced diagnostic artifacts follow the existing raw-response/full-prompt retention classes;
+after content expiry, the timeline remains useful and reports the detail as expired or not recorded.
 
 ## Effective configuration and snapshots
 

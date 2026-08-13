@@ -23,6 +23,12 @@ docker compose ps -a
 | Prometheus | http://localhost:9090 |
 | Grafana | http://localhost:3000 (`admin` / `admin-local`) |
 | PostgreSQL | `localhost:5432` |
+
+После создания задачи интерфейс переходит с `/` на постоянный адрес
+`http://localhost:8080/tasks/{jobId}`. Этот URL можно открыть в новой вкладке или другом
+авторизованном браузере: состояние, результат и сохранённые версии загружаются с сервера,
+а не из `localStorage`. Nginx возвращает SPA entry point для прямых запросов `/tasks/*`,
+не изменяя обработку `/api/*` и статических ресурсов.
 | Kafka | `localhost:9092` |
 
 ## Проверка
@@ -30,7 +36,12 @@ docker compose ps -a
 ```bash
 node scripts/qualification/local-e2e.mjs DECOMPOSITION
 node scripts/qualification/local-e2e.mjs RESEARCH
+npm run qualify:task-routing
 ```
+
+Последняя команда создаёт одну задачу, открывает её deep link, подключает два независимых
+SSE-клиента к тому же `jobId`, сравнивает сохранённое состояние и проверяет trace pagination.
+Для прямого запуска против другого адреса задайте `REQAI_BASE_URL`.
 
 Crash-recovery проверка аварийно завершает decomposition worker во время активной задачи и убеждается, что новый экземпляр завершает тот же `jobId`:
 

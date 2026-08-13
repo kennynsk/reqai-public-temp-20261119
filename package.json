@@ -18,6 +18,7 @@
     "qualify:drill": "node scripts/qualification/drill.mjs",
     "qualify:soak": "node scripts/qualification/soak.mjs",
     "qualify:failover": "node scripts/qualification/failover.mjs",
+    "qualify:task-routing": "node scripts/qualification/task-permalink-debug.mjs",
     "qualify:rollout-gate": "node scripts/qualification/rollout-gate.mjs"
   },
   "devDependencies": {

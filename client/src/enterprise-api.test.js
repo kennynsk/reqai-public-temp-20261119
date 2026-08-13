@@ -27,8 +27,10 @@ test('SSE reconnects from the last delivered sequence and reconciles between con
   }));
   const controller = new AbortController();
   const received = [];
+  const observations = [];
   await subscribeJobEvents('job-1', {
     signal: controller.signal,
+    onObservation: async (observation) => observations.push([observation.type, observation.cursor]),
     onEvent: async (event) => {
       received.push(event.type === 'reconcile' ? 'reconcile' : event.sequence);
       if (event.sequence === 2) controller.abort();
@@ -36,4 +38,7 @@ test('SSE reconnects from the last delivered sequence and reconciles between con
   });
   expect(cursors).toEqual(['0', '1']);
   expect(received).toEqual([1, 'reconcile', 2]);
+  expect(observations).toEqual([
+    ['connect', 0], ['connected', 0], ['reconcile', 1], ['reconnect', 1], ['connected', 1],
+  ]);
 });

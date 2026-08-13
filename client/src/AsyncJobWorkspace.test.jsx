@@ -5,7 +5,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   listJobs: vi.fn(), getJob: vi.fn(), getResult: vi.fn(), getResultContent: vi.fn(), getCapabilities: vi.fn(),
-  uploadArtifact: vi.fn(), createJob: vi.fn(), cancelJob: vi.fn(), downloadArtifact: vi.fn(),
+  uploadArtifact: vi.fn(), createJob: vi.fn(), cancelJob: vi.fn(), downloadArtifact: vi.fn(), getJobTrace: vi.fn(), getJobTraceDetail: vi.fn(),
   listRequirementsVersions: vi.fn(), getRequirementsVersion: vi.fn(), saveRequirementsVersion: vi.fn(), subscribe: vi.fn(),
 }));
 
@@ -15,6 +15,7 @@ vi.mock('./api/enterprise-api.js', () => ({
     getCapabilities: mocks.getCapabilities, uploadArtifact: mocks.uploadArtifact, createJob: mocks.createJob,
     cancelJob: mocks.cancelJob, downloadArtifact: mocks.downloadArtifact, listRequirementsVersions: mocks.listRequirementsVersions,
     getRequirementsVersion: mocks.getRequirementsVersion, saveRequirementsVersion: mocks.saveRequirementsVersion,
+    getJobTrace: mocks.getJobTrace, getJobTraceDetail: mocks.getJobTraceDetail,
   },
   subscribeJobEvents: mocks.subscribe,
 }));
@@ -30,11 +31,13 @@ Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: {
 } });
 
 beforeEach(() => {
+  window.history.replaceState({}, '', '/');
   localStorage.clear();
   vi.clearAllMocks();
   mocks.listJobs.mockResolvedValue({ items: [], nextCursor: null });
   mocks.listRequirementsVersions.mockResolvedValue({ items: [] });
   mocks.getCapabilities.mockResolvedValue({ capabilities: { models: ['GC-Max', 'GC-M', 'GC-Lite'] } });
+  mocks.getJobTrace.mockResolvedValue({ jobId: 'job', status: 'RUNNING', createdAt: new Date().toISOString(), durationMs: null, timeline: [], nextCursor: null });
   mocks.subscribe.mockResolvedValue();
 });
 afterEach(cleanup);
@@ -126,6 +129,7 @@ test('opens prompt testing from secondary tools and submits recommended defaults
   fireEvent.change(screen.getByLabelText('Пользовательский промпт'), { target: { value: 'Проверь требования' } });
   fireEvent.click(screen.getByRole('button', { name: 'Запустить задачу' }));
   expect(await screen.findByRole('button', { name: 'Исследование выполняется…' })).toBeDisabled();
+  expect(window.location.pathname).toBe('/tasks/job-1');
   expect(mocks.createJob.mock.calls[0][0]).toMatchObject({ type: 'RESEARCH', options: { mode: 'PROMPT_TEST', inputFormat: 'PROMPT_JSON', model: 'GC-Max' } });
 });
 
@@ -160,6 +164,7 @@ test('saves reviewed decomposition and starts linked research inside requirement
   mocks.createJob.mockResolvedValue({ jobId: 'research-1' });
   render(<AsyncJobWorkspace />);
   await selectHistoryEntry('Подготовка требований');
+  expect(window.location.pathname).toBe('/tasks/j4');
   expect(await screen.findByRole('heading', { name: 'Проверка требований' })).toBeInTheDocument();
   expect(screen.getByText('Этап 2 из 4')).toBeInTheDocument();
   expect(screen.getByRole('list', { name: 'Этапы подготовки требований' })).toBeInTheDocument();
@@ -296,7 +301,89 @@ test('routes a linked research event from the completed parent stream and reject
 
   await act(() => onEvent({ eventType: 'linked-research.created', jobId: 'parent-job', linkedJobId: 'research-job' }));
   expect(await screen.findByRole('heading', { name: 'AI-исследование требований' })).toBeInTheDocument();
-  expect(localStorage.getItem('reqai.viewedJob')).toBe('research-job');
+  expect(window.location.pathname).toBe('/tasks/research-job');
+  expect(localStorage.getItem('reqai.viewedJob')).toBeNull();
+});
+
+test('loads the job from a direct permanent URL and ignores conflicting legacy selection', async () => {
+  window.history.replaceState({}, '', '/tasks/url-job');
+  localStorage.setItem('reqai.viewedJob', 'legacy-job');
+  mocks.getJob.mockResolvedValue({ jobId: 'url-job', type: 'RESEARCH', mode: 'AGENT_RESEARCH', status: 'RUNNING', progress: 10 });
+  render(<AsyncJobWorkspace />);
+  expect(await screen.findByRole('heading', { name: 'Агентное исследование' })).toBeInTheDocument();
+  expect(mocks.getJob).toHaveBeenCalledWith('url-job', expect.objectContaining({ signal: expect.any(AbortSignal) }));
+  expect(mocks.getJob).not.toHaveBeenCalledWith('legacy-job', expect.anything());
+  expect(window.location.pathname).toBe('/tasks/url-job');
+});
+
+test('keeps an unavailable deep link stable without opening another remembered job', async () => {
+  window.history.replaceState({}, '', '/tasks/missing-job');
+  localStorage.setItem('reqai.viewedJob', 'other-job');
+  mocks.getJob.mockRejectedValue(Object.assign(new Error('Job not found'), { code: 'JOB_NOT_FOUND' }));
+  render(<AsyncJobWorkspace />);
+  expect(await screen.findByRole('heading', { name: 'Задача недоступна' })).toBeInTheDocument();
+  expect(window.location.pathname).toBe('/tasks/missing-job');
+  expect(mocks.getJob).not.toHaveBeenCalledWith('other-job', expect.anything());
+});
+
+test('ignores a stale route load after browser navigation selects another task', async () => {
+  window.history.replaceState({}, '', '/tasks/slow-job');
+  let resolveSlow;
+  const slowJob = new Promise((resolve) => { resolveSlow = resolve; });
+  mocks.getJob.mockImplementation((id) => id === 'slow-job'
+    ? slowJob
+    : Promise.resolve({ jobId: 'fast-job', type: 'RESEARCH', mode: 'AGENT_RESEARCH', status: 'RUNNING', progress: 20 }));
+
+  render(<AsyncJobWorkspace />);
+  await waitFor(() => expect(mocks.getJob).toHaveBeenCalledWith('slow-job', expect.anything()));
+  window.history.pushState({}, '', '/tasks/fast-job');
+  window.dispatchEvent(new PopStateEvent('popstate'));
+  expect(await screen.findByRole('heading', { name: 'Агентное исследование' })).toBeInTheDocument();
+
+  await act(async () => resolveSlow({ jobId: 'slow-job', type: 'RESEARCH', mode: 'PROMPT_TEST', status: 'RUNNING', progress: 50 }));
+  expect(window.location.pathname).toBe('/tasks/fast-job');
+  expect(screen.queryByRole('heading', { name: 'Тестирование промптов' })).not.toBeInTheDocument();
+});
+
+test('opens accessible Debug timeline, shows local SSE observations and removes inline technical block', async () => {
+  window.history.replaceState({}, '', '/tasks/debug-job');
+  let onObservation;
+  mocks.getJob.mockResolvedValue({ jobId: 'debug-job', type: 'RESEARCH', mode: 'AGENT_RESEARCH', status: 'RUNNING', currentStep: 'research', createdAt: new Date().toISOString() });
+  mocks.subscribe.mockImplementation((jobId, options) => { onObservation = options.onObservation; return Promise.resolve(); });
+  mocks.getJobTrace.mockResolvedValue({ jobId: 'debug-job', status: 'RUNNING', currentStep: 'research', createdAt: new Date().toISOString(), durationMs: null, timeline: [{ id: 'event:1', source: 'SERVER_EVENT', category: 'EVENT', name: 'job.accepted', status: 'INFO', startedAt: new Date().toISOString(), durationMs: 0, metadata: { sequence: 1 }, detail: { state: 'NOT_RECORDED' } }], nextCursor: null });
+  render(<AsyncJobWorkspace />);
+  const trigger = await screen.findByRole('button', { name: 'Debug' });
+  expect(screen.queryByText('Техническая информация')).not.toBeInTheDocument();
+  await act(() => onObservation({ type: 'reconnect', jobId: 'debug-job', cursor: 1, timestamp: new Date().toISOString() }));
+  fireEvent.click(trigger);
+  const dialog = await screen.findByRole('dialog', { name: 'Debug текущей задачи' });
+  expect(within(dialog).getByText('job.accepted')).toBeInTheDocument();
+  expect(within(dialog).getByText('reconnect')).toBeInTheDocument();
+  expect(within(dialog).getByText('текущая вкладка')).toBeInTheDocument();
+  fireEvent.keyDown(window, { key: 'Escape' });
+  await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Debug текущей задачи' })).not.toBeInTheDocument());
+  expect(trigger).toHaveFocus();
+});
+
+test('loads protected Debug details lazily and paginates in the responsive panel', async () => {
+  window.history.replaceState({}, '', '/tasks/debug-detail-job');
+  mocks.getJob.mockResolvedValue({ jobId: 'debug-detail-job', type: 'RESEARCH', mode: 'AGENT_RESEARCH', status: 'RUNNING', currentStep: 'research', createdAt: new Date().toISOString() });
+  mocks.getJobTrace
+    .mockResolvedValueOnce({ jobId: 'debug-detail-job', status: 'RUNNING', createdAt: new Date().toISOString(), timeline: [{ id: '00000000-0000-4000-8000-000000000010', source: 'TRACE', category: 'MODEL', name: 'LLM output', status: 'COMPLETED', startedAt: new Date().toISOString(), durationMs: 12, metadata: { model: 'm1' }, detail: { state: 'AVAILABLE', kind: 'OUTPUT' } }], nextCursor: 'next-page' })
+    .mockResolvedValueOnce({ jobId: 'debug-detail-job', status: 'RUNNING', createdAt: new Date().toISOString(), timeline: [{ id: 'event:2', source: 'SERVER_EVENT', category: 'EVENT', name: 'job.progress', status: 'INFO', startedAt: new Date().toISOString(), durationMs: 0, metadata: {}, detail: { state: 'NOT_RECORDED' } }], nextCursor: null });
+  mocks.getJobTraceDetail.mockResolvedValue({ entryId: '00000000-0000-4000-8000-000000000010', state: 'REDACTED', content: null });
+
+  render(<AsyncJobWorkspace />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Debug' }));
+  const dialog = await screen.findByRole('dialog', { name: 'Debug текущей задачи' });
+  expect(dialog.querySelector('aside')).toHaveClass('w-full', 'lg:max-w-2xl');
+  expect(mocks.getJobTraceDetail).not.toHaveBeenCalled();
+  fireEvent.click(within(dialog).getByRole('button', { name: /LLM output/ }));
+  await waitFor(() => expect(mocks.getJobTraceDetail).toHaveBeenCalledWith('debug-detail-job', '00000000-0000-4000-8000-000000000010'));
+  expect(await within(dialog).findByText(/"state": "REDACTED"/)).toBeInTheDocument();
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Загрузить ещё' }));
+  expect(await within(dialog).findByText('job.progress')).toBeInTheDocument();
+  expect(mocks.getJobTrace).toHaveBeenLastCalledWith('debug-detail-job', { cursor: 'next-page', limit: 50 });
 });
 
 test('starts a clean new task from a terminal workflow and keeps the completed job in history', async () => {
@@ -313,6 +400,7 @@ test('starts a clean new task from a terminal workflow and keeps the completed j
   const view = render(<AsyncJobWorkspace />);
   expect(await screen.findByText('Сохранённый результат')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Новая задача' }));
+  expect(window.location.pathname).toBe('/');
   expect(screen.getByRole('heading', { name: 'Сформулируйте бизнес-задачу' })).toBeInTheDocument();
   expect(screen.getByRole('progressbar', { name: 'Общий прогресс' })).toHaveAttribute('aria-valuenow', '1');
   expect(screen.getByPlaceholderText('Опишите бизнес-задачу...')).toHaveValue('');

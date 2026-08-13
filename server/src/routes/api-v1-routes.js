@@ -169,6 +169,27 @@ export function createApiV1Router({ config, services = {} }) {
     }));
   }));
 
+  router.get('/api/v1/jobs/:jobId/trace', requireAnyRole('user', 'tenant-admin', 'operator', 'auditor', 'system-admin'), asyncRoute(async (req, res) => {
+    if (!services.jobTraceService) throw new ApiError({ status: 503, code: 'ASYNC_PLATFORM_DISABLED', message: 'Task diagnostics are disabled', retryable: true });
+    res.json(await services.jobTraceService.trace({
+      auth: req.auth,
+      jobId: requireUuid(req.params.jobId),
+      cursor: req.query.cursor,
+      limit: req.query.limit || 50,
+      requestId: req.context?.requestId,
+    }));
+  }));
+
+  router.get('/api/v1/jobs/:jobId/trace/:entryId', requireAnyRole('user', 'tenant-admin', 'operator', 'auditor', 'system-admin'), asyncRoute(async (req, res) => {
+    if (!services.jobTraceService) throw new ApiError({ status: 503, code: 'ASYNC_PLATFORM_DISABLED', message: 'Task diagnostics are disabled', retryable: true });
+    res.json(await services.jobTraceService.detail({
+      auth: req.auth,
+      jobId: requireUuid(req.params.jobId),
+      entryId: requireUuid(req.params.entryId, 'entryId'),
+      requestId: req.context?.requestId,
+    }));
+  }));
+
   router.post('/api/v1/jobs/:jobId/cancel', requireAnyRole('user', 'tenant-admin', 'system-admin'), asyncRoute(async (req, res) => {
     const jobId = requireUuid(req.params.jobId);
     const result = await services.jobService.cancel({ auth: req.auth, jobId, requestId: req.context?.requestId });

@@ -8,6 +8,8 @@
 - Kafka messages use `jobId` as the partition key.
 - `sequence` increases monotonically within one job; consumers ignore an already applied sequence and reconcile gaps through the REST job endpoint.
 - Delivery is at-least-once. Consumers must not infer business state from receipt count.
+- `jobId` remains the sole durable identity. The user-facing route `/tasks/{jobId}` and the
+  diagnostic routes beneath `/api/v1/jobs/{jobId}` do not introduce a `taskId` or task API alias.
 
 ## Versioning
 
@@ -21,5 +23,7 @@
 
 - Kafka and SSE events must remain metadata-only and reference large results by `artifactId` or REST URL.
 - SSE is advisory; clients reconcile authoritative state through `GET /api/v1/jobs/{jobId}`.
+- A reconnect resumes the same job stream from `Last-Event-ID`; browser connection/reconnect and
+  parse observations shown in Debug are labelled as current-tab data and are not durable events.
 - Webhooks contain terminal metadata and a REST URL, never full prompt, requirement or result content.
 - Webhook signatures cover the exact request bytes and timestamp; receivers deduplicate by `eventId`.

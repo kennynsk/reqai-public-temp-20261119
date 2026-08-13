@@ -8,11 +8,13 @@ import { EventRepository } from '../repositories/event-repository.js';
 import { WebhookRepository } from '../repositories/webhook-repository.js';
 import { OperationalRepository } from '../repositories/operational-repository.js';
 import { RequirementsVersionRepository } from '../repositories/requirements-version-repository.js';
+import { JobTraceRepository } from '../repositories/job-trace-repository.js';
 import { createTemporalWorkflowEngine } from '../workflow/temporal-workflow-engine.js';
 import { createJobService } from '../services/job-service.js';
 import { createJobQueryService } from '../services/job-query-service.js';
 import { createReadinessService } from '../services/readiness-service.js';
 import { createRequirementsVersionService } from '../services/requirements-version-service.js';
+import { createJobTraceService } from '../services/job-trace-service.js';
 
 export async function startApiRuntime(config, { createAppFn = createApp } = {}) {
   const databasePool = config.asyncEnabled ? createDatabasePool(config) : null;
@@ -26,6 +28,7 @@ export async function startApiRuntime(config, { createAppFn = createApp } = {}) 
   const eventRepository = databasePool ? new EventRepository(databasePool, { schema: config.database.schema }) : null;
   const webhookRepository = databasePool ? new WebhookRepository(databasePool, { schema: config.database.schema }) : null;
   const requirementsVersionRepository = databasePool ? new RequirementsVersionRepository(databasePool, { schema: config.database.schema }) : null;
+  const jobTraceRepository = databasePool ? new JobTraceRepository(databasePool, { schema: config.database.schema }) : null;
   const workflowEngine = config.asyncEnabled ? await createTemporalWorkflowEngine(config) : null;
   const requirementsVersionService = databasePool ? createRequirementsVersionService({
     config,
@@ -35,8 +38,9 @@ export async function startApiRuntime(config, { createAppFn = createApp } = {}) 
     auditRepository,
   }) : null;
   const services = {
-    jobService: createJobService({ config, jobRepository, operationalRepository, requirementsVersionService }),
+    jobService: createJobService({ config, jobRepository, operationalRepository, requirementsVersionService, jobTraceRepository }),
     jobQueryService: createJobQueryService({ config, jobRepository, auditRepository }),
+    jobTraceService: databasePool ? createJobTraceService({ config, jobTraceRepository, artifactRepository, auditRepository }) : null,
     artifactRepository,
     eventRepository,
     webhookRepository,
@@ -44,6 +48,7 @@ export async function startApiRuntime(config, { createAppFn = createApp } = {}) 
     auditRepository,
     operationalRepository,
     requirementsVersionService,
+    jobTraceRepository,
   };
   const created = createAppFn({ siteId: config.process.siteId, readiness, config, services });
   const { app } = created;
