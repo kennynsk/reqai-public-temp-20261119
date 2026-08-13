@@ -70,3 +70,33 @@ test('final version must use the immutable requirements version consumed by rese
     (error) => error.code === 'RESEARCH_VERSION_MISMATCH',
   );
 });
+
+test('manual final edits can create a new revision for the same research job', async () => {
+  let storedEnvelope;
+  const service = createRequirementsVersionService({
+    config,
+    clock: () => new Date('2026-01-02T00:00:00Z'),
+    jobRepository: { async findVisibleById() { return { id: 'research', type: 'RESEARCH', status: 'SUCCEEDED', input_artifact_id: 'reviewed-input' }; } },
+    versionRepository: {
+      async findVisibleById() { return { id: 'final-v1', source_job_id: 'research', created_at: new Date() }; },
+      async create(value) { return { ...value, source_job_id: value.sourceJobId, base_version_id: value.baseVersionId, research_job_id: value.researchJobId, created_at: new Date('2026-01-02T00:00:00Z') }; },
+    },
+    artifactRepository: {
+      async metadata() { return { id: 'final-v1' }; },
+      async readText() { return JSON.stringify({ kind: 'REQUIREMENTS_VERSION', sourceJobType: 'RESEARCH', researchJobId: 'research', businessContextArtifactId: 'context', requirements: { business: [], functional: [], nonfunctional: [] } }); },
+      async createText(value) { storedEnvelope = JSON.parse(value.text); return { artifactId: 'final-v2' }; },
+    },
+  });
+  const result = await service.create({
+    auth,
+    body: {
+      sourceJobId: 'research',
+      baseVersionId: 'final-v1',
+      requirements: { business: [], functional: [{ id: 'FT-9', text: 'Уточнённая вручную формулировка', fromResearch: true, researchEnhancementKey: 'insight-1:0' }], nonfunctional: [] },
+      decisions: { acceptedEnhancementKeys: ['insight-1:0'] },
+    },
+  });
+  assert.equal(result.baseVersionId, 'final-v1');
+  assert.equal(result.requirements.functional[0].researchEnhancementKey, 'insight-1:0');
+  assert.equal(storedEnvelope.businessContextArtifactId, 'context');
+});

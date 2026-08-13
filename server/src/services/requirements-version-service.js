@@ -24,8 +24,12 @@ function normalizeRequirements(value) {
       if (!id || !text || id.length > 100 || text.length > 20_000 || seen.has(id)) {
         throw new ApiError({ status: 400, code: 'VALIDATION_ERROR', message: `requirements.${group} contains an invalid or duplicate item` });
       }
+      const researchEnhancementKey = normalized.researchEnhancementKey == null ? null : String(normalized.researchEnhancementKey).trim();
+      if (researchEnhancementKey != null && (!researchEnhancementKey || researchEnhancementKey.length > 200)) {
+        throw new ApiError({ status: 400, code: 'VALIDATION_ERROR', message: `requirements.${group} contains an invalid research enhancement key` });
+      }
       seen.add(id);
-      return { id, text, fromResearch: normalized.fromResearch === true };
+      return { id, text, fromResearch: normalized.fromResearch === true, ...(researchEnhancementKey ? { researchEnhancementKey } : {}) };
     })];
   }));
 }
@@ -64,8 +68,14 @@ export function createRequirementsVersionService({ config, jobRepository, artifa
 
       let base = null;
       if (body.baseVersionId) base = await visibleVersion(auth, body.baseVersionId);
-      if (sourceJob.type === 'RESEARCH' && sourceJob.input_artifact_id !== body.baseVersionId) {
-        throw new ApiError({ status: 409, code: 'RESEARCH_VERSION_MISMATCH', message: 'Final requirements must be based on the research input version' });
+      if (sourceJob.type === 'RESEARCH') {
+        const basedOnResearchInput = sourceJob.input_artifact_id === body.baseVersionId;
+        const basedOnSameResearchRevision = base?.row.source_job_id === sourceJob.id
+          && base?.content.sourceJobType === 'RESEARCH'
+          && base?.content.researchJobId === sourceJob.id;
+        if (!basedOnResearchInput && !basedOnSameResearchRevision) {
+          throw new ApiError({ status: 409, code: 'RESEARCH_VERSION_MISMATCH', message: 'Final requirements must be based on the research input or a final revision from the same research job' });
+        }
       }
 
       const requirements = normalizeRequirements(body.requirements);

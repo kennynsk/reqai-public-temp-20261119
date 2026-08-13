@@ -8,12 +8,14 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronUp,
+  Columns3,
   Download,
   ExternalLink,
   FileUp,
   History,
   Loader2,
   Link2,
+  List,
   MoreHorizontal,
   Pencil,
   Plus,
@@ -104,28 +106,42 @@ function userFacingError(cause) {
   return `${cause?.code || 'ERROR'}: ${cause?.message || 'Не удалось выполнить действие'}`;
 }
 
-function WorkflowStepper({ currentStage = 1, completedStage = 0 }) {
+function WorkflowStepper({ currentStage = 1, completedStage = 0, skippedStages = [] }) {
   const stages = [
     ['Контекст', 'Опишите бизнес-задачу'],
     ['Требования', 'Проверьте декомпозицию'],
     ['AI-исследование', 'Необязательный шаг'],
     ['Финальная версия', 'Сохраните результат'],
   ];
+  const current = stages[currentStage - 1] || stages[0];
   return (
-    <ol aria-label="Этапы подготовки требований" className="grid grid-cols-2 gap-2 md:grid-cols-4 mb-6">
-      {stages.map(([title, subtitle], index) => {
-        const number = index + 1;
-        const complete = number <= completedStage;
-        const current = number === currentStage;
-        return <li key={title} aria-current={current ? 'step' : undefined} className={`rounded-xl border p-3 min-w-0 ${complete ? 'border-emerald-200 bg-emerald-50' : current ? 'border-indigo-300 bg-indigo-50 shadow-sm' : 'border-slate-200 bg-white'}`}>
-          <div className="flex items-center gap-2">
-            <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${complete ? 'bg-emerald-600 text-white' : current ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-400'}`}>{complete ? <Check className="w-4 h-4" /> : number}</span>
-            <span className={`text-sm font-semibold truncate ${current ? 'text-indigo-900' : complete ? 'text-emerald-900' : 'text-slate-500'}`}>{title}</span>
-          </div>
-          <p className="text-xs text-slate-400 mt-2 pl-9">{subtitle}</p>
-        </li>;
-      })}
-    </ol>
+    <section aria-label="Прогресс подготовки требований" className="bg-white rounded-2xl border border-slate-200 px-4 py-4 md:px-5 mb-6">
+      <div className="flex items-end justify-between gap-4 mb-3">
+        <div className="min-w-0">
+          <p className="text-xs font-bold uppercase tracking-wide text-indigo-600">Этап {currentStage} из {stages.length}</p>
+          <p className="text-sm font-semibold text-slate-800 mt-0.5 truncate">{current[0]} · <span className="font-normal text-slate-500">{current[1]}</span></p>
+        </div>
+        <span className="text-xs font-semibold text-slate-400 shrink-0">{currentStage * 25}%</span>
+      </div>
+      <div role="progressbar" aria-label="Общий прогресс" aria-valuemin="0" aria-valuemax="4" aria-valuenow={currentStage} className="h-1.5 rounded-full bg-slate-100 overflow-hidden mb-4">
+        <span className="block h-full rounded-full bg-indigo-600 transition-[width]" style={{ width: `${currentStage * 25}%` }} />
+      </div>
+      <ol aria-label="Этапы подготовки требований" className="grid grid-cols-2 gap-x-4 gap-y-3 md:grid-cols-4">
+        {stages.map(([title, subtitle], index) => {
+          const number = index + 1;
+          const skipped = skippedStages.includes(number);
+          const complete = number <= completedStage && !skipped;
+          const isCurrent = number === currentStage;
+          return <li key={title} aria-current={isCurrent ? 'step' : undefined} className="min-w-0 flex items-center gap-2">
+            <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0 ${isCurrent ? 'bg-indigo-600 text-white ring-4 ring-indigo-50' : complete ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-400'}`}>{complete && !isCurrent ? <Check className="w-3.5 h-3.5" /> : number}</span>
+            <span className="min-w-0">
+              <span className={`block text-xs font-semibold truncate ${isCurrent ? 'text-indigo-900' : complete ? 'text-emerald-800' : 'text-slate-500'}`}>{title}</span>
+              <span className="hidden xl:block text-[11px] text-slate-400 truncate mt-0.5">{skipped ? 'Пропущено' : subtitle}</span>
+            </span>
+          </li>;
+        })}
+      </ol>
+    </section>
   );
 }
 
@@ -236,8 +252,25 @@ function AddRequirementForm({ onAdd, categoryLabel }) {
   );
 }
 
+function useRequirementsLayout() {
+  const [layout, setLayoutState] = useState(() => localStorage.getItem('reqai.requirementsLayout') === 'rows' ? 'rows' : 'columns');
+  function setLayout(value) {
+    setLayoutState(value);
+    localStorage.setItem('reqai.requirementsLayout', value);
+  }
+  return [layout, setLayout];
+}
+
+function RequirementsLayoutToggle({ layout, onChange }) {
+  return <div role="group" aria-label="Вид требований" className="inline-flex rounded-lg border border-slate-200 bg-white p-1 shadow-sm">
+    <button type="button" aria-pressed={layout === 'columns'} onClick={() => onChange('columns')} className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold ${layout === 'columns' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-500 hover:bg-slate-50'}`}><Columns3 className="w-3.5 h-3.5" />Столбцы</button>
+    <button type="button" aria-pressed={layout === 'rows'} onClick={() => onChange('rows')} className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold ${layout === 'rows' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-500 hover:bg-slate-50'}`}><List className="w-3.5 h-3.5" />Строки</button>
+  </div>;
+}
+
 function DecompositionResult({ value, latestVersion, onSave, onStartResearch, busy, researchBusy }) {
   const [requirements, setRequirements] = useState(() => latestVersion?.requirements?.business && latestVersion?.requirements?.functional && latestVersion?.requirements?.nonfunctional ? latestVersion.requirements : collectRequirements(value));
+  const [layout, setLayout] = useRequirementsLayout();
   const hasSavedVersion = Boolean(latestVersion?.versionId);
   const hasUnsavedChanges = !hasSavedVersion || JSON.stringify(requirements) !== JSON.stringify(latestVersion.requirements);
 
@@ -270,9 +303,14 @@ function DecompositionResult({ value, latestVersion, onSave, onStartResearch, bu
         <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
           <button disabled={busy || !hasUnsavedChanges} onClick={() => onSave({ requirements, baseVersionId: latestVersion?.versionId || null })} className={`w-full sm:w-auto px-5 py-2.5 text-sm font-semibold rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${hasUnsavedChanges ? 'bg-indigo-600 text-white hover:bg-indigo-700' : 'border border-slate-200 text-slate-400 bg-white'}`}>{hasSavedVersion ? 'Сохранить изменения' : 'Сохранить проверенную версию'}</button>
           <button aria-label={researchBusy ? 'AI-исследование выполняется…' : 'Улучшить требования с помощью AI'} aria-describedby="research-save-status" title={!hasSavedVersion || hasUnsavedChanges ? 'Сначала сохраните текущую версию требований' : researchBusy ? 'Дождитесь завершения текущего AI-исследования' : 'Необязательный следующий шаг'} disabled={busy || researchBusy || !hasSavedVersion || hasUnsavedChanges} onClick={() => onStartResearch({ requirementsVersionId: latestVersion.versionId })} className="w-full sm:w-auto px-5 py-2.5 border border-indigo-200 bg-white text-indigo-700 text-sm font-semibold rounded-xl hover:bg-indigo-50 disabled:border-slate-200 disabled:text-slate-400 disabled:bg-slate-100 flex items-center justify-center gap-2">{researchBusy ? <><Loader2 className="w-4 h-4 animate-spin" />AI-исследование выполняется…</> : <><Sparkles className="w-4 h-4" />Улучшить с помощью AI <span className="font-normal text-slate-400">· необязательно</span></>}</button>
+          <button aria-describedby="research-save-status" title={!hasSavedVersion || hasUnsavedChanges ? 'Сначала сохраните текущую версию требований' : 'Пропустить необязательное AI-исследование'} disabled={busy || researchBusy || !hasSavedVersion || hasUnsavedChanges} onClick={() => onSave({ requirements, baseVersionId: latestVersion.versionId, decisions: { ...(latestVersion.decisions || {}), skippedResearch: true } })} className="w-full sm:w-auto px-5 py-2.5 bg-indigo-600 text-white text-sm font-semibold rounded-xl hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed">Перейти к финальной версии</button>
         </div>
       </div>
-      <div aria-label="Категории требований" className="grid gap-4 xl:grid-cols-3">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div><h2 className="text-base font-bold text-slate-900">Категории требований</h2><p className="text-xs text-slate-500 mt-0.5">Выберите удобное расположение категорий</p></div>
+        <RequirementsLayoutToggle layout={layout} onChange={setLayout} />
+      </div>
+      <div aria-label="Категории требований" className={`grid gap-4 ${layout === 'columns' ? 'xl:grid-cols-3' : 'grid-cols-1'}`}>
         {REQUIREMENT_COLUMNS.map(([key, title, subtitle, color]) => <section key={key} aria-label={title} className={`bg-white rounded-2xl border border-slate-200 border-t-4 ${color} px-5 py-5`}>
           <div className="flex items-start justify-between gap-3 mb-2"><div><h2 className="text-base font-bold text-slate-900">{title}</h2><p className="text-xs text-slate-500 mt-1">{subtitle}</p></div><span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500">{requirements[key].length}</span></div>
           <div className="divide-y divide-slate-200 mt-4">
@@ -455,7 +493,7 @@ function SourceRequirementsSnapshot({ requirements, onBack }) {
           <div>
             <div className="flex items-center gap-2 flex-wrap">
               <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-              <h2 className="text-xl font-bold text-slate-900">Требования, переданные в AI-исследование</h2>
+              <h1 className="text-xl font-bold text-slate-900">Требования, переданные в AI-исследование</h1>
               <span className="text-xs text-emerald-700 bg-emerald-50 px-2 py-1 rounded-full">Проверенная версия</span>
             </div>
             <p className="text-sm text-slate-500 mt-2">Эта неизменяемая версия использовалась для формирования результатов исследования.</p>
@@ -479,41 +517,119 @@ function SourceRequirementsSnapshot({ requirements, onBack }) {
   );
 }
 
+function FinalRequirementsEditor({ latestVersion, onSave, onShowInsights, onShowSource, onStartResearch, busy, researchBusy = false, researchSkipped = false }) {
+  const [requirements, setRequirements] = useState(() => latestVersion?.requirements || { business: [], functional: [], nonfunctional: [] });
+  const [layout, setLayout] = useRequirementsLayout();
+  const hasUnsavedChanges = JSON.stringify(requirements) !== JSON.stringify(latestVersion?.requirements || {});
+
+  function editRequirement(type, id, text) {
+    setRequirements((current) => ({ ...current, [type]: current[type].map((item) => item.id === id ? { ...item, text } : item) }));
+  }
+
+  function deleteRequirement(type, id) {
+    setRequirements((current) => ({ ...current, [type]: current[type].filter((item) => item.id !== id) }));
+  }
+
+  function addRequirement(type, text) {
+    const prefix = REQUIREMENT_COLUMNS.find(([key]) => key === type)?.[4] || 'REQ';
+    setRequirements((current) => {
+      const number = current[type].reduce((max, item) => Math.max(max, Number(String(item.id).match(/\d+$/)?.[0] || 0)), 0) + 1;
+      return { ...current, [type]: [...current[type], { id: `${prefix}-${number}`, text }] };
+    });
+  }
+
+  return (
+    <section className="space-y-5">
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <div className="flex items-center gap-2 flex-wrap"><CheckCircle2 className="w-5 h-5 text-emerald-600" /><h1 className="text-xl font-bold text-slate-900">Финальная версия требований</h1><span className="text-xs text-emerald-700 bg-emerald-50 px-2 py-1 rounded-full">Версия сохранена</span></div>
+            <p className="text-sm text-slate-500 mt-2">{researchSkipped ? 'AI-исследование пропущено. Итоговые формулировки можно редактировать вручную.' : 'Отредактируйте итоговые формулировки вручную или вернитесь к результатам AI, чтобы изменить выбранные улучшения.'}</p>
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            {onShowSource && <button onClick={onShowSource} className="px-4 py-2 border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 hover:bg-slate-50">Исходная версия для AI</button>}
+            {onShowInsights && <button onClick={onShowInsights} className="px-4 py-2 border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-2"><ArrowLeft className="w-4 h-4" />К результатам AI-исследования</button>}
+            {researchSkipped && onStartResearch && <button disabled={busy || researchBusy} onClick={() => onStartResearch({ requirementsVersionId: latestVersion.versionId })} className="px-4 py-2 border border-indigo-200 rounded-lg text-sm font-semibold text-indigo-700 hover:bg-indigo-50 disabled:bg-slate-100 disabled:text-slate-400 flex items-center gap-2">{researchBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}Добавить AI-исследование</button>}
+          </div>
+        </div>
+      </div>
+
+      <div className="sticky top-16 z-30 -mx-4 px-4 py-3 bg-gray-50/95 backdrop-blur border-y border-slate-200 flex items-center justify-between gap-4 flex-wrap">
+        <div className="flex items-center gap-3"><span className={`w-8 h-8 rounded-full flex items-center justify-center ${hasUnsavedChanges ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>{hasUnsavedChanges ? <Pencil className="w-4 h-4" /> : <Check className="w-4 h-4" />}</span><div><p className="font-semibold text-slate-900">{hasUnsavedChanges ? 'Есть несохранённые изменения' : 'Изменения сохранены'}</p><p className="text-xs text-slate-500 mt-0.5">Редакция от {new Date(latestVersion.createdAt).toLocaleString()}</p></div></div>
+        <button disabled={busy || !hasUnsavedChanges} onClick={() => onSave({ requirements, baseVersionId: latestVersion.versionId, decisions: latestVersion.decisions || {} })} className="w-full sm:w-auto px-5 py-2.5 bg-indigo-600 text-white text-sm font-semibold rounded-xl hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed">Сохранить изменения</button>
+      </div>
+
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div><h2 className="text-base font-bold text-slate-900">Категории требований</h2><p className="text-xs text-slate-500 mt-0.5">Выберите удобное расположение категорий</p></div>
+        <RequirementsLayoutToggle layout={layout} onChange={setLayout} />
+      </div>
+      <div aria-label="Финальные требования по категориям" className={`grid gap-4 ${layout === 'columns' ? 'xl:grid-cols-3' : 'grid-cols-1'}`}>
+        {REQUIREMENT_COLUMNS.map(([key, title, subtitle, color]) => <section key={key} aria-label={title} className={`bg-white rounded-2xl border border-slate-200 border-t-4 ${color} px-5 py-5`}>
+          <div className="flex items-start justify-between gap-3 mb-2"><div><h2 className="text-base font-bold text-slate-900">{title}</h2><p className="text-xs text-slate-500 mt-1">{subtitle}</p></div><span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500">{requirements[key].length}</span></div>
+          <div className="divide-y divide-slate-200 mt-4">
+            {requirements[key].map((item) => <EditableRequirementCard key={item.id} requirement={item} onEdit={(text) => editRequirement(key, item.id, text)} onDelete={() => deleteRequirement(key, item.id)} />)}
+            {!requirements[key].length && <p className="py-6 text-sm text-slate-400">Нет сформированных требований</p>}
+          </div>
+          <div className="mt-4 pt-3 border-t border-slate-100"><AddRequirementForm categoryLabel={title} onAdd={(text) => addRequirement(key, text)} /></div>
+        </section>)}
+      </div>
+    </section>
+  );
+}
+
 function RequirementsInsightsResult({ value, latestVersion, onSaveFinal, busy }) {
   const insights = Array.isArray(value.insights) ? value.insights : [];
-  const [activeFilter, setActiveFilter] = useState('all');
-  const [decisions, setDecisions] = useState({});
-  const [showInsights, setShowInsights] = useState(true);
-  const visible = activeFilter === 'all' ? insights : insights.filter((item) => item.category === activeFilter);
   const enhancements = insights.flatMap((insight) => displayEnhancementsForInsight(insight).map((enhancement, index) => ({ ...enhancement, key: `${insight.id}:${index}`, insightTitle: insight.title })));
+  const savedAcceptedKeys = Array.isArray(latestVersion?.decisions?.acceptedEnhancementKeys) ? latestVersion.decisions.acceptedEnhancementKeys : [];
+  const savedRejectedKeys = Array.isArray(latestVersion?.decisions?.rejectedEnhancementKeys) ? latestVersion.decisions.rejectedEnhancementKeys : [];
+  const [activeFilter, setActiveFilter] = useState('all');
+  const [decisions, setDecisions] = useState(() => Object.fromEntries([
+    ...savedAcceptedKeys.map((key) => [key, 'accepted']),
+    ...savedRejectedKeys.map((key) => [key, 'rejected']),
+  ]));
+  const [activeView, setActiveView] = useState(latestVersion?.versionId ? 'final' : 'insights');
+  const visible = activeFilter === 'all' ? insights : insights.filter((item) => item.category === activeFilter);
 
   function finalRequirements() {
-    const base = value.baseRequirements || { business: [], functional: [], nonfunctional: [] };
+    const base = latestVersion?.requirements || value.baseRequirements || { business: [], functional: [], nonfunctional: [] };
     const result = Object.fromEntries(['business', 'functional', 'nonfunctional'].map((type) => [type, (base[type] || []).map((item) => ({ ...item }))]));
     const prefixes = { business: 'BT', functional: 'FT', nonfunctional: 'NFT' };
+    for (const type of Object.keys(result)) {
+      result[type] = result[type].filter((item) => {
+        const matchedEnhancement = enhancements.find((enhancement) => enhancement.key === item.researchEnhancementKey || (item.fromResearch && enhancement.text === item.text));
+        return !matchedEnhancement || decisions[matchedEnhancement.key] === 'accepted';
+      });
+    }
     enhancements.filter((item) => decisions[item.key] === 'accepted').forEach((enhancement) => {
       const type = enhancement.targetType;
       if (!result[type] || !enhancement.text) return;
+      if (result[type].some((item) => item.researchEnhancementKey === enhancement.key || (item.fromResearch && item.text === enhancement.text))) return;
       const next = result[type].reduce((max, item) => Math.max(max, Number(String(item.id).match(/\d+$/)?.[0] || 0)), 0) + 1;
-      result[type].push({ id: `${prefixes[type]}-${next}`, text: enhancement.text, fromResearch: true });
+      result[type].push({ id: `${prefixes[type]}-${next}`, text: enhancement.text, fromResearch: true, researchEnhancementKey: enhancement.key });
     });
     return result;
   }
 
-  if (!showInsights) {
-    return <SourceRequirementsSnapshot requirements={value.baseRequirements} onBack={() => setShowInsights(true)} />;
+  if (activeView === 'source') {
+    return <SourceRequirementsSnapshot requirements={value.baseRequirements} onBack={() => setActiveView(latestVersion?.versionId ? 'final' : 'insights')} />;
+  }
+
+  if (activeView === 'final' && latestVersion?.versionId) {
+    return <FinalRequirementsEditor latestVersion={latestVersion} onSave={onSaveFinal} onShowInsights={() => setActiveView('insights')} onShowSource={() => setActiveView('source')} busy={busy} />;
   }
 
   const acceptedKeys = enhancements.filter((item) => decisions[item.key] === 'accepted').map((item) => item.key);
   const rejectedKeys = enhancements.filter((item) => decisions[item.key] === 'rejected').map((item) => item.key);
+  const sameKeys = (left, right) => JSON.stringify([...left].sort()) === JSON.stringify([...right].sort());
+  const finalVersionSaved = Boolean(latestVersion?.versionId) && sameKeys(acceptedKeys, savedAcceptedKeys) && sameKeys(rejectedKeys, savedRejectedKeys);
   return (
     <section className="space-y-5">
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-5">
-        <div className="flex items-start justify-between gap-4 flex-wrap"><div><div className="flex items-center gap-2"><Sparkles className="w-5 h-5 text-indigo-500" /><h2 className="text-xl font-bold text-gray-900">Результаты AI-исследования</h2><span className="text-xs text-emerald-700 bg-emerald-50 px-2 py-1 rounded-full">Исследование завершено</span></div><p className="text-sm text-gray-500 mt-2">Выберите полезные улучшения, которые нужно добавить в финальную версию требований.</p></div><button onClick={() => setShowInsights(false)} className="px-4 py-2 border border-gray-200 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-50 flex items-center gap-2"><ArrowLeft className="w-4 h-4" />К требованиям</button></div>
+        <div className="flex items-start justify-between gap-4 flex-wrap"><div><div className="flex items-center gap-2"><Sparkles className="w-5 h-5 text-indigo-500" /><h1 className="text-xl font-bold text-gray-900">Результаты AI-исследования</h1><span className="text-xs text-emerald-700 bg-emerald-50 px-2 py-1 rounded-full">{finalVersionSaved ? 'Финальная версия сохранена' : 'Исследование завершено'}</span></div><p className="text-sm text-gray-500 mt-2">Выберите полезные улучшения, которые нужно добавить в финальную версию требований.</p></div><button onClick={() => setActiveView('source')} className="px-4 py-2 border border-gray-200 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-50 flex items-center gap-2"><ArrowLeft className="w-4 h-4" />Исходные требования</button></div>
       </div>
       <div className="flex gap-2 overflow-x-auto pb-1"><button onClick={() => setActiveFilter('all')} className={`px-3 py-2 rounded-lg text-sm font-semibold whitespace-nowrap ${activeFilter === 'all' ? 'bg-indigo-600 text-white' : 'bg-white border border-gray-200 text-gray-600'}`}>Все результаты · {insights.length}</button>{Object.entries(INSIGHT_CATEGORY_META).map(([key, meta]) => { const count = insights.filter((item) => item.category === key).length; return count ? <button key={key} onClick={() => setActiveFilter(key)} className={`px-3 py-2 rounded-lg text-sm font-semibold whitespace-nowrap ${activeFilter === key ? meta.active : 'bg-white border border-gray-200 text-gray-600'}`}>{meta.label} · {count}</button> : null; })}</div>
       <div role="region" aria-label="Карточки результатов AI-исследования" className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{visible.map((insight) => { const meta = INSIGHT_CATEGORY_META[insight.category] || INSIGHT_CATEGORY_META.trends; const CategoryIcon = meta.icon; const insightEnhancements = displayEnhancementsForInsight(insight); const relatedTo = Array.isArray(insight.relatedTo) ? insight.relatedTo : []; const sourceTypes = Array.isArray(insight.source_types) ? insight.source_types : []; return <article key={insight.id} className="bg-white rounded-xl border border-gray-200 p-5 hover:shadow-md transition-shadow"><div className="flex items-center justify-between gap-2"><span className="flex items-center gap-2 min-w-0"><CategoryIcon data-testid={`insight-category-icon-${insight.category}`} aria-hidden="true" className="w-4 h-4 text-gray-400 shrink-0" /><span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${meta.color}`}>{meta.label}</span></span><ApplicabilityBars value={insight.applicability ?? 50} /></div><h3 className="font-bold text-gray-900 mt-3">{insight.title}</h3><p className="text-sm text-gray-500 mt-2 leading-relaxed">{insight.summary}</p>{relatedTo.length > 0 && <div data-testid={`insight-relations-${insight.id}`} className="flex items-center gap-1.5 mt-3 flex-wrap"><Link2 aria-hidden="true" className="w-3.5 h-3.5 text-gray-400 shrink-0" />{relatedTo.map((id) => <span key={id} className="text-xs font-mono font-medium text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">{id}</span>)}</div>}<details className="mt-3 group"><summary className="list-none text-sm text-gray-400 hover:text-gray-600 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded flex items-center gap-1"><ChevronDown aria-hidden="true" className="w-3.5 h-3.5 group-open:hidden" /><ChevronUp aria-hidden="true" className="w-3.5 h-3.5 hidden group-open:block" /><span className="group-open:hidden">Подробнее</span><span className="hidden group-open:inline">Свернуть</span></summary><div className="mt-3 pt-3 border-t border-gray-100"><p className="text-sm text-gray-600 leading-relaxed">{insight.detail}</p>{sourceTypes.length > 0 && <div className="flex items-center gap-1.5 flex-wrap mt-3"><ExternalLink aria-hidden="true" className="w-3 h-3 text-gray-400 shrink-0" />{sourceTypes.map((source) => <span key={source} className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">{SOURCE_TYPE_LABELS[source] || source}</span>)}</div>}</div></details>{insightEnhancements.length > 0 && <div className="border-t border-gray-100 mt-4 pt-3 space-y-2">{insightEnhancements.map((enhancement, index) => { const key = `${insight.id}:${index}`; return <InsightEnhancementDecisionRow key={key} enhancement={enhancement} decision={decisions[key]} onDecision={(decision) => setDecisions((current) => ({ ...current, [key]: decision }))} />; })}</div>}</article>; })}</div>
-      <div className="sticky bottom-3 bg-white rounded-xl shadow-lg border border-gray-200 p-4 flex items-center justify-between gap-4 flex-wrap"><div><p className="font-semibold text-gray-900">Выбрано улучшений: {acceptedKeys.length}</p><p className="text-xs text-gray-500 mt-1">{latestVersion ? `Финальная версия сохранена ${new Date(latestVersion.createdAt).toLocaleString()}` : 'После проверки сохраните финальную версию требований.'}</p></div><button disabled={busy} onClick={() => onSaveFinal({ requirements: finalRequirements(), baseVersionId: value.inputRequirementsVersionId, decisions: { acceptedEnhancementKeys: acceptedKeys, rejectedEnhancementKeys: rejectedKeys } })} className="px-5 py-2.5 bg-indigo-600 text-white text-sm font-semibold rounded-xl hover:bg-indigo-700 disabled:bg-gray-300">Сохранить финальную версию</button></div>
+      <div className="sticky bottom-3 bg-white rounded-xl shadow-lg border border-gray-200 p-4 flex items-center justify-between gap-4 flex-wrap"><div><p className="font-semibold text-gray-900">Выбрано улучшений: {acceptedKeys.length}</p><p className="text-xs text-gray-500 mt-1">{latestVersion ? `Финальная версия сохранена ${new Date(latestVersion.createdAt).toLocaleString()}` : 'После проверки сохраните финальную версию требований.'}</p></div><button disabled={busy} onClick={() => finalVersionSaved ? setActiveView('final') : onSaveFinal({ requirements: finalRequirements(), baseVersionId: latestVersion?.versionId || value.inputRequirementsVersionId, decisions: { acceptedEnhancementKeys: acceptedKeys, rejectedEnhancementKeys: rejectedKeys } })} className="px-5 py-2.5 bg-indigo-600 text-white text-sm font-semibold rounded-xl hover:bg-indigo-700 disabled:bg-gray-300">{finalVersionSaved ? 'К финальным требованиям' : latestVersion ? 'Сохранить новую редакцию' : 'Сохранить финальную версию'}</button></div>
     </section>
   );
 }
@@ -524,7 +640,10 @@ function ResultView({ metadata, content, latestVersion, onSaveRequirements, onSt
   if (!value) return <Markdown>{content}</Markdown>;
   if (value.mode === 'PROMPT_TEST') return <Markdown>{value.text}</Markdown>;
   if (value.mode === 'REQUIREMENTS_INSIGHTS') return <RequirementsInsightsResult value={value} latestVersion={latestVersion} onSaveFinal={onSaveFinal} busy={busy} />;
-  if (value.mode === 'DECOMPOSITION' || value.mode === 'DECOMPOSITION_WITH_INSIGHTS' || Array.isArray(value.decomposition)) return <DecompositionResult value={value} latestVersion={latestVersion} onSave={onSaveRequirements} onStartResearch={onStartResearch} busy={busy} researchBusy={researchBusy} />;
+  if (value.mode === 'DECOMPOSITION' || value.mode === 'DECOMPOSITION_WITH_INSIGHTS' || Array.isArray(value.decomposition)) {
+    if (latestVersion?.decisions?.skippedResearch) return <FinalRequirementsEditor latestVersion={latestVersion} onSave={onSaveRequirements} onStartResearch={onStartResearch} busy={busy} researchBusy={researchBusy} researchSkipped />;
+    return <DecompositionResult value={value} latestVersion={latestVersion} onSave={onSaveRequirements} onStartResearch={onStartResearch} busy={busy} researchBusy={researchBusy} />;
+  }
 
   const analyses = value.analyses || [];
   const reports = value.reports || [];
@@ -674,8 +793,9 @@ export default function AsyncJobWorkspace() {
   const linkedResearchBusy = versionBusy || activeLinkedResearch;
   const linkedResearchComplete = linkedResearch && job?.status === 'SUCCEEDED';
   const finalVersionReady = linkedResearchComplete && requirementsVersions.some((item) => item.sourceJobId === result?.jobId);
-  const currentStage = finalVersionReady ? 4 : linkedResearch ? 3 : decompositionReady ? 2 : 1;
-  const completedStage = finalVersionReady ? 4 : linkedResearchComplete ? 3 : linkedResearch ? 2 : decompositionReady ? 1 : 0;
+  const directFinalReady = Boolean(decompositionReady && requirementsVersions[0]?.sourceJobId === result?.jobId && requirementsVersions[0]?.decisions?.skippedResearch);
+  const currentStage = finalVersionReady || directFinalReady ? 4 : linkedResearch ? 3 : decompositionReady ? 2 : 1;
+  const completedStage = finalVersionReady || directFinalReady ? 4 : linkedResearchComplete ? 3 : linkedResearch ? 2 : decompositionReady ? 1 : 0;
 
   const loadResult = useCallback(async (id) => {
     const metadata = await enterpriseApi.getResult(id);
@@ -881,14 +1001,20 @@ export default function AsyncJobWorkspace() {
 
       {workspace === 'requirements' ? (
         <main className="max-w-7xl mx-auto px-4 py-6">
-          {contextComplete ? <section className="bg-white rounded-2xl border border-slate-200 mb-5 overflow-hidden">
+          {(contextComplete || activeLinkedResearch || (linkedResearch && result)) && <WorkflowStepper currentStage={currentStage} completedStage={completedStage} skippedStages={directFinalReady ? [3] : []} />}
+          {activeLinkedResearch && !contextComplete ? <section className="bg-white rounded-2xl border border-slate-200 p-5 md:p-6 mb-5 flex items-center justify-between gap-5 flex-wrap">
+            <div className="flex items-center gap-4">
+              <span className="w-10 h-10 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0"><Loader2 className="w-5 h-5 animate-spin" /></span>
+              <div><h1 className="text-2xl md:text-3xl font-bold text-slate-900">AI-исследование требований</h1><p className="text-sm text-slate-500 mt-1">Анализируем проверенную версию и формируем предложения по улучшению.</p></div>
+            </div>
+            <button onClick={cancelActiveJob} className="px-4 py-2.5 rounded-lg border border-slate-300 bg-white text-sm font-semibold text-slate-600 hover:text-red-600 hover:border-red-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">Отменить</button>
+          </section> : contextComplete && !directFinalReady ? <section className="bg-white rounded-2xl border border-slate-200 mb-5 overflow-hidden">
             <div className="p-5 md:px-6 flex items-start justify-between gap-6 flex-wrap">
               <div>
-                <div className="flex items-center gap-3 mb-2"><span className="text-xs font-bold uppercase tracking-wide text-indigo-600">Шаг 2 из 4</span><span className="h-1.5 w-24 rounded-full bg-slate-100 overflow-hidden" aria-hidden="true"><span className="block h-full w-1/2 bg-indigo-600 rounded-full" /></span></div>
-                <h1 className="text-2xl md:text-3xl font-bold text-slate-900">Проверка требований</h1>
-                <p className="text-sm text-slate-500 mt-1">Изучите формулировки по категориям и сохраните проверенную версию.</p>
+                <h1 className="text-2xl md:text-3xl font-bold text-slate-900">{activeLinkedResearch ? 'AI-исследование требований' : 'Проверка требований'}</h1>
+                <p className="text-sm text-slate-500 mt-1">{activeLinkedResearch ? 'Анализируем сохранённую версию. Требования ниже показаны для контроля исходных данных.' : 'Изучите формулировки по категориям и сохраните проверенную версию.'}</p>
               </div>
-              <span className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700"><Check className="w-3.5 h-3.5" />Контекст обработан</span>
+              <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold ${activeLinkedResearch ? 'bg-indigo-50 text-indigo-700' : 'bg-emerald-50 text-emerald-700'}`}>{activeLinkedResearch ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}{activeLinkedResearch ? 'Исследование выполняется' : 'Контекст обработан'}</span>
             </div>
             <details className="group border-t border-slate-200">
               <summary aria-label="Исходный бизнес-контекст" className="list-none cursor-pointer px-5 md:px-6 py-3.5 flex items-center justify-between gap-4 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">
@@ -901,9 +1027,9 @@ export default function AsyncJobWorkspace() {
                 {contextFormBody}
               </div>
             </details>
-          </section> : linkedResearch && result ? null : <>
+          </section> : (linkedResearch && result) || directFinalReady ? null : <>
             <div className="mb-6"><h1 className="text-2xl md:text-3xl font-bold text-gray-900">Подготовка требований</h1><p className="text-sm text-slate-500 mt-1">От бизнес-контекста до проверенной финальной версии</p></div>
-            <WorkflowStepper currentStage={currentStage} completedStage={completedStage} />
+            <WorkflowStepper currentStage={currentStage} completedStage={completedStage} skippedStages={directFinalReady ? [3] : []} />
             <section className="bg-white rounded-2xl shadow-sm border border-gray-200 p-4 md:p-6 mb-6">
               <div className="text-xs font-semibold text-indigo-600 mb-1">ЭТАП 1 · БИЗНЕС-КОНТЕКСТ</div>
               <h2 className="text-lg md:text-xl font-bold text-gray-900 mb-1">Сформулируйте бизнес-задачу</h2>
