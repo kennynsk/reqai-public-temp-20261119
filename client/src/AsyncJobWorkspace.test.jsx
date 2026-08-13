@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
@@ -196,9 +196,8 @@ test('saves reviewed decomposition and starts linked research inside requirement
   expect(screen.getByText('Изменения сохранены')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Улучшить требования с помощью AI' }));
   await waitFor(() => expect(mocks.createJob).toHaveBeenCalledWith(expect.objectContaining({ type: 'RESEARCH', inputArtifactId: 'version-1', parentJobId: 'j4', options: expect.objectContaining({ mode: 'REQUIREMENTS_INSIGHTS' }) })));
-  const activeResearchButton = await screen.findByRole('button', { name: 'AI-исследование выполняется…' });
-  expect(activeResearchButton).toBeDisabled();
-  fireEvent.click(activeResearchButton);
+  expect(await screen.findByRole('heading', { name: 'AI-исследование требований' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Отменить' })).toBeInTheDocument();
   expect(mocks.createJob).toHaveBeenCalledTimes(1);
   expect(mocks.saveRequirementsVersion).toHaveBeenCalledTimes(1);
   expect(screen.getByRole('button', { name: 'Подготовка требований' })).toHaveAttribute('aria-current', 'page');
@@ -244,6 +243,87 @@ test('finishes requirements without AI research and switches category layout', a
   expect(screen.queryByRole('button', { name: 'К результатам AI-исследования' })).not.toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Добавить AI-исследование' })).toBeInTheDocument();
   expect(screen.getByLabelText('Финальные требования по категориям')).toHaveClass('grid-cols-1');
+});
+
+test('receives remote versions on a completed job without overwriting local unsaved edits', async () => {
+  const original = { business: [{ id: 'BT-1', text: 'Исходная версия' }], functional: [], nonfunctional: [] };
+  const remote = { business: [{ id: 'BT-1', text: 'Версия из другой вкладки' }], functional: [], nonfunctional: [] };
+  let onEvent;
+  localStorage.setItem('reqai.viewedJob', 'sync-job');
+  mocks.listJobs.mockResolvedValue({ items: [{ jobId: 'sync-job', type: 'DECOMPOSITION', mode: 'DECOMPOSITION', status: 'SUCCEEDED', createdAt: new Date().toISOString() }], nextCursor: null });
+  mocks.getJob.mockResolvedValue({ jobId: 'sync-job', type: 'DECOMPOSITION', mode: 'DECOMPOSITION', status: 'SUCCEEDED', outcome: 'COMPLETE', progress: 100 });
+  mocks.getResult.mockResolvedValue({ jobId: 'sync-job', type: 'DECOMPOSITION', outcome: 'COMPLETE', resultArtifactId: 'artifact-sync', modelAttempts: [] });
+  mocks.getResultContent.mockResolvedValue(JSON.stringify({ mode: 'DECOMPOSITION', decomposition: [{ content: original }] }));
+  mocks.listRequirementsVersions.mockResolvedValueOnce({ items: [{ versionId: 'version-1' }] });
+  mocks.getRequirementsVersion.mockResolvedValueOnce({ versionId: 'version-1', sourceJobId: 'sync-job', requirements: original, decisions: {}, createdAt: new Date().toISOString() });
+  mocks.subscribe.mockImplementation((jobId, options) => { onEvent = options.onEvent; return Promise.resolve(); });
+  render(<AsyncJobWorkspace />);
+  expect(await screen.findByText('Исходная версия')).toBeInTheDocument();
+  await waitFor(() => expect(onEvent).toBeTypeOf('function'));
+
+  const businessColumn = screen.getByRole('region', { name: 'Бизнес-требования' });
+  fireEvent.click(within(businessColumn).getByRole('button', { name: 'Действия для BT-1' }));
+  fireEvent.click(within(businessColumn).getByRole('button', { name: 'Редактировать' }));
+  fireEvent.change(screen.getByLabelText('Текст требования BT-1'), { target: { value: 'Моя несохранённая версия' } });
+
+  mocks.listRequirementsVersions.mockResolvedValue({ items: [{ versionId: 'version-2' }] });
+  mocks.getRequirementsVersion.mockResolvedValue({ versionId: 'version-2', sourceJobId: 'sync-job', requirements: remote, decisions: {}, createdAt: new Date().toISOString() });
+  await act(() => onEvent({ eventType: 'requirements.version-created', jobId: 'sync-job', versionId: 'version-2' }));
+  expect(screen.getByDisplayValue('Моя несохранённая версия')).toBeInTheDocument();
+  expect(screen.getByText('Доступна новая сохранённая версия')).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole('button', { name: 'Загрузить новую версию' }));
+  expect(await screen.findByText('Версия из другой вкладки')).toBeInTheDocument();
+  expect(screen.queryByText('Доступна новая сохранённая версия')).not.toBeInTheDocument();
+});
+
+test('routes a linked research event from the completed parent stream and rejects another job event', async () => {
+  const requirementsValue = { business: [{ id: 'BT-1', text: 'Цель' }], functional: [], nonfunctional: [] };
+  let onEvent;
+  localStorage.setItem('reqai.viewedJob', 'parent-job');
+  mocks.listJobs.mockResolvedValue({ items: [], nextCursor: null });
+  mocks.getJob.mockImplementation(async (id) => id === 'research-job'
+    ? { jobId: 'research-job', parentJobId: 'parent-job', type: 'RESEARCH', mode: 'REQUIREMENTS_INSIGHTS', status: 'RUNNING', progress: 20 }
+    : { jobId: 'parent-job', type: 'DECOMPOSITION', mode: 'DECOMPOSITION', status: 'SUCCEEDED', outcome: 'COMPLETE', progress: 100 });
+  mocks.getResult.mockResolvedValue({ jobId: 'parent-job', type: 'DECOMPOSITION', outcome: 'COMPLETE', resultArtifactId: 'artifact-parent', modelAttempts: [] });
+  mocks.getResultContent.mockResolvedValue(JSON.stringify({ mode: 'DECOMPOSITION', decomposition: [{ content: requirementsValue }] }));
+  mocks.subscribe.mockImplementation((jobId, options) => { onEvent = options.onEvent; return Promise.resolve(); });
+  render(<AsyncJobWorkspace />);
+  expect(await screen.findByText('Цель')).toBeInTheDocument();
+  await waitFor(() => expect(onEvent).toBeTypeOf('function'));
+  await act(() => onEvent({ eventType: 'requirements.version-created', jobId: 'another-job' }));
+  expect(mocks.listRequirementsVersions).toHaveBeenCalledTimes(1);
+
+  await act(() => onEvent({ eventType: 'linked-research.created', jobId: 'parent-job', linkedJobId: 'research-job' }));
+  expect(await screen.findByRole('heading', { name: 'AI-исследование требований' })).toBeInTheDocument();
+  expect(localStorage.getItem('reqai.viewedJob')).toBe('research-job');
+});
+
+test('starts a clean new task from a terminal workflow and keeps the completed job in history', async () => {
+  const savedRequirements = { business: [{ id: 'BT-1', text: 'Сохранённый результат' }], functional: [], nonfunctional: [] };
+  const historyItem = { jobId: 'completed-job', type: 'DECOMPOSITION', mode: 'DECOMPOSITION', status: 'SUCCEEDED', outcome: 'COMPLETE', createdAt: new Date().toISOString() };
+  localStorage.setItem('reqai.viewedJob', 'completed-job');
+  mocks.listJobs.mockResolvedValue({ items: [historyItem], nextCursor: null });
+  mocks.getJob.mockResolvedValue({ ...historyItem, progress: 100 });
+  mocks.getResult.mockResolvedValue({ jobId: 'completed-job', type: 'DECOMPOSITION', outcome: 'COMPLETE', resultArtifactId: 'completed-artifact', modelAttempts: [] });
+  mocks.getResultContent.mockResolvedValue(JSON.stringify({ mode: 'DECOMPOSITION', decomposition: [{ content: savedRequirements }] }));
+  mocks.listRequirementsVersions.mockResolvedValue({ items: [{ versionId: 'completed-version' }] });
+  mocks.getRequirementsVersion.mockResolvedValue({ versionId: 'completed-version', sourceJobId: 'completed-job', requirements: savedRequirements, decisions: {}, createdAt: new Date().toISOString() });
+
+  const view = render(<AsyncJobWorkspace />);
+  expect(await screen.findByText('Сохранённый результат')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Новая задача' }));
+  expect(screen.getByRole('heading', { name: 'Сформулируйте бизнес-задачу' })).toBeInTheDocument();
+  expect(screen.getByRole('progressbar', { name: 'Общий прогресс' })).toHaveAttribute('aria-valuenow', '1');
+  expect(screen.getByPlaceholderText('Опишите бизнес-задачу...')).toHaveValue('');
+  expect(localStorage.getItem('reqai.viewedJob')).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Новая задача' })).not.toBeInTheDocument();
+
+  const drawer = await openHistory();
+  expect(within(drawer).getByText('Подготовка требований', { exact: true })).toBeInTheDocument();
+  view.unmount();
+  render(<AsyncJobWorkspace />);
+  expect(await screen.findByRole('heading', { name: 'Сформулируйте бизнес-задачу' })).toBeInTheDocument();
 });
 
 test('localizes an active-job admission rejection and restores the linked research action', async () => {

@@ -184,17 +184,19 @@ function collectRequirements(value) {
   return output;
 }
 
-function EditableRequirementCard({ requirement, onEdit, onDelete, readOnly = false }) {
+function EditableRequirementCard({ requirement, onEdit, onDelete, onDraftChange, readOnly = false }) {
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(requirement.text);
 
   function save() {
     if (text.trim()) onEdit(text.trim());
+    onDraftChange?.(false);
     setEditing(false);
   }
 
   function cancel() {
     setText(requirement.text);
+    onDraftChange?.(false);
     setEditing(false);
   }
 
@@ -215,7 +217,7 @@ function EditableRequirementCard({ requirement, onEdit, onDelete, readOnly = fal
       </div>
       {editing ? (
         <div>
-          <textarea aria-label={`Текст требования ${requirement.id}`} value={text} onChange={(event) => setText(event.target.value)} rows={3} autoFocus className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm resize-none focus:border-indigo-500 focus:outline-none" />
+          <textarea aria-label={`Текст требования ${requirement.id}`} value={text} onChange={(event) => { setText(event.target.value); onDraftChange?.(event.target.value !== requirement.text); }} rows={3} autoFocus className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm resize-none focus:border-indigo-500 focus:outline-none" />
           <div className="flex gap-2 mt-2">
             <button onClick={save} className="text-xs px-3 py-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">Сохранить</button>
             <button onClick={cancel} className="text-xs px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200">Отмена</button>
@@ -230,12 +232,13 @@ function EditableRequirementCard({ requirement, onEdit, onDelete, readOnly = fal
   );
 }
 
-function AddRequirementForm({ onAdd, categoryLabel }) {
+function AddRequirementForm({ onAdd, onDraftChange, categoryLabel }) {
   const [text, setText] = useState('');
   const [open, setOpen] = useState(false);
   function add() {
     if (!text.trim()) return;
     onAdd(text.trim());
+    onDraftChange?.(false);
     setText('');
     setOpen(false);
   }
@@ -243,10 +246,10 @@ function AddRequirementForm({ onAdd, categoryLabel }) {
   return (
     <div className="rounded-xl bg-slate-50 p-4">
       <p className="text-sm font-semibold text-slate-700 mb-2">Новое требование · {categoryLabel}</p>
-      <textarea aria-label={`Новое требование: ${categoryLabel}`} value={text} onChange={(event) => setText(event.target.value)} rows={3} autoFocus placeholder="Введите формулировку требования..." className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm resize-none focus:border-indigo-500 focus:outline-none bg-white" />
+      <textarea aria-label={`Новое требование: ${categoryLabel}`} value={text} onChange={(event) => { setText(event.target.value); onDraftChange?.(Boolean(event.target.value)); }} rows={3} autoFocus placeholder="Введите формулировку требования..." className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm resize-none focus:border-indigo-500 focus:outline-none bg-white" />
       <div className="mt-2 flex gap-2">
         <button onClick={add} disabled={!text.trim()} className="px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 disabled:bg-slate-300">Добавить</button>
-        <button onClick={() => { setText(''); setOpen(false); }} className="px-4 py-2 text-slate-600 text-sm font-semibold rounded-lg hover:bg-slate-200">Отмена</button>
+        <button onClick={() => { setText(''); onDraftChange?.(false); setOpen(false); }} className="px-4 py-2 text-slate-600 text-sm font-semibold rounded-lg hover:bg-slate-200">Отмена</button>
       </div>
     </div>
   );
@@ -268,11 +271,18 @@ function RequirementsLayoutToggle({ layout, onChange }) {
   </div>;
 }
 
-function DecompositionResult({ value, latestVersion, onSave, onStartResearch, busy, researchBusy }) {
+function DecompositionResult({ value, latestVersion, onSave, onStartResearch, onDirtyChange, busy, researchBusy }) {
   const [requirements, setRequirements] = useState(() => latestVersion?.requirements?.business && latestVersion?.requirements?.functional && latestVersion?.requirements?.nonfunctional ? latestVersion.requirements : collectRequirements(value));
+  const [dirtyDrafts, setDirtyDrafts] = useState(() => new Set());
   const [layout, setLayout] = useRequirementsLayout();
   const hasSavedVersion = Boolean(latestVersion?.versionId);
-  const hasUnsavedChanges = !hasSavedVersion || JSON.stringify(requirements) !== JSON.stringify(latestVersion.requirements);
+  const hasUnsavedChanges = dirtyDrafts.size > 0 || !hasSavedVersion || JSON.stringify(requirements) !== JSON.stringify(latestVersion.requirements);
+
+  function setDraftDirty(key, dirty) {
+    setDirtyDrafts((current) => { const next = new Set(current); if (dirty) next.add(key); else next.delete(key); return next; });
+  }
+
+  useEffect(() => onDirtyChange?.(hasUnsavedChanges), [hasUnsavedChanges, onDirtyChange]);
 
   function editRequirement(type, id, text) {
     setRequirements((current) => ({ ...current, [type]: current[type].map((item) => item.id === id ? { ...item, text } : item) }));
@@ -314,10 +324,10 @@ function DecompositionResult({ value, latestVersion, onSave, onStartResearch, bu
         {REQUIREMENT_COLUMNS.map(([key, title, subtitle, color]) => <section key={key} aria-label={title} className={`bg-white rounded-2xl border border-slate-200 border-t-4 ${color} px-5 py-5`}>
           <div className="flex items-start justify-between gap-3 mb-2"><div><h2 className="text-base font-bold text-slate-900">{title}</h2><p className="text-xs text-slate-500 mt-1">{subtitle}</p></div><span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500">{requirements[key].length}</span></div>
           <div className="divide-y divide-slate-200 mt-4">
-            {requirements[key].map((item) => <EditableRequirementCard key={item.id} requirement={item} onEdit={(text) => editRequirement(key, item.id, text)} onDelete={() => deleteRequirement(key, item.id)} />)}
+            {requirements[key].map((item) => <EditableRequirementCard key={item.id} requirement={item} onEdit={(text) => editRequirement(key, item.id, text)} onDelete={() => deleteRequirement(key, item.id)} onDraftChange={(dirty) => setDraftDirty(`${key}:${item.id}`, dirty)} />)}
             {!requirements[key].length && <p className="py-6 text-sm text-slate-400">Нет сформированных требований</p>}
           </div>
-          <div className="mt-4 pt-3 border-t border-slate-100"><AddRequirementForm categoryLabel={title} onAdd={(text) => addRequirement(key, text)} /></div>
+          <div className="mt-4 pt-3 border-t border-slate-100"><AddRequirementForm categoryLabel={title} onAdd={(text) => addRequirement(key, text)} onDraftChange={(dirty) => setDraftDirty(`${key}:new`, dirty)} /></div>
         </section>)}
       </div>
     </div>
@@ -517,10 +527,17 @@ function SourceRequirementsSnapshot({ requirements, onBack }) {
   );
 }
 
-function FinalRequirementsEditor({ latestVersion, onSave, onShowInsights, onShowSource, onStartResearch, busy, researchBusy = false, researchSkipped = false }) {
+function FinalRequirementsEditor({ latestVersion, onSave, onShowInsights, onShowSource, onStartResearch, onDirtyChange, busy, researchBusy = false, researchSkipped = false }) {
   const [requirements, setRequirements] = useState(() => latestVersion?.requirements || { business: [], functional: [], nonfunctional: [] });
+  const [dirtyDrafts, setDirtyDrafts] = useState(() => new Set());
   const [layout, setLayout] = useRequirementsLayout();
-  const hasUnsavedChanges = JSON.stringify(requirements) !== JSON.stringify(latestVersion?.requirements || {});
+  const hasUnsavedChanges = dirtyDrafts.size > 0 || JSON.stringify(requirements) !== JSON.stringify(latestVersion?.requirements || {});
+
+  function setDraftDirty(key, dirty) {
+    setDirtyDrafts((current) => { const next = new Set(current); if (dirty) next.add(key); else next.delete(key); return next; });
+  }
+
+  useEffect(() => onDirtyChange?.(hasUnsavedChanges), [hasUnsavedChanges, onDirtyChange]);
 
   function editRequirement(type, id, text) {
     setRequirements((current) => ({ ...current, [type]: current[type].map((item) => item.id === id ? { ...item, text } : item) }));
@@ -567,17 +584,17 @@ function FinalRequirementsEditor({ latestVersion, onSave, onShowInsights, onShow
         {REQUIREMENT_COLUMNS.map(([key, title, subtitle, color]) => <section key={key} aria-label={title} className={`bg-white rounded-2xl border border-slate-200 border-t-4 ${color} px-5 py-5`}>
           <div className="flex items-start justify-between gap-3 mb-2"><div><h2 className="text-base font-bold text-slate-900">{title}</h2><p className="text-xs text-slate-500 mt-1">{subtitle}</p></div><span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500">{requirements[key].length}</span></div>
           <div className="divide-y divide-slate-200 mt-4">
-            {requirements[key].map((item) => <EditableRequirementCard key={item.id} requirement={item} onEdit={(text) => editRequirement(key, item.id, text)} onDelete={() => deleteRequirement(key, item.id)} />)}
+            {requirements[key].map((item) => <EditableRequirementCard key={item.id} requirement={item} onEdit={(text) => editRequirement(key, item.id, text)} onDelete={() => deleteRequirement(key, item.id)} onDraftChange={(dirty) => setDraftDirty(`${key}:${item.id}`, dirty)} />)}
             {!requirements[key].length && <p className="py-6 text-sm text-slate-400">Нет сформированных требований</p>}
           </div>
-          <div className="mt-4 pt-3 border-t border-slate-100"><AddRequirementForm categoryLabel={title} onAdd={(text) => addRequirement(key, text)} /></div>
+          <div className="mt-4 pt-3 border-t border-slate-100"><AddRequirementForm categoryLabel={title} onAdd={(text) => addRequirement(key, text)} onDraftChange={(dirty) => setDraftDirty(`${key}:new`, dirty)} /></div>
         </section>)}
       </div>
     </section>
   );
 }
 
-function RequirementsInsightsResult({ value, latestVersion, onSaveFinal, busy }) {
+function RequirementsInsightsResult({ value, latestVersion, onSaveFinal, onDirtyChange, busy }) {
   const insights = Array.isArray(value.insights) ? value.insights : [];
   const enhancements = insights.flatMap((insight) => displayEnhancementsForInsight(insight).map((enhancement, index) => ({ ...enhancement, key: `${insight.id}:${index}`, insightTitle: insight.title })));
   const savedAcceptedKeys = Array.isArray(latestVersion?.decisions?.acceptedEnhancementKeys) ? latestVersion.decisions.acceptedEnhancementKeys : [];
@@ -589,6 +606,12 @@ function RequirementsInsightsResult({ value, latestVersion, onSaveFinal, busy })
   ]));
   const [activeView, setActiveView] = useState(latestVersion?.versionId ? 'final' : 'insights');
   const visible = activeFilter === 'all' ? insights : insights.filter((item) => item.category === activeFilter);
+  const hasDecisionChanges = Object.keys(decisions).some((key) => decisions[key] !== (savedAcceptedKeys.includes(key) ? 'accepted' : savedRejectedKeys.includes(key) ? 'rejected' : undefined));
+
+  useEffect(() => {
+    if (activeView === 'insights') onDirtyChange?.(hasDecisionChanges);
+    else if (activeView === 'source') onDirtyChange?.(false);
+  }, [activeView, hasDecisionChanges, onDirtyChange]);
 
   function finalRequirements() {
     const base = latestVersion?.requirements || value.baseRequirements || { business: [], functional: [], nonfunctional: [] };
@@ -615,7 +638,7 @@ function RequirementsInsightsResult({ value, latestVersion, onSaveFinal, busy })
   }
 
   if (activeView === 'final' && latestVersion?.versionId) {
-    return <FinalRequirementsEditor latestVersion={latestVersion} onSave={onSaveFinal} onShowInsights={() => setActiveView('insights')} onShowSource={() => setActiveView('source')} busy={busy} />;
+    return <FinalRequirementsEditor latestVersion={latestVersion} onSave={onSaveFinal} onShowInsights={() => setActiveView('insights')} onShowSource={() => setActiveView('source')} onDirtyChange={onDirtyChange} busy={busy} />;
   }
 
   const acceptedKeys = enhancements.filter((item) => decisions[item.key] === 'accepted').map((item) => item.key);
@@ -634,15 +657,15 @@ function RequirementsInsightsResult({ value, latestVersion, onSaveFinal, busy })
   );
 }
 
-function ResultView({ metadata, content, latestVersion, onSaveRequirements, onStartResearch, onSaveFinal, busy, researchBusy = false }) {
+function ResultView({ metadata, content, latestVersion, onSaveRequirements, onStartResearch, onSaveFinal, onDirtyChange, busy, researchBusy = false }) {
   const value = safeJson(content);
   const [activeSection, setActiveSection] = useState('overview');
   if (!value) return <Markdown>{content}</Markdown>;
   if (value.mode === 'PROMPT_TEST') return <Markdown>{value.text}</Markdown>;
-  if (value.mode === 'REQUIREMENTS_INSIGHTS') return <RequirementsInsightsResult value={value} latestVersion={latestVersion} onSaveFinal={onSaveFinal} busy={busy} />;
+  if (value.mode === 'REQUIREMENTS_INSIGHTS') return <RequirementsInsightsResult value={value} latestVersion={latestVersion} onSaveFinal={onSaveFinal} onDirtyChange={onDirtyChange} busy={busy} />;
   if (value.mode === 'DECOMPOSITION' || value.mode === 'DECOMPOSITION_WITH_INSIGHTS' || Array.isArray(value.decomposition)) {
-    if (latestVersion?.decisions?.skippedResearch) return <FinalRequirementsEditor latestVersion={latestVersion} onSave={onSaveRequirements} onStartResearch={onStartResearch} busy={busy} researchBusy={researchBusy} researchSkipped />;
-    return <DecompositionResult value={value} latestVersion={latestVersion} onSave={onSaveRequirements} onStartResearch={onStartResearch} busy={busy} researchBusy={researchBusy} />;
+    if (latestVersion?.decisions?.skippedResearch) return <FinalRequirementsEditor latestVersion={latestVersion} onSave={onSaveRequirements} onStartResearch={onStartResearch} onDirtyChange={onDirtyChange} busy={busy} researchBusy={researchBusy} researchSkipped />;
+    return <DecompositionResult value={value} latestVersion={latestVersion} onSave={onSaveRequirements} onStartResearch={onStartResearch} onDirtyChange={onDirtyChange} busy={busy} researchBusy={researchBusy} />;
   }
 
   const analyses = value.analyses || [];
@@ -777,13 +800,15 @@ export default function AsyncJobWorkspace() {
   const [resultContent, setResultContent] = useState('');
   const [history, setHistory] = useState([]);
   const [requirementsVersions, setRequirementsVersions] = useState([]);
+  const [remoteRequirementsVersions, setRemoteRequirementsVersions] = useState(null);
+  const editorDirtyRef = useRef(false);
+  const loadedResultJobIdRef = useRef(null);
   const [versionBusy, setVersionBusy] = useState(false);
   const linkedResearchSubmissionRef = useRef(false);
   const [cursor, setCursor] = useState(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const jobId = job?.jobId;
-  const jobStatus = job?.status;
   const isDecomposition = mode === 'DECOMPOSITION' || mode === 'DECOMPOSITION_WITH_INSIGHTS';
   const type = isDecomposition ? 'DECOMPOSITION' : 'RESEARCH';
   const parsedResult = safeJson(resultContent);
@@ -796,24 +821,37 @@ export default function AsyncJobWorkspace() {
   const directFinalReady = Boolean(decompositionReady && requirementsVersions[0]?.sourceJobId === result?.jobId && requirementsVersions[0]?.decisions?.skippedResearch);
   const currentStage = finalVersionReady || directFinalReady ? 4 : linkedResearch ? 3 : decompositionReady ? 2 : 1;
   const completedStage = finalVersionReady || directFinalReady ? 4 : linkedResearchComplete ? 3 : linkedResearch ? 2 : decompositionReady ? 1 : 0;
+  const handleEditorDirty = useCallback((dirty) => { editorDirtyRef.current = dirty; }, []);
+
+  function loadRemoteRequirementsVersion() {
+    if (!remoteRequirementsVersions) return;
+    editorDirtyRef.current = false;
+    setRequirementsVersions(remoteRequirementsVersions);
+    setRemoteRequirementsVersions(null);
+  }
+
+  const loadRequirementsVersions = useCallback(async (id) => {
+    const page = await enterpriseApi.listRequirementsVersions(id);
+    return Promise.all((page.items || []).map((item) => item.requirements ? item : enterpriseApi.getRequirementsVersion(item.versionId)));
+  }, []);
 
   const loadResult = useCallback(async (id) => {
     const metadata = await enterpriseApi.getResult(id);
     setResult(metadata);
     setResultContent(metadata.resultArtifactId && enterpriseApi.getResultContent ? await enterpriseApi.getResultContent(id) : '');
-    const page = await enterpriseApi.listRequirementsVersions(id);
-    const versions = await Promise.all((page.items || []).map((item) => item.requirements ? item : enterpriseApi.getRequirementsVersion(item.versionId)));
-    setRequirementsVersions(versions);
-  }, []);
+    setRequirementsVersions(await loadRequirementsVersions(id));
+    setRemoteRequirementsVersions(null);
+    loadedResultJobIdRef.current = id;
+  }, [loadRequirementsVersions]);
 
   const refresh = useCallback(async () => {
     const page = await enterpriseApi.listJobs({ limit: 20 });
     setHistory(page.items);
     setCursor(page.nextCursor);
-    const active = localStorage.getItem('reqai.activeJob');
-    if (active) {
+    const selectedJobId = localStorage.getItem('reqai.activeJob') || localStorage.getItem('reqai.viewedJob');
+    if (selectedJobId) {
       try {
-        const value = await enterpriseApi.getJob(active);
+        const value = await enterpriseApi.getJob(selectedJobId);
         setJob(value);
         setWorkspace(workspaceForMode(value.mode, value.type));
         if (value.mode) setMode(value.mode === 'REQUIREMENTS_INSIGHTS' ? 'DECOMPOSITION' : value.mode);
@@ -821,7 +859,7 @@ export default function AsyncJobWorkspace() {
           localStorage.removeItem('reqai.activeJob');
           if (value.status === 'SUCCEEDED') await loadResult(value.jobId);
         }
-      } catch { localStorage.removeItem('reqai.activeJob'); }
+      } catch { localStorage.removeItem('reqai.activeJob'); localStorage.removeItem('reqai.viewedJob'); }
     }
   }, [loadResult]);
 
@@ -840,19 +878,47 @@ export default function AsyncJobWorkspace() {
   }, [refresh]);
 
   useEffect(() => {
-    if (!jobId || TERMINAL.has(jobStatus)) return undefined;
+    if (!jobId) return undefined;
     const controller = new AbortController();
     subscribeJobEvents(jobId, { signal: controller.signal, onEvent: async (event) => {
+      if (event.jobId && event.jobId !== jobId) return;
+      if (event.eventType === 'requirements.version-created') {
+        const versions = await loadRequirementsVersions(jobId);
+        if (editorDirtyRef.current) setRemoteRequirementsVersions(versions);
+        else {
+          setRequirementsVersions(versions);
+          setRemoteRequirementsVersions(null);
+        }
+        return;
+      }
+      if (event.eventType === 'linked-research.created' && event.linkedJobId) {
+        const linkedJob = await enterpriseApi.getJob(event.linkedJobId);
+        localStorage.setItem('reqai.activeJob', linkedJob.jobId);
+        localStorage.setItem('reqai.viewedJob', linkedJob.jobId);
+        setWorkspace('requirements');
+        setMode('DECOMPOSITION');
+        setJob(linkedJob);
+        setResult(null);
+        setResultContent('');
+        setRequirementsVersions([]);
+        setRemoteRequirementsVersions(null);
+        loadedResultJobIdRef.current = null;
+        editorDirtyRef.current = false;
+        await refresh();
+        return;
+      }
       const next = event.job || await enterpriseApi.getJob(jobId);
+      if (next.jobId !== jobId) return;
       setJob(next);
       if (TERMINAL.has(next.status)) {
         localStorage.removeItem('reqai.activeJob');
-        if (next.status === 'SUCCEEDED') await loadResult(next.jobId);
-        await refresh();
+        localStorage.setItem('reqai.viewedJob', next.jobId);
+        if (next.status === 'SUCCEEDED' && loadedResultJobIdRef.current !== next.jobId) await loadResult(next.jobId);
+        if (event.type !== 'reconcile') await refresh();
       }
     } });
     return () => controller.abort();
-  }, [jobId, jobStatus, loadResult, refresh]);
+  }, [jobId, loadRequirementsVersions, loadResult, refresh]);
 
   const options = useMemo(() => {
     const base = { mode, model, temperature: Number(temperature), allCategories };
@@ -875,10 +941,14 @@ export default function AsyncJobWorkspace() {
       const artifact = await enterpriseApi.uploadArtifact(input, setUpload);
       const accepted = await enterpriseApi.createJob({ type, inputArtifactId: artifact.artifactId, options });
       localStorage.setItem('reqai.activeJob', accepted.jobId);
+      localStorage.setItem('reqai.viewedJob', accepted.jobId);
       setJob(await enterpriseApi.getJob(accepted.jobId));
       setResult(null);
       setResultContent('');
       setRequirementsVersions([]);
+      setRemoteRequirementsVersions(null);
+      loadedResultJobIdRef.current = null;
+      editorDirtyRef.current = false;
       await refresh();
     } catch (cause) { setError(`${cause.code || 'ERROR'}: ${cause.message}`); }
     finally { setBusy(false); }
@@ -892,8 +962,34 @@ export default function AsyncJobWorkspace() {
     setResult(null);
     setResultContent('');
     setRequirementsVersions([]);
+    setRemoteRequirementsVersions(null);
+    loadedResultJobIdRef.current = null;
+    editorDirtyRef.current = false;
+    localStorage.setItem('reqai.viewedJob', id);
     if (selected.status === 'SUCCEEDED') await loadResult(id);
     setHistoryOpen(false);
+  }
+
+  function startNewTask() {
+    if (editorDirtyRef.current && !window.confirm('Есть несохранённые изменения. Начать новую задачу и отбросить их?')) return;
+    localStorage.removeItem('reqai.activeJob');
+    localStorage.removeItem('reqai.viewedJob');
+    setWorkspace('requirements');
+    setMode('DECOMPOSITION');
+    setRequirements('');
+    setFile(null);
+    setUpload(0);
+    setJob(null);
+    setResult(null);
+    setResultContent('');
+    setRequirementsVersions([]);
+    setRemoteRequirementsVersions(null);
+    setError('');
+    setVersionBusy(false);
+    setHistoryOpen(false);
+    loadedResultJobIdRef.current = null;
+    editorDirtyRef.current = false;
+    linkedResearchSubmissionRef.current = false;
   }
 
   async function saveRequirementsVersion({ requirements: nextRequirements, baseVersionId = null, decisions = {} }) {
@@ -903,6 +999,8 @@ export default function AsyncJobWorkspace() {
     try {
       const saved = await enterpriseApi.saveRequirementsVersion({ sourceJobId: result.jobId, baseVersionId, requirements: nextRequirements, decisions });
       setRequirementsVersions((current) => [saved, ...current.filter((item) => item.versionId !== saved.versionId)]);
+      setRemoteRequirementsVersions(null);
+      editorDirtyRef.current = false;
       return saved;
     } catch (cause) {
       setError(`${cause.code || 'ERROR'}: ${cause.message}`);
@@ -924,9 +1022,16 @@ export default function AsyncJobWorkspace() {
         options: { mode: 'REQUIREMENTS_INSIGHTS', model, temperature: Number(temperature), allCategories: true },
       });
       localStorage.setItem('reqai.activeJob', accepted.jobId);
+      localStorage.setItem('reqai.viewedJob', accepted.jobId);
       setWorkspace('requirements');
       setMode('DECOMPOSITION');
       setJob(await enterpriseApi.getJob(accepted.jobId));
+      setResult(null);
+      setResultContent('');
+      setRequirementsVersions([]);
+      setRemoteRequirementsVersions(null);
+      loadedResultJobIdRef.current = null;
+      editorDirtyRef.current = false;
       await refresh();
     } catch (cause) { setError(userFacingError(cause)); }
     finally {
@@ -994,6 +1099,7 @@ export default function AsyncJobWorkspace() {
               <summary aria-label="Дополнительные инструменты" title="Дополнительные инструменты" className={`list-none cursor-pointer p-2 sm:px-3 sm:py-2 rounded-lg text-sm font-semibold flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${workspace === 'tools' ? 'bg-indigo-50 text-indigo-700' : 'text-gray-500 hover:bg-gray-50'}`}><Wrench className="w-4 h-4" /><span className="hidden sm:inline">Дополнительные инструменты</span></summary>
               <div className="absolute right-0 top-full mt-2 w-72 rounded-xl border border-slate-200 bg-white shadow-xl p-2 z-50">{RESEARCH_MODES.map(([key, label]) => <button key={key} onClick={(event) => { setWorkspace('tools'); setMode(key); event.currentTarget.closest('details').removeAttribute('open'); }} className={`w-full text-left px-3 py-2.5 rounded-lg text-sm ${mode === key && workspace === 'tools' ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-slate-600 hover:bg-slate-50'}`}>{label}</button>)}</div>
             </details>
+            {workspace === 'requirements' && job && TERMINAL.has(job.status) && <button aria-label="Новая задача" onClick={startNewTask} className="p-2 sm:px-3 sm:py-2 rounded-lg text-sm font-semibold text-indigo-600 hover:bg-indigo-50 flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"><Plus className="w-4 h-4" /><span className="hidden sm:inline">Новая задача</span></button>}
             <button aria-label="История" onClick={() => setHistoryOpen(true)} className="p-2 sm:px-3 sm:py-2 rounded-lg text-sm font-semibold text-gray-600 hover:bg-gray-100 flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"><History className="w-4 h-4" /><span className="hidden sm:inline">История</span></button>
           </div>
         </div>
@@ -1039,8 +1145,9 @@ export default function AsyncJobWorkspace() {
           </>}
           {error && <div className="mb-6 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg p-3 whitespace-pre-wrap">{error}</div>}
           <div className="space-y-6">
+            {remoteRequirementsVersions && <section role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-4 flex items-center justify-between gap-4 flex-wrap"><div><p className="text-sm font-semibold text-amber-900">Доступна новая сохранённая версия</p><p className="text-xs text-amber-700 mt-1">Она создана в другом клиенте. Текущие несохранённые изменения оставлены без изменений.</p></div><button onClick={loadRemoteRequirementsVersion} className="px-4 py-2 rounded-lg border border-amber-300 bg-white text-sm font-semibold text-amber-800 hover:bg-amber-100">Загрузить новую версию</button></section>}
             <JobStateCard job={job} onCancel={cancelActiveJob} />
-            {result && <ResultPanel result={result} resultContent={resultContent} download={download} latestVersion={requirementsVersions[0] || null} onSaveRequirements={saveRequirementsVersion} onStartResearch={startResearchFromDecomposition} onSaveFinal={saveRequirementsVersion} busy={versionBusy} researchBusy={linkedResearchBusy} />}
+            {result && <ResultPanel result={result} resultContent={resultContent} download={download} latestVersion={requirementsVersions[0] || null} onSaveRequirements={saveRequirementsVersion} onStartResearch={startResearchFromDecomposition} onSaveFinal={saveRequirementsVersion} onDirtyChange={handleEditorDirty} busy={versionBusy} researchBusy={linkedResearchBusy} />}
           </div>
         </main>
       ) : (
@@ -1079,7 +1186,7 @@ export default function AsyncJobWorkspace() {
                 {error && <div className="mt-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg p-3">{error}</div>}
               </section>
               <JobStateCard job={job} onCancel={cancelActiveJob} />
-              {result && <ResultPanel result={result} resultContent={resultContent} download={download} latestVersion={requirementsVersions[0] || null} onSaveRequirements={saveRequirementsVersion} onStartResearch={startResearchFromDecomposition} onSaveFinal={saveRequirementsVersion} busy={versionBusy} researchBusy={linkedResearchBusy} />}
+              {result && <ResultPanel result={result} resultContent={resultContent} download={download} latestVersion={requirementsVersions[0] || null} onSaveRequirements={saveRequirementsVersion} onStartResearch={startResearchFromDecomposition} onSaveFinal={saveRequirementsVersion} onDirtyChange={handleEditorDirty} busy={versionBusy} researchBusy={linkedResearchBusy} />}
             </div>
           </div>
         </main>
@@ -1090,7 +1197,7 @@ export default function AsyncJobWorkspace() {
   );
 }
 
-function ResultPanel({ result, resultContent, download, latestVersion, onSaveRequirements, onStartResearch, onSaveFinal, busy, researchBusy = false }) {
+function ResultPanel({ result, resultContent, download, latestVersion, onSaveRequirements, onStartResearch, onSaveFinal, onDirtyChange, busy, researchBusy = false }) {
   const parsedContent = safeJson(resultContent);
   const embeddedInsights = parsedContent?.mode === 'REQUIREMENTS_INSIGHTS';
   const decompositionResult = result.type === 'DECOMPOSITION' || ['DECOMPOSITION', 'DECOMPOSITION_WITH_INSIGHTS'].includes(result.mode) || ['DECOMPOSITION', 'DECOMPOSITION_WITH_INSIGHTS'].includes(parsedContent?.mode) || Array.isArray(parsedContent?.decomposition);
@@ -1103,7 +1210,7 @@ function ResultPanel({ result, resultContent, download, latestVersion, onSaveReq
         </div>
         {result.outcome === 'PARTIAL' && <div className="mt-4 flex gap-2 text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3"><AlertTriangle className="w-5 h-5 shrink-0" /><p className="text-sm">Частичный результат: некоторые этапы завершились ошибкой.</p></div>}
       </div>}
-      <ResultView key={`${result.jobId}:${latestVersion?.versionId || 'base'}`} metadata={result} content={resultContent || result.summary || ''} latestVersion={latestVersion} onSaveRequirements={onSaveRequirements} onStartResearch={onStartResearch} onSaveFinal={onSaveFinal} busy={busy} researchBusy={researchBusy} />
+      <ResultView key={`${result.jobId}:${latestVersion?.versionId || 'base'}`} metadata={result} content={resultContent || result.summary || ''} latestVersion={latestVersion} onSaveRequirements={onSaveRequirements} onStartResearch={onStartResearch} onSaveFinal={onSaveFinal} onDirtyChange={onDirtyChange} busy={busy} researchBusy={researchBusy} />
       <details className="bg-white rounded-xl border border-slate-200 p-4"><summary className="text-sm font-semibold text-slate-700 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded">Техническая информация</summary><div className="mt-4 text-sm text-slate-600 space-y-4"><dl className="grid gap-2 sm:grid-cols-2"><div><dt className="text-xs text-slate-400">Статус API</dt><dd className="font-mono text-xs mt-1">{result.status || 'SUCCEEDED'}</dd></div><div><dt className="text-xs text-slate-400">Результат API</dt><dd className="font-mono text-xs mt-1">{result.outcome || '—'}</dd></div></dl>{result.resultArtifactId && <button onClick={download} className="inline-flex items-center gap-2 px-3 py-2 border border-slate-200 rounded-lg text-sm font-semibold text-slate-600 hover:border-indigo-300"><Download className="w-4 h-4" />Скачать JSON</button>}<div><p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">Модели и попытки</p>{(result.modelAttempts || []).length ? <ul className="text-xs space-y-2">{result.modelAttempts.map((attempt, index) => <li key={index}>{attempt.stepId}: {attempt.requestedModel} → {attempt.model}, {attempt.result}{attempt.reasonCode ? ` (${attempt.reasonCode})` : ''}</li>)}</ul> : <p className="text-xs text-slate-400">Данные о попытках отсутствуют.</p>}</div></div></details>
     </section>
   );

@@ -81,7 +81,7 @@ export async function subscribeJobEvents(jobId, { lastEventId = 0, signal, onEve
         while ((end = buffer.indexOf('\n\n')) >= 0) {
           const block = buffer.slice(0, end); buffer = buffer.slice(end + 2);
           const id = block.match(/^id: (.+)$/m)?.[1]; const data = block.match(/^data: (.+)$/m)?.[1];
-          if (id) cursor = Number(id); if (data) onEvent?.(JSON.parse(data));
+          if (id) cursor = Number(id); if (data) await onEvent?.(JSON.parse(data));
         }
       }
     } catch {
@@ -89,7 +89,7 @@ export async function subscribeJobEvents(jobId, { lastEventId = 0, signal, onEve
       await new Promise((resolve) => setTimeout(resolve, 1500));
     } finally {
       if (!signal.aborted) {
-        try { onEvent?.({ type: 'reconcile', job: await enterpriseApi.getJob(jobId) }); } catch { /* retry on next cycle */ }
+        try { await onEvent?.({ type: 'reconcile', jobId, job: await enterpriseApi.getJob(jobId) }); } catch { /* retry on next cycle */ }
       }
     }
   }

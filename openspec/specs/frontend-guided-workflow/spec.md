@@ -25,6 +25,10 @@ The frontend SHALL present the business-requirements journey as four ordered sta
 - **WHEN** a reviewed requirements version is saved and the user proceeds directly to the final version
 - **THEN** the final-version stage becomes current at 100 percent, the AI-research stage is labelled as skipped rather than completed, and the direct-final decision remains visible after reload
 
+#### Scenario: User starts a new task after viewing a result
+- **WHEN** a terminal workflow is selected and the user activates «Новая задача»
+- **THEN** the frontend clears only the current selection and draft input, returns to stage one with an empty business-context form, and preserves the completed workflow in history
+
 ### Requirement: Primary and secondary navigation
 The frontend SHALL make «Подготовка требований» the default primary workspace. The name SHALL describe the end-to-end process and SHALL NOT use «Бизнес-требования», which is reserved for one decomposed requirement type. The standalone legacy research modes SHALL remain available under a secondary «Дополнительные инструменты» entry and SHALL NOT be activated by linked requirements research.
 
@@ -260,3 +264,30 @@ The redesign SHALL preserve existing durable job submission, active-job restorat
 #### Scenario: User edits a direct final version
 - **WHEN** the user skipped AI research and edits the final requirements
 - **THEN** a new immutable requirements version is created with the direct-final marker preserved and the final editor remains available after reload
+
+### Requirement: Cross-client realtime synchronization
+The system SHALL publish ordered durable events for job lifecycle changes, linked-research creation, and requirements-version creation. Every client currently viewing the affected workflow SHALL maintain an SSE subscription after job completion, resume from the last received sequence after a temporary disconnect, and reconcile authoritative job and requirements-version state without requiring a page reload.
+
+#### Scenario: Active job changes state in two clients
+- **WHEN** two clients are viewing the same active job and its lifecycle state changes
+- **THEN** both clients receive the ordered job event and render the authoritative state automatically
+
+#### Scenario: Requirements version is saved in another client
+- **WHEN** one client saves a reviewed, direct-final, research-assisted, or manually revised requirements version
+- **THEN** every other client viewing the source job receives a `requirements.version-created` event and refreshes its version list automatically
+
+#### Scenario: Linked research is started in another client
+- **WHEN** one client creates linked requirements research from a decomposition job
+- **THEN** every other client viewing the parent job receives a `linked-research.created` event and follows the authoritative child job without manual history refresh
+
+#### Scenario: Remote version arrives during local editing
+- **WHEN** a client has unsaved requirement edits and receives a newer remote requirements version
+- **THEN** the local edits are not overwritten and the client presents an explicit action to load the newer saved version
+
+#### Scenario: SSE connection is temporarily interrupted
+- **WHEN** a viewing client disconnects after receiving sequence N and reconnects later
+- **THEN** it requests events after sequence N, receives every persisted later event in order, and reconciles current state after reconnecting
+
+#### Scenario: Event belongs to a different job
+- **WHEN** a stale asynchronous handler or mismatched event references a job other than the currently viewed job
+- **THEN** the client ignores that event and does not replace the current workflow state

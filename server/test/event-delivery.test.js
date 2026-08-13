@@ -14,7 +14,7 @@ test('Kafka outbox publishes ordered reference-only events keyed by job and mark
 test('SSE resumes after numeric Last-Event-ID and emits event identity', async () => {
   const response=new EventEmitter();response.headers={};response.set=(x)=>Object.assign(response.headers,x);response.flushHeaders=()=>{};response.output='';response.write=(x)=>{response.output+=x;return true;};response.end=()=>{};
   streamJobEvents({repository:{async listJobEvents({afterSequence}){assert.equal(afterSequence,4);return[{event_id:'e5',event_type:'job.progress',schema_version:'1.0',sequence:5,payload:{progress:50},created_at:new Date()}];}},tenantId:'t',jobId:'j',afterSequence:4,response,heartbeatMs:10000,pollMs:10000});
-  await new Promise(resolve=>setImmediate(resolve));response.emit('close');assert.match(response.output,/id: 5/);assert.match(response.output,/"eventId":"e5"/);
+  await new Promise(resolve=>setImmediate(resolve));response.emit('close');assert.match(response.output,/id: 5/);assert.match(response.output,/"eventId":"e5"/);assert.match(response.output,/"eventType":"job.progress"/);
 });
 
 test('webhook signature is deterministic and outage exhausts into DLQ once', async () => {

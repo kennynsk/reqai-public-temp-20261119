@@ -13,6 +13,9 @@ function creationPool() {
       if (sql.includes('INSERT INTO "reqai".jobs')) {
         return { rowCount: 1, rows: [{ id: params[0], type: params[4], status: 'ACCEPTED' }] };
       }
+      if (sql.includes('UPDATE "reqai".jobs') && sql.includes('RETURNING sequence')) {
+        return { rowCount: 1, rows: [{ sequence: 2 }] };
+      }
       return { rowCount: 1, rows: [] };
     },
     release() {},
@@ -208,6 +211,27 @@ test('linked research validates parent ownership and requirements version before
   assert.equal(accepted.job.parentJobId, validation.parentJobId);
   assert.equal(accepted.event.payload.inputArtifactId, validation.versionId);
   assert.equal(accepted.job.configurationSnapshot.featureMode, 'REQUIREMENTS_INSIGHTS');
+});
+
+test('linked requirements research publishes an ordered discovery event on its parent stream', async () => {
+  const pool = creationPool();
+  const repository = new JobRepository(pool);
+  await repository.createAccepted({
+    tenantId: 'tenant-a', ownerUserId: 'user-a', idempotencyKey: 'linked-event-0001', requestHash: 'hash-a',
+    idempotencyExpiresAt: new Date('2026-01-02T00:00:00Z'),
+    job: {
+      id: 'research-1', parentJobId: 'decomposition-1', type: 'RESEARCH', inputArtifactId: 'version-1', priority: 50,
+      configurationSnapshot: { featureMode: 'REQUIREMENTS_INSIGHTS' }, createdSite: 'dc-a', deadlineAt: new Date('2026-01-01T01:00:00Z'),
+    },
+    event: { id: 'event-1', type: 'job.accepted', payload: { jobId: 'research-1', occurredAt: '2026-01-01T00:00:00.000Z' } },
+    audit: { id: 'audit-1', action: 'job.create', actorRoles: ['user'], requestId: 'req-1', metadata: {} },
+  });
+  const linkedEvent = pool.calls.find(({ sql }) => sql.includes("'linked-research.created'"));
+  assert.equal(linkedEvent.params[2], 'decomposition-1');
+  assert.equal(linkedEvent.params[3], 2);
+  assert.deepEqual(JSON.parse(linkedEvent.params[4]), {
+    jobId: 'decomposition-1', linkedJobId: 'research-1', requirementsVersionId: 'version-1', occurredAt: '2026-01-01T00:00:00.000Z',
+  });
 });
 
 test('authorized retry links the new job and preserves the original immutable snapshot', async () => {

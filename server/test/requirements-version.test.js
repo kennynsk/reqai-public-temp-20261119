@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { RequirementsVersionRepository } from '../src/repositories/requirements-version-repository.js';
 import { createRequirementsVersionService } from '../src/services/requirements-version-service.js';
 
 const auth = { tenantId: 'tenant-a', userId: 'user-a', roles: ['user'] };
@@ -26,7 +27,40 @@ test('reviewed decomposition is persisted as an immutable requirements version',
   assert.equal(JSON.parse(artifactInput.text).kind, 'REQUIREMENTS_VERSION');
   assert.equal(JSON.parse(artifactInput.text).businessContextArtifactId, '00000000-0000-4000-8000-000000000003');
   assert.equal(versionInput.sourceJobId, '00000000-0000-4000-8000-000000000001');
+  assert.equal(versionInput.event.type, 'requirements.version-created');
+  assert.deepEqual(versionInput.event.payload, {
+    jobId: '00000000-0000-4000-8000-000000000001',
+    versionId: '00000000-0000-4000-8000-000000000002',
+    baseVersionId: null,
+    researchJobId: null,
+    occurredAt: '2026-01-01T00:00:00.000Z',
+  });
   assert.equal(auditInput.action, 'requirements.version.create');
+});
+
+test('requirements version and its realtime event are committed with one ordered job sequence', async () => {
+  const calls = [];
+  const client = {
+    async query(sql, params) {
+      calls.push({ sql, params });
+      if (sql.includes('INSERT INTO "reqai".requirements_versions')) {
+        return { rows: [{ id: 'version-2', source_job_id: 'job-1' }] };
+      }
+      if (sql.includes('UPDATE "reqai".jobs')) return { rows: [{ sequence: 7 }] };
+      return { rows: [] };
+    },
+    release() {},
+  };
+  const repository = new RequirementsVersionRepository({ connect: async () => client });
+  await repository.create({
+    tenantId: 'tenant-a', ownerUserId: 'user-a', id: 'version-2', sourceJobId: 'job-1',
+    event: { type: 'requirements.version-created', payload: { jobId: 'job-1', versionId: 'version-2' } },
+  });
+  const eventCall = calls.find(({ sql }) => sql.includes('INSERT INTO "reqai".outbox_events'));
+  assert.equal(eventCall.params[2], 'job-1');
+  assert.equal(eventCall.params[3], 7);
+  assert.equal(eventCall.params[4], 'requirements.version-created');
+  assert.ok(calls.some(({ sql }) => sql === 'COMMIT'));
 });
 
 test('linked research accepts only a version owned by its completed decomposition parent', async () => {

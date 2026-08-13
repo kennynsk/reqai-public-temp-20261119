@@ -128,6 +128,26 @@ export class JobRepository {
           [event.id, tenantId, job.id, event.type, JSON.stringify(event.payload)],
         );
 
+        if (job.parentJobId && job.type === 'RESEARCH' && job.configurationSnapshot?.featureMode === 'REQUIREMENTS_INSIGHTS') {
+          const parent = await client.query(
+            `UPDATE ${this.schema}.jobs
+             SET sequence=sequence+1, version=version+1, updated_at=now()
+             WHERE tenant_id=$1 AND id=$2 RETURNING sequence`,
+            [tenantId, job.parentJobId],
+          );
+          await client.query(
+            `INSERT INTO ${this.schema}.outbox_events(
+               event_id, tenant_id, aggregate_type, aggregate_id, sequence, event_type, schema_version, payload
+             ) VALUES($1,$2,'job',$3,$4,'linked-research.created','1.0',$5::jsonb)`,
+            [randomUUID(), tenantId, job.parentJobId, parent.rows[0].sequence, JSON.stringify({
+              jobId: job.parentJobId,
+              linkedJobId: job.id,
+              requirementsVersionId: job.inputArtifactId,
+              occurredAt: event.payload.occurredAt,
+            })],
+          );
+        }
+
         await client.query(
           `INSERT INTO ${this.schema}.audit_events (
              id, tenant_id, actor_id, actor_roles, action, target_type, target_id,

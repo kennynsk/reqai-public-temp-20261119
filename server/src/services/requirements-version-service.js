@@ -109,6 +109,16 @@ export function createRequirementsVersionService({ config, jobRepository, artifa
         baseVersionId: base?.row.id || null,
         researchJobId: sourceJob.type === 'RESEARCH' ? sourceJob.id : null,
         decisions: envelope.decisions,
+        event: {
+          type: 'requirements.version-created',
+          payload: {
+            jobId: sourceJob.id,
+            versionId: artifact.artifactId,
+            baseVersionId: base?.row.id || null,
+            researchJobId: sourceJob.type === 'RESEARCH' ? sourceJob.id : null,
+            occurredAt: now.toISOString(),
+          },
+        },
       });
       await auditRepository?.record({ tenantId: auth.tenantId, actorId: auth.userId, actorRoles: auth.roles, action: 'requirements.version.create', targetType: 'requirements-version', targetId: row.id, requestId, sourceSite: config.process.siteId, metadata: { sourceJobId: sourceJob.id, baseVersionId: row.base_version_id } });
       return { versionId: row.id, sourceJobId: row.source_job_id, baseVersionId: row.base_version_id, researchJobId: row.research_job_id, requirements, decisions: envelope.decisions, createdAt: new Date(row.created_at).toISOString() };

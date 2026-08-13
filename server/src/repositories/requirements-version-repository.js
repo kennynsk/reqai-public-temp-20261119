@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import { withTenantTransaction } from '../db/transaction.js';
 
 export class RequirementsVersionRepository {
@@ -6,7 +8,7 @@ export class RequirementsVersionRepository {
     this.schema = `"${schema}"`;
   }
 
-  async create({ tenantId, ownerUserId, id, sourceJobId, baseVersionId = null, researchJobId = null, decisions = {} }) {
+  async create({ tenantId, ownerUserId, id, sourceJobId, baseVersionId = null, researchJobId = null, decisions = {}, event = null }) {
     return withTenantTransaction(this.pool, tenantId, async (client) => {
       const result = await client.query(
         `INSERT INTO ${this.schema}.requirements_versions(
@@ -14,6 +16,20 @@ export class RequirementsVersionRepository {
          ) VALUES($1,$2,$3,$4,$5,$6,$7::jsonb) RETURNING *`,
         [id, tenantId, ownerUserId, sourceJobId, baseVersionId, researchJobId, JSON.stringify(decisions)],
       );
+      if (event) {
+        const job = await client.query(
+          `UPDATE ${this.schema}.jobs
+           SET sequence=sequence+1, version=version+1, updated_at=now()
+           WHERE tenant_id=$1 AND id=$2 RETURNING sequence`,
+          [tenantId, sourceJobId],
+        );
+        await client.query(
+          `INSERT INTO ${this.schema}.outbox_events(
+             event_id, tenant_id, aggregate_type, aggregate_id, sequence, event_type, schema_version, payload
+           ) VALUES($1,$2,'job',$3,$4,$5,'1.0',$6::jsonb)`,
+          [randomUUID(), tenantId, sourceJobId, job.rows[0].sequence, event.type, JSON.stringify(event.payload)],
+        );
+      }
       return result.rows[0];
     });
   }
