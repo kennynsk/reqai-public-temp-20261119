@@ -60,6 +60,8 @@ async function openToolsAndSelect(name) {
 
 test('shows the guided workflow and hides expert settings by default', async () => {
   render(<AsyncJobWorkspace />);
+  expect(screen.getByRole('button', { name: 'Debug' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Debug' })).toHaveAttribute('title', 'Debug станет доступен после запуска задачи');
   expect(await screen.findByRole('button', { name: 'Подготовка требований' })).toHaveAttribute('aria-current', 'page');
   expect(screen.getByRole('heading', { name: 'Подготовка требований' })).toBeInTheDocument();
   const steps = screen.getByRole('list', { name: 'Этапы подготовки требований' });
@@ -353,6 +355,8 @@ test('opens accessible Debug timeline, shows local SSE observations and removes 
   mocks.getJobTrace.mockResolvedValue({ jobId: 'debug-job', status: 'RUNNING', currentStep: 'research', createdAt: new Date().toISOString(), durationMs: null, timeline: [{ id: 'event:1', source: 'SERVER_EVENT', category: 'EVENT', name: 'job.accepted', status: 'INFO', startedAt: new Date().toISOString(), durationMs: 0, metadata: { sequence: 1 }, detail: { state: 'NOT_RECORDED' } }], nextCursor: null });
   render(<AsyncJobWorkspace />);
   const trigger = await screen.findByRole('button', { name: 'Debug' });
+  await waitFor(() => expect(trigger).toBeEnabled());
+  await waitFor(() => expect(onObservation).toBeTypeOf('function'));
   expect(screen.queryByText('Техническая информация')).not.toBeInTheDocument();
   await act(() => onObservation({ type: 'reconnect', jobId: 'debug-job', cursor: 1, timestamp: new Date().toISOString() }));
   fireEvent.click(trigger);
