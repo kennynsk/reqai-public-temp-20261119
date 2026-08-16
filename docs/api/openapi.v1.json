@@ -413,7 +413,7 @@
       "RequirementItem": {
         "type": "object",
         "required": ["id", "text"],
-        "properties": { "id": { "type": "string" }, "text": { "type": "string" }, "fromResearch": { "type": "boolean" } },
+        "properties": { "id": { "type": "string" }, "text": { "type": "string" }, "fromResearch": { "type": "boolean" }, "researchEnhancementKey": { "type": "string", "maxLength": 200 } },
         "additionalProperties": false
       },
       "RequirementsGroups": {

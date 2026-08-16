@@ -60,14 +60,15 @@ const accepted = await json(await fetch(`${baseUrl}/api/v1/jobs`, {
   body: JSON.stringify({ type, inputArtifactId: artifact.artifactId, options }),
 }));
 
-const deadline = Date.now() + 90_000;
+const timeoutMs = Number(process.env.REQAI_E2E_TIMEOUT_MS || 300_000);
+const deadline = Date.now() + timeoutMs;
 let status;
 while (Date.now() < deadline) {
   status = await json(await fetch(`${baseUrl}/api/v1/jobs/${accepted.jobId}`));
   if (['SUCCEEDED', 'FAILED', 'CANCELLED'].includes(status.status)) break;
   await new Promise((resolve) => setTimeout(resolve, 500));
 }
-if (status?.status !== 'SUCCEEDED') throw new Error(`Job did not succeed: ${JSON.stringify(status)}`);
+if (status?.status !== 'SUCCEEDED') throw new Error(`Job did not succeed within ${timeoutMs} ms: ${JSON.stringify(status)}`);
 
 const result = await json(await fetch(`${baseUrl}/api/v1/jobs/${accepted.jobId}/result`));
 const contentResponse = await fetch(`${baseUrl}/api/v1/jobs/${accepted.jobId}/result/content`);

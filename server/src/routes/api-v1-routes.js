@@ -258,7 +258,7 @@ export function createApiV1Router({ config, services = {} }) {
   router.get('/api/v1/jobs/:jobId/events', requireAnyRole('user', 'tenant-admin', 'operator', 'auditor', 'system-admin'), asyncRoute(async (req, res) => {
     const jobId = requireUuid(req.params.jobId); await services.jobQueryService.get({ auth: req.auth, jobId, requestId: req.context?.requestId });
     const last = req.get('Last-Event-ID') || '0'; if (!/^\d+$/.test(last)) throw badRequest('INVALID_LAST_EVENT_ID', 'Last-Event-ID must be a numeric sequence');
-    streamJobEvents({ repository: services.eventRepository, tenantId: req.auth.tenantId, jobId, afterSequence: Number(last), response: res, heartbeatMs: config.sse.heartbeatMs, pollMs: config.sse.pollMs });
+    streamJobEvents({ repository: services.eventRepository, tenantId: req.auth.tenantId, jobId, afterSequence: Number(last), response: res, heartbeatMs: config.sse.heartbeatMs, pollMs: config.sse.pollMs, sourceSite: config.process.siteId });
   }));
 
   router.post('/api/v1/admin/webhooks/:deliveryId/redeliver', requireAnyRole('system-admin'), asyncRoute(async (req, res) => {

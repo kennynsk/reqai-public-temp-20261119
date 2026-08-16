@@ -17,6 +17,11 @@ test('job event v1 carries identity, ordering, tenant and artifact references', 
     assert.ok(schema.required.includes(field), `${field} must be required`);
   }
   assert.equal(schema.properties.schemaVersion.const, '1.0');
+  for (const eventType of ['job.status-changed', 'job.progress', 'job.cancel-requested', 'linked-research.created', 'requirements.version-created']) {
+    assert.ok(schema.properties.eventType.enum.includes(eventType), `${eventType} must be documented`);
+  }
+  assert.equal(schema.properties.data.required, undefined);
+  assert.equal(schema.allOf.length, 3);
   assert.ok(schema.properties.data.properties.resultArtifactId);
   assert.equal(schema.properties.data.properties.resultContent, undefined);
 });

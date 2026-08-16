@@ -10,6 +10,7 @@
 - Delivery is at-least-once. Consumers must not infer business state from receipt count.
 - `jobId` remains the sole durable identity. The user-facing route `/tasks/{jobId}` and the
   diagnostic routes beneath `/api/v1/jobs/{jobId}` do not introduce a `taskId` or task API alias.
+- Kafka and SSE use the same envelope: `eventType`, `occurredAt`, `source` and reference-only `data` are not flattened into the top level. Lifecycle events require `data.status`; `linked-research.created` requires `linkedJobId` and `requirementsVersionId`; `requirements.version-created` requires `versionId`.
 
 ## Versioning
 

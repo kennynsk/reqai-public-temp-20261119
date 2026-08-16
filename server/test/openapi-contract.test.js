@@ -53,6 +53,7 @@ test('OpenAPI v1 declares lifecycle and partial-result contracts', () => {
   assert.ok(spec.components.schemas.JobResult.properties.modelAttempts);
   assert.ok(spec.components.schemas.JobTrace.properties.timeline);
   assert.ok(spec.components.schemas.RequirementsVersion.required.includes('requirements'));
+  assert.equal(spec.components.schemas.RequirementItem.properties.researchEnhancementKey.maxLength, 200);
 });
 
 test('jobId remains the only durable identifier and no parallel task API is introduced', () => {

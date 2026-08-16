@@ -98,7 +98,7 @@ Circuit breaker и concurrency semaphore отдельны для каждой м
 
 ### 8. Доставлять прогресс через versioned events, но сверять через REST
 
-Outbox publisher пишет Kafka events с `eventId`, `schemaVersion`, `tenantId`, `jobId`, sequence и timestamp. SSE instances получают события и фильтруют их по активным подпискам; на первой версии допустима независимая consumer group на instance. Клиент всегда делает REST reconciliation после reconnect.
+Outbox publisher пишет Kafka events, а SSE отдаёт тот же канонический конверт с `eventId`, `schemaVersion`, `eventType`, `tenantId`, `jobId`, sequence, `occurredAt`, `source` и reference-only `data`. Lifecycle events содержат `status`; `linked-research.created` и `requirements.version-created` передают lineage/version identifiers без искусственного статуса. SSE instances получают события и фильтруют их по активным подпискам; на первой версии допустима независимая consumer group на instance. Клиент всегда делает REST reconciliation после reconnect.
 
 Webhook consumer group доставляет только terminal events на один env-configured URL, подписывает HMAC-SHA256, хранит attempts в PostgreSQL и после исчерпания retries публикует DLQ. Payload содержит ссылку на результат, не artifact.
 

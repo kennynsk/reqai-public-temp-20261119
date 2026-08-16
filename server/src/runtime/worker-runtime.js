@@ -62,7 +62,7 @@ export async function startWorkerRuntime(config, { ConnectionClass = NativeConne
     const kafka = new Kafka({ clientId: config.kafka.clientId, brokers: config.kafka.brokers, ssl: config.kafka.ssl, sasl: config.kafka.username ? { mechanism: config.kafka.saslMechanism, username: config.kafka.username, password: config.kafka.password } : undefined });
     const producer = kafka.producer({ idempotent: true, maxInFlightRequests: 1 }); await producer.connect();
     const eventRepository = new EventRepository(pool, { schema: config.database.schema });
-    const kafkaPublisher = createKafkaOutboxPublisher({ repository: eventRepository, producer, tenantId: config.tenancy.defaultTenantId, topic: config.kafka.jobEventsTopic, batchSize: config.kafka.outboxBatchSize });
+    const kafkaPublisher = createKafkaOutboxPublisher({ repository: eventRepository, producer, tenantId: config.tenancy.defaultTenantId, topic: config.kafka.jobEventsTopic, batchSize: config.kafka.outboxBatchSize, sourceSite: config.process.siteId });
     const webhookRepository = new WebhookRepository(pool, { schema: config.database.schema });
     const webhookDispatcher = config.webhook.enabled ? createWebhookDispatcher({ repository: webhookRepository, sender: fetch, tenantId: config.tenancy.defaultTenantId, config: config.webhook, dlqPublisher: (payload) => producer.send({ topic: config.kafka.webhookDlqTopic, messages: [{ key: payload.jobId, value: JSON.stringify(payload) }] }) }) : null;
     const health = await startWorkerHealthServer(config);

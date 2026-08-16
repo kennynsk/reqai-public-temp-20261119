@@ -71,7 +71,7 @@ REST job detail и SSE progress SHALL показывать текущую пол
 - **THEN** delivery фиксируется как `FAILED`, событие публикуется в DLQ и system-admin может инициировать повтор
 
 ### Requirement: Versioned and idempotent events
-Kafka-, SSE- и webhook-события SHALL содержать уникальный `eventId`, `schemaVersion`, `tenantId`, `jobId`, timestamp и последовательность job events.
+Kafka-, SSE- и webhook-события SHALL содержать уникальный `eventId`, `schemaVersion`, `tenantId`, `jobId`, `occurredAt` и последовательность job events. Kafka и SSE job events SHALL использовать общий конверт с `eventType`, `source` и reference-only `data`; lifecycle events SHALL содержать `status`, а события `linked-research.created` и `requirements.version-created` SHALL содержать свои lineage/version identifiers без искусственного `status`.
 
 #### Scenario: Consumer receives a duplicate
 - **WHEN** downstream consumer повторно получает тот же `eventId`

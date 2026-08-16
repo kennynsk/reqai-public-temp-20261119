@@ -70,6 +70,11 @@ export async function digestFile(file) {
   return hash.digest('hex');
 }
 
+export function normalizeJobEvent(event) {
+  if (!event || typeof event !== 'object' || Array.isArray(event) || !event.data || typeof event.data !== 'object' || Array.isArray(event.data)) return event;
+  return { ...event.data, ...event };
+}
+
 export async function subscribeJobEvents(jobId, { lastEventId = 0, signal, onEvent, onObservation }) {
   let cursor = lastEventId;
   while (!signal.aborted) {
@@ -85,10 +90,15 @@ export async function subscribeJobEvents(jobId, { lastEventId = 0, signal, onEve
         while ((end = buffer.indexOf('\n\n')) >= 0) {
           const block = buffer.slice(0, end); buffer = buffer.slice(end + 2);
           const id = block.match(/^id: (.+)$/m)?.[1]; const data = block.match(/^data: (.+)$/m)?.[1];
-          if (id) cursor = Number(id);
+          const nextCursor = id ? Number(id) : cursor;
           if (data) {
-            try { await onEvent?.(JSON.parse(data)); }
-            catch (error) { await onObservation?.({ type: 'parse-error', jobId, cursor, errorType: error?.name || 'Error', timestamp: new Date().toISOString() }); }
+            let event;
+            try { event = normalizeJobEvent(JSON.parse(data)); }
+            catch (error) { cursor = nextCursor; await onObservation?.({ type: 'parse-error', jobId, cursor, errorType: error?.name || 'Error', timestamp: new Date().toISOString() }); continue; }
+            try { await onEvent?.(event); cursor = nextCursor; }
+            catch (error) { await onObservation?.({ type: 'event-handler-error', jobId, cursor, errorType: error?.name || 'Error', timestamp: new Date().toISOString() }); throw error; }
+          } else if (id) {
+            cursor = nextCursor;
           }
         }
       }
