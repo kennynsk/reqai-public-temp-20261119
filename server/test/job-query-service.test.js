@@ -14,6 +14,8 @@ const row = {
   message: 'One category failed; partial result returned',
   result_artifact_id: '00000000-0000-4000-8000-000000000002',
   created_at: new Date('2026-01-01T00:00:00Z'),
+  started_at: new Date('2026-01-01T00:00:05Z'),
+  completed_at: new Date('2026-01-01T01:00:00Z'),
   updated_at: new Date('2026-01-01T01:00:00Z'),
 };
 
@@ -49,6 +51,16 @@ test('ordinary user history is owner-scoped and privileged history is tenant-sco
   await service.list({ auth: { tenantId: 'tenant-a', userId: 'admin-a', roles: ['tenant-admin'] }, limit: 20 });
   assert.equal(calls[0].ownerUserId, 'user-a');
   assert.equal(calls[1].ownerUserId, null);
+});
+
+test('REST reconciliation exposes the latest milestone and execution timestamps', async () => {
+  const { service } = setup();
+  const job = await service.get({ auth: { tenantId: 'tenant-a', userId: 'user-a', roles: ['user'] }, jobId: row.id });
+  assert.equal(job.progress, 100);
+  assert.equal(job.currentStep, 'synthesis');
+  assert.equal(job.message, 'One category failed; partial result returned');
+  assert.equal(job.startedAt, '2026-01-01T00:00:05.000Z');
+  assert.equal(job.completedAt, '2026-01-01T01:00:00.000Z');
 });
 
 test('partial result exposes actual model and fallback reason and audits the read', async () => {

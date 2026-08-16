@@ -143,7 +143,7 @@ test('job service snapshots original application mode, temperature and compariso
 
 test('ZAI catalog exposes four models but a selected model snapshots at most three fallbacks', async () => {
   let accepted;
-  const availableModels = ['glm-5.2', 'glm-5-turbo', 'glm-4.7', 'glm-4.7-flash'];
+  const availableModels = ['glm-5.3', 'glm-5-turbo', 'glm-4.7', 'glm-4.7-flash'];
   const service = createJobService({
     config: {
       asyncEnabled: true,
@@ -160,7 +160,7 @@ test('ZAI catalog exposes four models but a selected model snapshots at most thr
     body: { type: 'RESEARCH', inputArtifactId: '00000000-0000-4000-8000-000000000099', options: { model: 'glm-4.7-flash' } },
   });
   assert.deepEqual(accepted.job.configurationSnapshot.configuredModels, availableModels);
-  assert.deepEqual(accepted.job.configurationSnapshot.models, ['glm-4.7-flash', 'glm-5.2', 'glm-5-turbo']);
+  assert.deepEqual(accepted.job.configurationSnapshot.models, ['glm-4.7-flash', 'glm-5.3', 'glm-5-turbo']);
 });
 
 test('job service rejects a model outside the configured single provider policy', async () => {

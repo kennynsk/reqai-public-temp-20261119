@@ -2,7 +2,7 @@
 
 `compose.yaml` поднимает PostgreSQL, Kafka в KRaft-режиме, Temporal Server и Web UI, миграции, API, отдельные decomposition/research/synthesis workers, event и maintenance workers, frontend, Prometheus и Grafana. Workflow workers по умолчанию используют реальный ZAI provider и получают `ZAI_BASE_URL`, `ZAI_API_KEY` и `ZAI_MODELS` из корневого `.env.dev`; LLM-секреты не передаются API, event и maintenance ролям.
 
-Для изолированных тестов mock включается явно через override `LLM_PROVIDER_MODE=mock`; основной локальный Compose не использует mock-модели. Каталог ZAI: `glm-5.2,glm-5-turbo,glm-4.7,glm-4.7-flash`. UI показывает весь каталог, а один шаг snapshot-ит не более трёх моделей для bounded fallback.
+Для изолированных тестов mock включается явно через override `LLM_PROVIDER_MODE=mock`; основной локальный Compose не использует mock-модели. Каталог ZAI: `glm-5.3,glm-5-turbo,glm-4.7,glm-4.7-flash`. UI показывает весь каталог, а один шаг snapshot-ит не более трёх моделей для bounded fallback.
 
 Локально IAM отключён и используется логический tenant `default-enterprise`. Mock запрещён конфигурационным guard в `NODE_ENV=production`. Все локальные пароли предназначены только для localhost и не должны переноситься на стенды.
 

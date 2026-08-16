@@ -10,7 +10,7 @@ Do not put credentials in this document. Record identifiers, limits and protocol
 |---|---|
 | Provider name | ZAI |
 | Base URL | `https://api.z.ai/api/coding/paas/v4` |
-| Model catalog, priority order | `glm-5.2`, `glm-5-turbo`, `glm-4.7`, `glm-4.7-flash` |
+| Model catalog, priority order | `glm-5.3`, `glm-5-turbo`, `glm-4.7`, `glm-4.7-flash` |
 | Models used by one step | selected model plus configured fallback, maximum 3 |
 | Requests/tokens per minute | **TBD confirm for every model** |
 | Maximum parallel requests | 5 development default, **TBD calibrate** |

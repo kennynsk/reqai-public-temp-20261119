@@ -309,6 +309,59 @@ export class JobRepository {
     });
   }
 
+  async updateProgress({ tenantId, jobId, progress, currentStep, message }) {
+    const confirmedProgress = Math.max(0, Math.min(99, Math.trunc(Number(progress))));
+    if (!Number.isFinite(confirmedProgress) || !currentStep || !message) {
+      throw new ApiError({ status: 400, code: 'INVALID_JOB_PROGRESS', message: 'Progress update is invalid' });
+    }
+    return withTenantTransaction(this.pool, tenantId, async (client) => {
+      const locked = await client.query(
+        `SELECT status, version, sequence, progress, current_step, message
+         FROM ${this.schema}.jobs WHERE tenant_id = $1 AND id = $2 FOR UPDATE`,
+        [tenantId, jobId],
+      );
+      if (!locked.rowCount) throw new ApiError({ status: 404, code: 'JOB_NOT_FOUND', message: 'Job not found' });
+      const current = locked.rows[0];
+      if (!['ACCEPTED', 'QUEUED', 'RUNNING', 'RETRY_WAIT'].includes(current.status)) return { job: current, replayed: true };
+      const storedProgress = Number(current.progress || 0);
+      if (confirmedProgress < storedProgress || (confirmedProgress === storedProgress && current.current_step === currentStep && current.message === message)) {
+        return { job: current, replayed: true };
+      }
+
+      const updated = await client.query(
+        `UPDATE ${this.schema}.jobs
+         SET progress = GREATEST(progress, $3),
+             current_step = $4,
+             message = $5,
+             updated_at = now(),
+             version = version + 1,
+             sequence = sequence + 1
+         WHERE tenant_id = $1 AND id = $2 AND version = $6
+         RETURNING *`,
+        [tenantId, jobId, confirmedProgress, currentStep, message, current.version],
+      );
+      if (!updated.rowCount) {
+        throw new ApiError({ status: 409, code: 'JOB_VERSION_CONFLICT', message: 'Job was updated concurrently', retryable: true });
+      }
+      const job = updated.rows[0];
+      await client.query(
+        `INSERT INTO ${this.schema}.outbox_events(
+           event_id,tenant_id,aggregate_type,aggregate_id,sequence,event_type,schema_version,payload
+         ) VALUES($1,$2,'job',$3,$4,'job.progress','1.0',$5::jsonb)`,
+        [randomUUID(), tenantId, jobId, job.sequence, JSON.stringify({
+          jobId,
+          tenantId,
+          status: job.status,
+          progress: Number(job.progress),
+          currentStep: job.current_step,
+          message: job.message,
+          occurredAt: new Date().toISOString(),
+        })],
+      );
+      return { job, replayed: false };
+    });
+  }
+
   async saveCheckpoint({ tenantId, jobId, stepId, stepType, inputHash, status, outcome = null, resultArtifactId = null, summary = null }) {
     return withTenantTransaction(this.pool, tenantId, async (client) => {
       const result = await client.query(

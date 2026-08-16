@@ -95,6 +95,8 @@ function jobResponse(row) {
     message: row.message ?? null,
     resultArtifactId: row.result_artifact_id ?? null,
     createdAt: new Date(row.created_at).toISOString(),
+    startedAt: row.started_at ? new Date(row.started_at).toISOString() : null,
+    completedAt: row.completed_at ? new Date(row.completed_at).toISOString() : null,
     updatedAt: new Date(row.updated_at).toISOString(),
   };
 }

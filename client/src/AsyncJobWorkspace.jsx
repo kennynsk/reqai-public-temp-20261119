@@ -14,6 +14,7 @@ import {
   ExternalLink,
   FileUp,
   History,
+  Info,
   Loader2,
   Link2,
   List,
@@ -33,8 +34,10 @@ import {
 import ReactMarkdown from 'react-markdown';
 import rehypeSanitize from 'rehype-sanitize';
 import { enterpriseApi, subscribeJobEvents } from './api/enterprise-api.js';
+import { EXECUTION_PHASES, executionPhaseIndex, focusMessageForJob, isModelPhase, visualProgressForJob } from './job-progress.js';
 
 const TERMINAL = new Set(['SUCCEEDED', 'FAILED', 'CANCELLED']);
+const BACKGROUND_JOB_KEY = 'reqai.backgroundJob';
 const RESEARCH_MODES = [
   ['STANDARD_RESEARCH', 'Исследование'],
   ['MODEL_COMPARE', 'Сравнение (модели, температура)'],
@@ -52,7 +55,7 @@ const TYPE_LABELS = { DECOMPOSITION: 'Подготовка требований'
 const STATUS_LABELS = { ACCEPTED: 'Ожидает запуска', QUEUED: 'В очереди', RUNNING: 'Выполняется', RETRY_WAIT: 'Повторяем этап', SUCCEEDED: 'Готово', FAILED: 'Не выполнено', CANCEL_REQUESTED: 'Отменяется', CANCELLED: 'Отменено' };
 const OUTCOME_LABELS = { COMPLETE: 'Готово', PARTIAL: 'Готово частично', FAILED: 'Не выполнено' };
 const STATUS_TONES = { ACCEPTED: 'bg-slate-100 text-slate-600', QUEUED: 'bg-slate-100 text-slate-600', RUNNING: 'bg-indigo-100 text-indigo-700', RETRY_WAIT: 'bg-amber-100 text-amber-700', SUCCEEDED: 'bg-emerald-100 text-emerald-700', FAILED: 'bg-red-100 text-red-700', CANCEL_REQUESTED: 'bg-amber-100 text-amber-700', CANCELLED: 'bg-slate-100 text-slate-600' };
-const DEFAULT_MODELS = ['glm-5.2', 'glm-5-turbo', 'glm-4.7', 'glm-4.7-flash'];
+const DEFAULT_MODELS = ['glm-5.3', 'glm-5-turbo', 'glm-4.7', 'glm-4.7-flash'];
 const RESEARCH_KIND_LABELS = {
   trends: 'Тренды',
   competitors: 'Конкуренты',
@@ -128,19 +131,9 @@ function WorkflowStepper({ currentStage = 1, completedStage = 0, skippedStages =
     ['AI-исследование', 'Необязательный шаг'],
     ['Финальная версия', 'Сохраните результат'],
   ];
-  const current = stages[currentStage - 1] || stages[0];
   return (
     <section aria-label="Прогресс подготовки требований" className="bg-white rounded-2xl border border-slate-200 px-4 py-4 md:px-5 mb-6">
-      <div className="flex items-end justify-between gap-4 mb-3">
-        <div className="min-w-0">
-          <p className="text-xs font-bold uppercase tracking-wide text-indigo-600">Этап {currentStage} из {stages.length}</p>
-          <p className="text-sm font-semibold text-slate-800 mt-0.5 truncate">{current[0]} · <span className="font-normal text-slate-500">{current[1]}</span></p>
-        </div>
-        <span className="text-xs font-semibold text-slate-400 shrink-0">{currentStage * 25}%</span>
-      </div>
-      <div role="progressbar" aria-label="Общий прогресс" aria-valuemin="0" aria-valuemax="4" aria-valuenow={currentStage} className="h-1.5 rounded-full bg-slate-100 overflow-hidden mb-4">
-        <span className="block h-full rounded-full bg-indigo-600 transition-[width]" style={{ width: `${currentStage * 25}%` }} />
-      </div>
+      <p className="text-xs font-bold uppercase tracking-wide text-indigo-600 mb-4">Этап {currentStage} из {stages.length}</p>
       <ol aria-label="Этапы подготовки требований" className="grid grid-cols-2 gap-x-4 gap-y-3 md:grid-cols-4">
         {stages.map(([title, subtitle], index) => {
           const number = index + 1;
@@ -161,12 +154,13 @@ function WorkflowStepper({ currentStage = 1, completedStage = 0, skippedStages =
 }
 
 function AiSettingsDisclosure({ model, children }) {
-  return <details className="rounded-xl border border-slate-200 bg-slate-50/70 group">
-    <summary className="cursor-pointer list-none px-4 py-3 flex items-center justify-between gap-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded-xl">
-      <span className="flex items-center gap-2 text-sm font-semibold text-slate-700"><Settings2 className="w-4 h-4 text-indigo-500" />Настройки AI</span>
-      <span className="text-xs text-slate-400">{model} · рекомендуется</span>
+  return <details className="relative group">
+    <summary aria-label="Настройки AI" className="list-none cursor-pointer p-2 sm:px-3 sm:py-2 rounded-lg text-sm font-semibold text-gray-600 hover:bg-gray-100 flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">
+      <Settings2 className="w-4 h-4 text-indigo-500" />
+      <span className="hidden sm:inline">Настройки AI</span>
+      <span className="hidden lg:inline text-xs font-normal text-slate-400">{model} · рекомендуется</span>
     </summary>
-    <div className="px-4 pb-4 pt-1 border-t border-slate-200">{children}</div>
+    <div className="absolute right-0 top-full mt-2 w-[min(24rem,calc(100vw-2rem))] rounded-xl border border-slate-200 bg-white p-4 shadow-xl z-50">{children}</div>
   </details>;
 }
 
@@ -320,19 +314,16 @@ function DecompositionResult({ value, latestVersion, onSave, onStartResearch, on
       <div className="sticky top-16 z-30 -mx-4 px-4 py-3 bg-gray-50/95 backdrop-blur border-y border-slate-200 flex items-center justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-3">
           {hasSavedVersion && !hasUnsavedChanges && <span className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center"><Check className="w-4 h-4" /></span>}
-          <div>
-            <p className="font-semibold text-slate-900">{hasSavedVersion && !hasUnsavedChanges ? 'Изменения сохранены' : 'Проверенная версия'}</p>
-            <p id="research-save-status" className={`text-sm mt-0.5 ${hasSavedVersion && !hasUnsavedChanges ? 'text-emerald-700' : 'text-slate-500'}`}>{!hasSavedVersion ? 'Сохраните требования перед AI-исследованием.' : hasUnsavedChanges ? 'Есть несохранённые изменения.' : `Сохранена ${new Date(latestVersion.createdAt).toLocaleString()}`}</p>
-          </div>
+          <p id="research-save-status" className={`text-sm font-semibold ${hasSavedVersion && !hasUnsavedChanges ? 'text-emerald-700' : 'text-slate-700'}`}>{!hasSavedVersion ? 'Сохраните требования перед AI-исследованием' : hasUnsavedChanges ? 'Есть несохранённые изменения' : `Сохранено · ${new Date(latestVersion.createdAt).toLocaleString()}`}</p>
         </div>
         <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-          <button disabled={busy || !hasUnsavedChanges} onClick={() => onSave({ requirements, baseVersionId: latestVersion?.versionId || null })} className={`w-full sm:w-auto px-5 py-2.5 text-sm font-semibold rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${hasUnsavedChanges ? 'bg-indigo-600 text-white hover:bg-indigo-700' : 'border border-slate-200 text-slate-400 bg-white'}`}>{hasSavedVersion ? 'Сохранить изменения' : 'Сохранить проверенную версию'}</button>
+          {hasUnsavedChanges && <button disabled={busy} onClick={() => onSave({ requirements, baseVersionId: latestVersion?.versionId || null })} className="w-full sm:w-auto px-5 py-2.5 text-sm font-semibold rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 disabled:bg-slate-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">{hasSavedVersion ? 'Сохранить изменения' : 'Сохранить проверенную версию'}</button>}
           <button aria-label={researchBusy ? 'AI-исследование выполняется…' : 'Улучшить требования с помощью AI'} aria-describedby="research-save-status" title={!hasSavedVersion || hasUnsavedChanges ? 'Сначала сохраните текущую версию требований' : researchBusy ? 'Дождитесь завершения текущего AI-исследования' : 'Необязательный следующий шаг'} disabled={busy || researchBusy || !hasSavedVersion || hasUnsavedChanges} onClick={() => onStartResearch({ requirementsVersionId: latestVersion.versionId })} className="w-full sm:w-auto px-5 py-2.5 border border-indigo-200 bg-white text-indigo-700 text-sm font-semibold rounded-xl hover:bg-indigo-50 disabled:border-slate-200 disabled:text-slate-400 disabled:bg-slate-100 flex items-center justify-center gap-2">{researchBusy ? <><Loader2 className="w-4 h-4 animate-spin" />AI-исследование выполняется…</> : <><Sparkles className="w-4 h-4" />Улучшить с помощью AI <span className="font-normal text-slate-400">· необязательно</span></>}</button>
           <button aria-describedby="research-save-status" title={!hasSavedVersion || hasUnsavedChanges ? 'Сначала сохраните текущую версию требований' : 'Пропустить необязательное AI-исследование'} disabled={busy || researchBusy || !hasSavedVersion || hasUnsavedChanges} onClick={() => onSave({ requirements, baseVersionId: latestVersion.versionId, decisions: { ...(latestVersion.decisions || {}), skippedResearch: true } })} className="w-full sm:w-auto px-5 py-2.5 bg-indigo-600 text-white text-sm font-semibold rounded-xl hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed">Перейти к финальной версии</button>
         </div>
       </div>
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div><h2 className="text-base font-bold text-slate-900">Категории требований</h2><p className="text-xs text-slate-500 mt-0.5">Выберите удобное расположение категорий</p></div>
+        <h2 className="text-base font-bold text-slate-900">Категории требований</h2>
         <RequirementsLayoutToggle layout={layout} onChange={setLayout} />
       </div>
       <div aria-label="Категории требований" className={`grid gap-4 ${layout === 'columns' ? 'xl:grid-cols-3' : 'grid-cols-1'}`}>
@@ -542,7 +533,51 @@ function SourceRequirementsSnapshot({ requirements, onBack }) {
   );
 }
 
-function FinalRequirementsEditor({ latestVersion, onSave, onShowInsights, onShowSource, onStartResearch, onDirtyChange, busy, researchBusy = false, researchSkipped = false }) {
+function SourceBusinessContextSnapshot({ value, loading = false, onBack }) {
+  return <section className="space-y-5">
+    <div className="bg-white rounded-2xl border border-slate-200 p-5 flex items-start justify-between gap-4 flex-wrap">
+      <div><h1 className="text-xl font-bold text-slate-900">Исходная бизнес-задача</h1><p className="text-sm text-slate-500 mt-1">Контекст, на основе которого была выполнена первоначальная декомпозиция.</p></div>
+      <button onClick={onBack} className="px-4 py-2 border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-2"><ArrowLeft className="w-4 h-4" />Назад</button>
+    </div>
+    <div role="region" aria-label="Текст исходной бизнес-задачи" className="rounded-2xl border border-slate-200 bg-white p-5 text-sm leading-relaxed text-slate-700 whitespace-pre-wrap">{loading ? 'Загружаем исходный контекст…' : value?.trim() || 'Не удалось восстановить текст исходной бизнес-задачи.'}</div>
+  </section>;
+}
+
+function SourceDataMenu({ onShowContext, onShowRequirements }) {
+  return <details className="relative group">
+    <summary className="list-none cursor-pointer px-4 py-2 border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-2">Исходные данные<ChevronDown className="w-4 h-4 group-open:hidden" /><ChevronUp className="w-4 h-4 hidden group-open:block" /></summary>
+    <div className="absolute right-0 top-full mt-2 w-64 rounded-xl border border-slate-200 bg-white shadow-xl p-2 z-40">
+      <button onClick={onShowContext} className="w-full text-left px-3 py-2.5 rounded-lg text-sm text-slate-700 hover:bg-slate-50">Бизнес-задача</button>
+      <button onClick={onShowRequirements} className="w-full text-left px-3 py-2.5 rounded-lg text-sm text-slate-700 hover:bg-slate-50">Требования для AI</button>
+    </div>
+  </details>;
+}
+
+function OriginalBusinessContext({ value, loading = false, editable = false, children }) {
+  const context = value?.trim();
+  return (
+    <details className="group border-t border-slate-200">
+      <summary aria-label="Исходный бизнес-контекст" className="list-none cursor-pointer px-5 md:px-6 py-3.5 flex items-center justify-between gap-4 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">
+        <span className="min-w-0">
+          <span className="font-semibold text-slate-700">Исходная бизнес-задача</span>
+          <span className="block text-xs text-slate-500 truncate mt-0.5 max-w-3xl">{loading ? 'Загружаем исходный контекст…' : context || 'Исходный контекст недоступен'}</span>
+        </span>
+        <span className="font-semibold text-indigo-600 whitespace-nowrap">{editable ? 'Посмотреть и изменить' : 'Посмотреть'}</span>
+      </summary>
+      <div className="border-t border-slate-200 bg-slate-50/60 p-4 md:p-6">
+        {editable ? children : <>
+          <h2 className="text-base font-bold text-slate-900">Исходная бизнес-задача</h2>
+          <p className="text-xs text-slate-500 mt-1">Контекст, на основе которого была выполнена первоначальная декомпозиция.</p>
+          <div role="region" aria-label="Текст исходной бизнес-задачи" className="mt-4 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm leading-relaxed text-slate-700 whitespace-pre-wrap">
+            {loading ? 'Загружаем исходный контекст…' : context || 'Не удалось восстановить текст исходной бизнес-задачи.'}
+          </div>
+        </>}
+      </div>
+    </details>
+  );
+}
+
+function FinalRequirementsEditor({ latestVersion, onSave, onShowInsights, onShowSource, onShowContext, onStartResearch, onDirtyChange, busy, researchBusy = false, researchSkipped = false }) {
   const [requirements, setRequirements] = useState(() => latestVersion?.requirements || { business: [], functional: [], nonfunctional: [] });
   const [dirtyDrafts, setDirtyDrafts] = useState(() => new Set());
   const [layout, setLayout] = useRequirementsLayout();
@@ -575,24 +610,24 @@ function FinalRequirementsEditor({ latestVersion, onSave, onShowInsights, onShow
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
-            <div className="flex items-center gap-2 flex-wrap"><CheckCircle2 className="w-5 h-5 text-emerald-600" /><h1 className="text-xl font-bold text-slate-900">Финальная версия требований</h1><span className="text-xs text-emerald-700 bg-emerald-50 px-2 py-1 rounded-full">Версия сохранена</span></div>
-            <p className="text-sm text-slate-500 mt-2">{researchSkipped ? 'AI-исследование пропущено. Итоговые формулировки можно редактировать вручную.' : 'Отредактируйте итоговые формулировки вручную или вернитесь к результатам AI, чтобы изменить выбранные улучшения.'}</p>
+            <div className="flex items-center gap-2 flex-wrap"><CheckCircle2 className="w-5 h-5 text-emerald-600" /><h1 className="text-xl font-bold text-slate-900">Финальная версия требований</h1></div>
+            <p className="text-sm font-semibold text-emerald-700 mt-2">Сохранено · {new Date(latestVersion.createdAt).toLocaleString()}</p>
           </div>
           <div className="flex gap-2 flex-wrap">
-            {onShowSource && <button onClick={onShowSource} className="px-4 py-2 border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 hover:bg-slate-50">Исходная версия для AI</button>}
+            {onShowSource && onShowContext && <SourceDataMenu onShowContext={onShowContext} onShowRequirements={onShowSource} />}
             {onShowInsights && <button onClick={onShowInsights} className="px-4 py-2 border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-2"><ArrowLeft className="w-4 h-4" />К результатам AI-исследования</button>}
             {researchSkipped && onStartResearch && <button disabled={busy || researchBusy} onClick={() => onStartResearch({ requirementsVersionId: latestVersion.versionId })} className="px-4 py-2 border border-indigo-200 rounded-lg text-sm font-semibold text-indigo-700 hover:bg-indigo-50 disabled:bg-slate-100 disabled:text-slate-400 flex items-center gap-2">{researchBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}Добавить AI-исследование</button>}
           </div>
         </div>
       </div>
 
-      <div className="sticky top-16 z-30 -mx-4 px-4 py-3 bg-gray-50/95 backdrop-blur border-y border-slate-200 flex items-center justify-between gap-4 flex-wrap">
+      {hasUnsavedChanges && <div className="sticky top-16 z-30 -mx-4 px-4 py-3 bg-gray-50/95 backdrop-blur border-y border-slate-200 flex items-center justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-3"><span className={`w-8 h-8 rounded-full flex items-center justify-center ${hasUnsavedChanges ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>{hasUnsavedChanges ? <Pencil className="w-4 h-4" /> : <Check className="w-4 h-4" />}</span><div><p className="font-semibold text-slate-900">{hasUnsavedChanges ? 'Есть несохранённые изменения' : 'Изменения сохранены'}</p><p className="text-xs text-slate-500 mt-0.5">Редакция от {new Date(latestVersion.createdAt).toLocaleString()}</p></div></div>
-        <button disabled={busy || !hasUnsavedChanges} onClick={() => onSave({ requirements, baseVersionId: latestVersion.versionId, decisions: latestVersion.decisions || {} })} className="w-full sm:w-auto px-5 py-2.5 bg-indigo-600 text-white text-sm font-semibold rounded-xl hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed">Сохранить изменения</button>
-      </div>
+        <button disabled={busy} onClick={() => onSave({ requirements, baseVersionId: latestVersion.versionId, decisions: latestVersion.decisions || {} })} className="w-full sm:w-auto px-5 py-2.5 bg-indigo-600 text-white text-sm font-semibold rounded-xl hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed">Сохранить изменения</button>
+      </div>}
 
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div><h2 className="text-base font-bold text-slate-900">Категории требований</h2><p className="text-xs text-slate-500 mt-0.5">Выберите удобное расположение категорий</p></div>
+        <h2 className="text-base font-bold text-slate-900">Категории требований</h2>
         <RequirementsLayoutToggle layout={layout} onChange={setLayout} />
       </div>
       <div aria-label="Финальные требования по категориям" className={`grid gap-4 ${layout === 'columns' ? 'xl:grid-cols-3' : 'grid-cols-1'}`}>
@@ -609,7 +644,7 @@ function FinalRequirementsEditor({ latestVersion, onSave, onShowInsights, onShow
   );
 }
 
-function RequirementsInsightsResult({ value, latestVersion, onSaveFinal, onDirtyChange, busy }) {
+function RequirementsInsightsResult({ value, latestVersion, businessContext, businessContextLoading, onSaveFinal, onDirtyChange, busy }) {
   const insights = Array.isArray(value.insights) ? value.insights : [];
   const enhancements = insights.flatMap((insight) => displayEnhancementsForInsight(insight).map((enhancement, index) => ({ ...enhancement, key: `${insight.id}:${index}`, insightTitle: insight.title })));
   const savedAcceptedKeys = Array.isArray(latestVersion?.decisions?.acceptedEnhancementKeys) ? latestVersion.decisions.acceptedEnhancementKeys : [];
@@ -625,7 +660,7 @@ function RequirementsInsightsResult({ value, latestVersion, onSaveFinal, onDirty
 
   useEffect(() => {
     if (activeView === 'insights') onDirtyChange?.(hasDecisionChanges);
-    else if (activeView === 'source') onDirtyChange?.(false);
+    else if (activeView === 'source' || activeView === 'context') onDirtyChange?.(false);
   }, [activeView, hasDecisionChanges, onDirtyChange]);
 
   function finalRequirements() {
@@ -652,8 +687,12 @@ function RequirementsInsightsResult({ value, latestVersion, onSaveFinal, onDirty
     return <SourceRequirementsSnapshot requirements={value.baseRequirements} onBack={() => setActiveView(latestVersion?.versionId ? 'final' : 'insights')} />;
   }
 
+  if (activeView === 'context') {
+    return <SourceBusinessContextSnapshot value={businessContext} loading={businessContextLoading} onBack={() => setActiveView(latestVersion?.versionId ? 'final' : 'insights')} />;
+  }
+
   if (activeView === 'final' && latestVersion?.versionId) {
-    return <FinalRequirementsEditor latestVersion={latestVersion} onSave={onSaveFinal} onShowInsights={() => setActiveView('insights')} onShowSource={() => setActiveView('source')} onDirtyChange={onDirtyChange} busy={busy} />;
+    return <FinalRequirementsEditor latestVersion={latestVersion} onSave={onSaveFinal} onShowInsights={() => setActiveView('insights')} onShowSource={() => setActiveView('source')} onShowContext={() => setActiveView('context')} onDirtyChange={onDirtyChange} busy={busy} />;
   }
 
   const acceptedKeys = enhancements.filter((item) => decisions[item.key] === 'accepted').map((item) => item.key);
@@ -663,21 +702,44 @@ function RequirementsInsightsResult({ value, latestVersion, onSaveFinal, onDirty
   return (
     <section className="space-y-5">
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-5">
-        <div className="flex items-start justify-between gap-4 flex-wrap"><div><div className="flex items-center gap-2"><Sparkles className="w-5 h-5 text-indigo-500" /><h1 className="text-xl font-bold text-gray-900">Результаты AI-исследования</h1><span className="text-xs text-emerald-700 bg-emerald-50 px-2 py-1 rounded-full">{finalVersionSaved ? 'Финальная версия сохранена' : 'Исследование завершено'}</span></div><p className="text-sm text-gray-500 mt-2">Выберите полезные улучшения, которые нужно добавить в финальную версию требований.</p></div><button onClick={() => setActiveView('source')} className="px-4 py-2 border border-gray-200 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-50 flex items-center gap-2"><ArrowLeft className="w-4 h-4" />Исходные требования</button></div>
+        <div className="flex items-start justify-between gap-4 flex-wrap"><div><div className="flex items-center gap-2"><Sparkles className="w-5 h-5 text-indigo-500" /><h1 className="text-xl font-bold text-gray-900">Результаты AI-исследования</h1></div><p className="text-sm text-gray-500 mt-2">Выберите полезные улучшения для финальной версии требований.</p></div><SourceDataMenu onShowContext={() => setActiveView('context')} onShowRequirements={() => setActiveView('source')} /></div>
       </div>
       <div className="flex gap-2 overflow-x-auto pb-1"><button onClick={() => setActiveFilter('all')} className={`px-3 py-2 rounded-lg text-sm font-semibold whitespace-nowrap ${activeFilter === 'all' ? 'bg-indigo-600 text-white' : 'bg-white border border-gray-200 text-gray-600'}`}>Все результаты · {insights.length}</button>{Object.entries(INSIGHT_CATEGORY_META).map(([key, meta]) => { const count = insights.filter((item) => item.category === key).length; return count ? <button key={key} onClick={() => setActiveFilter(key)} className={`px-3 py-2 rounded-lg text-sm font-semibold whitespace-nowrap ${activeFilter === key ? meta.active : 'bg-white border border-gray-200 text-gray-600'}`}>{meta.label} · {count}</button> : null; })}</div>
-      <div role="region" aria-label="Карточки результатов AI-исследования" className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{visible.map((insight) => { const meta = INSIGHT_CATEGORY_META[insight.category] || INSIGHT_CATEGORY_META.trends; const CategoryIcon = meta.icon; const insightEnhancements = displayEnhancementsForInsight(insight); const relatedTo = Array.isArray(insight.relatedTo) ? insight.relatedTo : []; const sourceTypes = Array.isArray(insight.source_types) ? insight.source_types : []; return <article key={insight.id} className="bg-white rounded-xl border border-gray-200 p-5 hover:shadow-md transition-shadow"><div className="flex items-center justify-between gap-2"><span className="flex items-center gap-2 min-w-0"><CategoryIcon data-testid={`insight-category-icon-${insight.category}`} aria-hidden="true" className="w-4 h-4 text-gray-400 shrink-0" /><span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${meta.color}`}>{meta.label}</span></span><ApplicabilityBars value={insight.applicability ?? 50} /></div><h3 className="font-bold text-gray-900 mt-3">{insight.title}</h3><p className="text-sm text-gray-500 mt-2 leading-relaxed">{insight.summary}</p>{relatedTo.length > 0 && <div data-testid={`insight-relations-${insight.id}`} className="flex items-center gap-1.5 mt-3 flex-wrap"><Link2 aria-hidden="true" className="w-3.5 h-3.5 text-gray-400 shrink-0" />{relatedTo.map((id) => <span key={id} className="text-xs font-mono font-medium text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">{id}</span>)}</div>}<details className="mt-3 group"><summary className="list-none text-sm text-gray-400 hover:text-gray-600 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded flex items-center gap-1"><ChevronDown aria-hidden="true" className="w-3.5 h-3.5 group-open:hidden" /><ChevronUp aria-hidden="true" className="w-3.5 h-3.5 hidden group-open:block" /><span className="group-open:hidden">Подробнее</span><span className="hidden group-open:inline">Свернуть</span></summary><div className="mt-3 pt-3 border-t border-gray-100"><p className="text-sm text-gray-600 leading-relaxed">{insight.detail}</p>{sourceTypes.length > 0 && <div className="flex items-center gap-1.5 flex-wrap mt-3"><ExternalLink aria-hidden="true" className="w-3 h-3 text-gray-400 shrink-0" />{sourceTypes.map((source) => <span key={source} className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">{SOURCE_TYPE_LABELS[source] || source}</span>)}</div>}</div></details>{insightEnhancements.length > 0 && <div className="border-t border-gray-100 mt-4 pt-3 space-y-2">{insightEnhancements.map((enhancement, index) => { const key = `${insight.id}:${index}`; return <InsightEnhancementDecisionRow key={key} enhancement={enhancement} decision={decisions[key]} onDecision={(decision) => setDecisions((current) => ({ ...current, [key]: decision }))} />; })}</div>}</article>; })}</div>
-      <div className="sticky bottom-3 bg-white rounded-xl shadow-lg border border-gray-200 p-4 flex items-center justify-between gap-4 flex-wrap"><div><p className="font-semibold text-gray-900">Выбрано улучшений: {acceptedKeys.length}</p><p className="text-xs text-gray-500 mt-1">{latestVersion ? `Финальная версия сохранена ${new Date(latestVersion.createdAt).toLocaleString()}` : 'После проверки сохраните финальную версию требований.'}</p></div><button disabled={busy} onClick={() => finalVersionSaved ? setActiveView('final') : onSaveFinal({ requirements: finalRequirements(), baseVersionId: latestVersion?.versionId || value.inputRequirementsVersionId, decisions: { acceptedEnhancementKeys: acceptedKeys, rejectedEnhancementKeys: rejectedKeys } })} className="px-5 py-2.5 bg-indigo-600 text-white text-sm font-semibold rounded-xl hover:bg-indigo-700 disabled:bg-gray-300">{finalVersionSaved ? 'К финальным требованиям' : latestVersion ? 'Сохранить новую редакцию' : 'Сохранить финальную версию'}</button></div>
+      <div role="region" aria-label="Карточки результатов AI-исследования" className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {visible.map((insight) => {
+          const meta = INSIGHT_CATEGORY_META[insight.category] || INSIGHT_CATEGORY_META.trends;
+          const CategoryIcon = meta.icon;
+          const insightEnhancements = displayEnhancementsForInsight(insight);
+          const relatedTo = Array.isArray(insight.relatedTo) ? insight.relatedTo : [];
+          const sourceTypes = Array.isArray(insight.source_types) ? insight.source_types : [];
+          const proposalLabel = `${insightEnhancements.length} ${insightEnhancements.length === 1 ? 'предложение' : insightEnhancements.length > 1 && insightEnhancements.length < 5 ? 'предложения' : 'предложений'}`;
+          return <article key={insight.id} className="bg-white rounded-xl border border-gray-200 p-5 hover:shadow-md transition-shadow">
+            <div className="flex items-center justify-between gap-2"><span className="flex items-center gap-2 min-w-0"><CategoryIcon data-testid={`insight-category-icon-${insight.category}`} aria-hidden="true" className="w-4 h-4 text-gray-400 shrink-0" /><span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${meta.color}`}>{meta.label}</span></span><ApplicabilityBars value={insight.applicability ?? 50} /></div>
+            <h3 className="font-bold text-gray-900 mt-3">{insight.title}</h3>
+            <p className="text-sm text-gray-500 mt-2 leading-relaxed line-clamp-2">{insight.summary}</p>
+            <details className="mt-3 group">
+              <summary className="list-none text-sm font-semibold text-indigo-600 hover:text-indigo-700 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded flex items-center gap-1"><ChevronDown aria-hidden="true" className="w-3.5 h-3.5 group-open:hidden" /><ChevronUp aria-hidden="true" className="w-3.5 h-3.5 hidden group-open:block" /><span className="group-open:hidden">Подробнее{insightEnhancements.length ? ` · ${proposalLabel}` : ''}</span><span className="hidden group-open:inline">Свернуть</span></summary>
+              <div className="mt-3 pt-3 border-t border-gray-100">
+                {relatedTo.length > 0 && <div data-testid={`insight-relations-${insight.id}`} className="flex items-center gap-1.5 flex-wrap"><Link2 aria-hidden="true" className="w-3.5 h-3.5 text-gray-400 shrink-0" />{relatedTo.map((id) => <span key={id} className="text-xs font-mono font-medium text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">{id}</span>)}</div>}
+                {insight.detail && <p className="text-sm text-gray-600 leading-relaxed mt-3">{insight.detail}</p>}
+                {sourceTypes.length > 0 && <div className="flex items-center gap-1.5 flex-wrap mt-3"><ExternalLink aria-hidden="true" className="w-3 h-3 text-gray-400 shrink-0" />{sourceTypes.map((source) => <span key={source} className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">{SOURCE_TYPE_LABELS[source] || source}</span>)}</div>}
+                {insightEnhancements.length > 0 && <div className="border-t border-gray-100 mt-4 pt-3 space-y-2">{insightEnhancements.map((enhancement, index) => { const key = `${insight.id}:${index}`; return <InsightEnhancementDecisionRow key={key} enhancement={enhancement} decision={decisions[key]} onDecision={(decision) => setDecisions((current) => ({ ...current, [key]: decision }))} />; })}</div>}
+              </div>
+            </details>
+          </article>;
+        })}
+      </div>
+      <div className="sticky bottom-3 bg-white rounded-xl shadow-lg border border-gray-200 p-4 flex items-center justify-between gap-4 flex-wrap"><p className="font-semibold text-gray-900">Выбрано улучшений: {acceptedKeys.length}</p><button disabled={busy} onClick={() => finalVersionSaved ? setActiveView('final') : onSaveFinal({ requirements: finalRequirements(), baseVersionId: latestVersion?.versionId || value.inputRequirementsVersionId, decisions: { acceptedEnhancementKeys: acceptedKeys, rejectedEnhancementKeys: rejectedKeys } })} className="px-5 py-2.5 bg-indigo-600 text-white text-sm font-semibold rounded-xl hover:bg-indigo-700 disabled:bg-gray-300">{finalVersionSaved ? 'К финальным требованиям' : latestVersion ? 'Сохранить новую редакцию' : 'Сохранить финальную версию'}</button></div>
     </section>
   );
 }
 
-function ResultView({ metadata, content, latestVersion, onSaveRequirements, onStartResearch, onSaveFinal, onDirtyChange, busy, researchBusy = false }) {
+function ResultView({ metadata, content, latestVersion, businessContext, businessContextLoading, onSaveRequirements, onStartResearch, onSaveFinal, onDirtyChange, busy, researchBusy = false }) {
   const value = safeJson(content);
   const [activeSection, setActiveSection] = useState('overview');
   if (!value) return <Markdown>{content}</Markdown>;
   if (value.mode === 'PROMPT_TEST') return <Markdown>{value.text}</Markdown>;
-  if (value.mode === 'REQUIREMENTS_INSIGHTS') return <RequirementsInsightsResult value={value} latestVersion={latestVersion} onSaveFinal={onSaveFinal} onDirtyChange={onDirtyChange} busy={busy} />;
+  if (value.mode === 'REQUIREMENTS_INSIGHTS') return <RequirementsInsightsResult value={value} latestVersion={latestVersion} businessContext={businessContext} businessContextLoading={businessContextLoading} onSaveFinal={onSaveFinal} onDirtyChange={onDirtyChange} busy={busy} />;
   if (value.mode === 'DECOMPOSITION' || value.mode === 'DECOMPOSITION_WITH_INSIGHTS' || Array.isArray(value.decomposition)) {
     if (latestVersion?.decisions?.skippedResearch) return <FinalRequirementsEditor latestVersion={latestVersion} onSave={onSaveRequirements} onStartResearch={onStartResearch} onDirtyChange={onDirtyChange} busy={busy} researchBusy={researchBusy} researchSkipped />;
     return <DecompositionResult value={value} latestVersion={latestVersion} onSave={onSaveRequirements} onStartResearch={onStartResearch} onDirtyChange={onDirtyChange} busy={busy} researchBusy={researchBusy} />;
@@ -735,6 +797,91 @@ function ModelControls({ models, model, setModel, temperature, setTemperature })
       </label>
     </div>
   );
+}
+
+function formatElapsed(milliseconds) {
+  const seconds = Math.max(0, Math.floor(milliseconds / 1000));
+  const minutes = Math.floor(seconds / 60);
+  return `${String(minutes).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
+}
+
+function ExecutionTimeline({ job }) {
+  const activeIndex = executionPhaseIndex(job);
+  return <ol aria-label="Этапы выполнения задачи" className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
+    {EXECUTION_PHASES.map((label, index) => {
+      const completed = index < activeIndex;
+      const active = index === activeIndex;
+      const state = completed ? 'завершено' : active ? 'выполняется' : 'ожидает';
+      return <li key={label} aria-current={active ? 'step' : undefined} aria-label={`${label}: ${state}`} className={`rounded-xl border px-3 py-2.5 flex items-center gap-2 ${active ? 'border-indigo-200 bg-indigo-50/80' : completed ? 'border-emerald-100 bg-emerald-50/60' : 'border-slate-100 bg-slate-50/70'}`}>
+        <span className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${active ? 'bg-indigo-600 text-white ring-4 ring-indigo-100 animate-pulse' : completed ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-400'}`}>
+          {completed ? <Check className="w-3 h-3" /> : active ? <Loader2 className="w-3 h-3 animate-spin" /> : <span className="w-1.5 h-1.5 rounded-full bg-current" />}
+        </span>
+        <span className={`text-xs font-semibold ${active ? 'text-indigo-800' : completed ? 'text-emerald-800' : 'text-slate-400'}`}>{label}</span>
+      </li>;
+    })}
+  </ol>;
+}
+
+function ActiveJobPanel({ job, onCancel, onBackground }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const startedAt = Date.parse(job.startedAt || job.createdAt || '') || now;
+  const elapsedMs = Math.max(0, now - startedAt);
+  const visualProgress = visualProgressForJob(job, now);
+  const progress = Math.floor(visualProgress);
+  const estimated = isModelPhase(job) && job.status === 'RUNNING' && progress > Number(job.progress || 0);
+  const focusMessage = focusMessageForJob(job, now);
+  const title = job.type === 'DECOMPOSITION'
+    ? 'Декомпозиция требований'
+    : job.mode === 'REQUIREMENTS_INSIGHTS' ? 'AI-исследование требований' : MODE_LABELS[job.mode] || 'AI-задача';
+  const TitleTag = job.type === 'DECOMPOSITION' || job.mode === 'REQUIREMENTS_INSIGHTS' ? 'h2' : 'p';
+  const durationHint = job.type === 'DECOMPOSITION' ? 'обычно 1–3 минуты' : job.mode === 'REQUIREMENTS_INSIGHTS' ? 'обычно 3–6 минут' : 'обычно несколько минут';
+  const takingLonger = elapsedMs >= (job.type === 'DECOMPOSITION' ? 3 : 6) * 60_000;
+  return <section aria-label="Выполнение задачи" className="bg-white rounded-2xl border border-indigo-200 shadow-sm overflow-hidden">
+    <div className="p-5 md:p-6">
+      <div className="flex items-start justify-between gap-5 flex-wrap">
+        <div className="flex items-start gap-4 min-w-0">
+          <span className="w-11 h-11 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0"><Loader2 className="w-5 h-5 animate-spin" /></span>
+          <div className="min-w-0">
+            <TitleTag className="text-lg md:text-xl font-bold text-slate-900">{title}</TitleTag>
+            {takingLonger && <p className="text-sm text-slate-500 mt-1">Обработка занимает больше обычного, но задача продолжает выполняться.</p>}
+          </div>
+        </div>
+        <p className="text-sm text-slate-500 shrink-0" aria-label={`Прошло ${formatElapsed(elapsedMs)}, ${durationHint}`}><span className="font-mono font-semibold text-slate-700">{formatElapsed(elapsedMs)}</span> · {durationHint}</p>
+      </div>
+      {focusMessage && <div role="status" aria-live="polite" className="mt-4 rounded-xl border border-indigo-100 bg-indigo-50/60 px-4 py-3 flex items-center gap-3 overflow-hidden">
+        <span className="flex gap-1 shrink-0" aria-hidden="true"><span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-bounce" /><span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-bounce [animation-delay:150ms]" /><span className="w-1.5 h-1.5 rounded-full bg-indigo-300 animate-bounce [animation-delay:300ms]" /></span>
+        <p className="text-sm font-medium text-indigo-900">{focusMessage}</p>
+      </div>}
+      <ExecutionTimeline job={job} />
+      <div className="mt-5">
+        <div className="flex items-center justify-between gap-3 mb-2"><span className="flex items-center gap-1.5 text-xs font-semibold text-slate-500">Прогресс{estimated && <span title="Процент — ориентировочная оценка. Переходы между этапами подтверждаются сервером." aria-label="Об ориентировочной оценке прогресса" className="inline-flex text-slate-400 cursor-help"><Info className="w-3.5 h-3.5" /></span>}</span><span className="text-xs font-bold text-indigo-700">{progress}%</span></div>
+        <div role="progressbar" aria-label="Прогресс выполнения задачи" aria-valuemin="0" aria-valuemax="100" aria-valuenow={progress} aria-valuetext={estimated ? `Оценка ${progress} процентов, текущий этап подтверждён сервером` : `${progress} процентов подтверждено сервером`} className="relative h-3 rounded-full bg-slate-100 overflow-hidden">
+          <span className="block h-full rounded-full bg-gradient-to-r from-indigo-500 to-indigo-600 transition-[width] duration-1000 ease-out" style={{ width: `${visualProgress}%` }} />
+          <span className="reqai-progress-shimmer absolute inset-y-0 bg-gradient-to-r from-transparent via-white/75 to-transparent" aria-hidden="true" />
+        </div>
+      </div>
+      <div className="mt-5 flex justify-end">
+        <div className="flex gap-2 flex-wrap">
+          <button onClick={onBackground} className="px-4 py-2.5 rounded-lg border border-indigo-200 bg-white text-sm font-semibold text-indigo-700 hover:bg-indigo-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">Продолжить в фоне</button>
+          <button onClick={onCancel} className="px-4 py-2.5 rounded-lg border border-slate-300 bg-white text-sm font-semibold text-slate-600 hover:text-red-600 hover:border-red-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">Отменить</button>
+        </div>
+      </div>
+    </div>
+  </section>;
+}
+
+function BackgroundJobIndicator({ job, onOpen }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const progress = Math.floor(visualProgressForJob(job, now));
+  return <button aria-label={`Фоновая задача: ${job.message || STATUS_LABELS[job.status]}`} onClick={onOpen} className="px-3 py-2 rounded-lg text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"><Loader2 className="w-3.5 h-3.5 animate-spin" /><span className="hidden lg:inline">Задача в фоне</span><span>{progress}%</span></button>;
 }
 
 function JobStateCard({ job, onCancel }) {
@@ -870,11 +1017,12 @@ export default function AsyncJobWorkspace() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyFilter, setHistoryFilter] = useState('all');
   const [requirements, setRequirements] = useState('');
+  const [businessContextLoading, setBusinessContextLoading] = useState(false);
   const [file, setFile] = useState(null);
   const [models, setModels] = useState(DEFAULT_MODELS);
-  const [model, setModel] = useState('glm-5.2');
+  const [model, setModel] = useState('glm-5.3');
   const [temperature, setTemperature] = useState(0.2);
-  const [variantA, setVariantA] = useState({ model: 'glm-5.2', temperature: 0.2 });
+  const [variantA, setVariantA] = useState({ model: 'glm-5.3', temperature: 0.2 });
   const [variantB, setVariantB] = useState({ model: 'glm-5-turbo', temperature: 0.2 });
   const [compareTarget, setCompareTarget] = useState('CATEGORIES');
   const [researchKind, setResearchKind] = useState('trends');
@@ -888,6 +1036,8 @@ export default function AsyncJobWorkspace() {
   const [result, setResult] = useState(null);
   const [resultContent, setResultContent] = useState('');
   const [history, setHistory] = useState([]);
+  const [backgroundJob, setBackgroundJob] = useState(null);
+  const [completionNotice, setCompletionNotice] = useState(null);
   const [requirementsVersions, setRequirementsVersions] = useState([]);
   const [remoteRequirementsVersions, setRemoteRequirementsVersions] = useState(null);
   const editorDirtyRef = useRef(false);
@@ -962,6 +1112,20 @@ export default function AsyncJobWorkspace() {
     const page = await enterpriseApi.listJobs({ limit: 20 });
     setHistory(page.items);
     setCursor(page.nextCursor);
+    const rememberedId = localStorage.getItem(BACKGROUND_JOB_KEY);
+    const remembered = rememberedId && page.items.find((item) => item.jobId === rememberedId);
+    if (remembered && TERMINAL.has(remembered.status)) {
+      localStorage.removeItem(BACKGROUND_JOB_KEY);
+      setBackgroundJob(null);
+      setCompletionNotice(remembered);
+      return;
+    }
+    setBackgroundJob((current) => {
+      const currentFresh = current && page.items.find((item) => item.jobId === current.jobId);
+      if (currentFresh && !TERMINAL.has(currentFresh.status)) return currentFresh;
+      if (remembered && !TERMINAL.has(remembered.status)) return remembered;
+      return page.items.find((item) => item.jobId !== routeJobIdRef.current && !TERMINAL.has(item.status)) || null;
+    });
   }, []);
 
   useEffect(() => {
@@ -990,6 +1154,7 @@ export default function AsyncJobWorkspace() {
     setDebugOpen(false); setSseObservations([]); setRouteUnavailable(false); setError('');
     if (!routeJobId) {
       setJob(null); setResult(null); setResultContent(''); setRequirementsVersions([]); setRemoteRequirementsVersions(null);
+      setBusinessContextLoading(false);
       loadedResultJobIdRef.current = null;
       return undefined;
     }
@@ -1000,6 +1165,23 @@ export default function AsyncJobWorkspace() {
         if (controller.signal.aborted || routeJobIdRef.current !== routeJobId) return;
         setJob(selected); setWorkspace(workspaceForMode(selected.mode, selected.type));
         if (selected.mode) setMode(selected.mode === 'REQUIREMENTS_INSIGHTS' ? 'DECOMPOSITION' : selected.mode);
+        if (selected.type === 'DECOMPOSITION' || selected.mode === 'REQUIREMENTS_INSIGHTS') {
+          setRequirements('');
+          setBusinessContextLoading(true);
+          try {
+            const sourceJob = selected.mode === 'REQUIREMENTS_INSIGHTS' && selected.parentJobId
+              ? await enterpriseApi.getJob(selected.parentJobId, { signal: controller.signal })
+              : selected;
+            if (sourceJob.inputArtifactId) {
+              const source = await enterpriseApi.downloadArtifact(sourceJob.inputArtifactId);
+              const text = await source.text();
+              if (!controller.signal.aborted && routeJobIdRef.current === routeJobId) setRequirements(text);
+            }
+          } catch { /* the result remains usable even if its original artifact expired */ }
+          finally {
+            if (!controller.signal.aborted && routeJobIdRef.current === routeJobId) setBusinessContextLoading(false);
+          }
+        }
         setResult(null); setResultContent(''); setRequirementsVersions([]); setRemoteRequirementsVersions(null);
         loadedResultJobIdRef.current = null; editorDirtyRef.current = false;
         if (selected.status === 'SUCCEEDED') await loadResult(routeJobId, controller.signal);
@@ -1044,6 +1226,26 @@ export default function AsyncJobWorkspace() {
     return () => controller.abort();
   }, [jobId, loadRequirementsVersions, loadResult, navigate, refresh]);
 
+  useEffect(() => {
+    if (!backgroundJob?.jobId || TERMINAL.has(backgroundJob.status)) return undefined;
+    let stopped = false;
+    const reconcile = async () => {
+      try {
+        const next = await enterpriseApi.getJob(backgroundJob.jobId);
+        if (stopped) return;
+        setHistory((current) => current.map((item) => item.jobId === next.jobId ? { ...item, ...next } : item));
+        if (TERMINAL.has(next.status)) {
+          if (localStorage.getItem(BACKGROUND_JOB_KEY) === next.jobId) localStorage.removeItem(BACKGROUND_JOB_KEY);
+          setBackgroundJob(null);
+          setCompletionNotice(next);
+        } else setBackgroundJob(next);
+      } catch { /* history remains the recovery path */ }
+    };
+    reconcile();
+    const timer = window.setInterval(reconcile, 3000);
+    return () => { stopped = true; window.clearInterval(timer); };
+  }, [backgroundJob?.jobId, backgroundJob?.status]);
+
   const options = useMemo(() => {
     const base = { mode, model, temperature: Number(temperature), allCategories };
     const selectedCategories = categories.split('\n').map((value) => value.trim()).filter(Boolean);
@@ -1072,7 +1274,18 @@ export default function AsyncJobWorkspace() {
 
   function load(id) {
     navigate(id);
+    if (backgroundJob?.jobId === id) {
+      localStorage.removeItem(BACKGROUND_JOB_KEY);
+      setBackgroundJob(null);
+    }
     setHistoryOpen(false);
+  }
+
+  function continueInBackground() {
+    if (!job || TERMINAL.has(job.status)) return;
+    localStorage.setItem(BACKGROUND_JOB_KEY, job.jobId);
+    setBackgroundJob(job);
+    navigate(null);
   }
 
   function startNewTask() {
@@ -1146,7 +1359,9 @@ export default function AsyncJobWorkspace() {
 
   const canSubmit = mode === 'PROMPT_TEST' ? userPrompt.trim() : file || requirements.trim();
   const activeJob = job && !TERMINAL.has(job.status);
-  const normalActiveJob = job && ['ACCEPTED', 'QUEUED', 'RUNNING'].includes(job.status);
+  const progressingJob = job && ['ACCEPTED', 'QUEUED', 'RUNNING'].includes(job.status);
+  const backgroundActive = backgroundJob && !TERMINAL.has(backgroundJob.status);
+  const submissionBlocked = activeJob || backgroundActive;
   const cancelActiveJob = () => enterpriseApi.cancelJob(job.jobId).then(() => enterpriseApi.getJob(job.jobId)).then((next) => setJob(next));
   const submitLabel = isDecomposition ? 'Декомпозировать требования' : mode === 'STANDARD_RESEARCH' ? 'Анализировать требования' : 'Запустить задачу';
 
@@ -1164,20 +1379,18 @@ export default function AsyncJobWorkspace() {
   );
 
   const submitButton = (
-    <button disabled={!canSubmit || busy || activeJob || (researchKinds.length === 0 && ['STANDARD_RESEARCH', 'AGENT_COMPARE'].includes(mode))} onClick={submit} className="w-full sm:w-auto text-white py-3 px-6 rounded-lg font-semibold disabled:bg-slate-300 disabled:cursor-not-allowed flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2">
-      {busy ? <><Loader2 className="w-5 h-5 animate-spin" />Загрузка {Math.round(upload * 100)}%</> : activeJob ? <><Loader2 className="w-5 h-5 animate-spin" />{job.type === 'DECOMPOSITION' ? 'Декомпозиция выполняется…' : 'Исследование выполняется…'}</> : <>{isDecomposition ? <Sparkles className="w-4 h-4" /> : <Search className="w-5 h-5" />}{submitLabel}</>}
+    <button disabled={!canSubmit || busy || submissionBlocked || (researchKinds.length === 0 && ['STANDARD_RESEARCH', 'AGENT_COMPARE'].includes(mode))} onClick={submit} className="w-full sm:w-auto text-white py-3 px-6 rounded-lg font-semibold disabled:bg-slate-300 disabled:cursor-not-allowed flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2">
+      {busy ? <><Loader2 className="w-5 h-5 animate-spin" />Загрузка {Math.round(upload * 100)}%</> : submissionBlocked ? <><Loader2 className="w-5 h-5 animate-spin" />{activeJob ? job.type === 'DECOMPOSITION' ? 'Декомпозиция выполняется…' : 'Исследование выполняется…' : 'Другая задача выполняется…'}</> : <>{isDecomposition ? <Sparkles className="w-4 h-4" /> : <Search className="w-5 h-5" />}{submitLabel}</>}
     </button>
   );
 
   const contextComplete = Boolean(result && (job?.type === 'DECOMPOSITION' || ['DECOMPOSITION', 'DECOMPOSITION_WITH_INSIGHTS'].includes(result.mode)));
+  const showReadOnlyBusinessContext = Boolean(activeLinkedResearch || directFinalReady);
   const contextFormBody = <>
     {commonInput}
-    <div className="mt-4"><AiSettingsDisclosure model={model}><ModelControls models={models} model={model} setModel={setModel} temperature={temperature} setTemperature={setTemperature} /></AiSettingsDisclosure></div>
-    <div className="flex items-end justify-between mt-5 flex-col sm:flex-row gap-4">
-      <p className="text-xs text-gray-400 max-w-lg">AI создаст бизнес-, функциональные и нефункциональные требования. Их можно будет отредактировать перед необязательным исследованием.</p>
+    <div className="flex justify-end mt-5">
       <div className="w-full sm:w-auto flex flex-col sm:flex-row gap-2">
         {submitButton}
-        {normalActiveJob && <button onClick={cancelActiveJob} className="w-full sm:w-auto px-4 py-3 rounded-lg border border-slate-300 bg-white text-sm font-semibold text-slate-600 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">Отменить</button>}
       </div>
     </div>
   </>;
@@ -1194,7 +1407,9 @@ export default function AsyncJobWorkspace() {
               <div className="absolute right-0 top-full mt-2 w-72 rounded-xl border border-slate-200 bg-white shadow-xl p-2 z-50">{RESEARCH_MODES.map(([key, label]) => <button key={key} onClick={(event) => { setWorkspace('tools'); setMode(key); event.currentTarget.closest('details').removeAttribute('open'); }} className={`w-full text-left px-3 py-2.5 rounded-lg text-sm ${mode === key && workspace === 'tools' ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-slate-600 hover:bg-slate-50'}`}>{label}</button>)}</div>
             </details>
             {workspace === 'requirements' && job && TERMINAL.has(job.status) && <button aria-label="Новая задача" onClick={startNewTask} className="p-2 sm:px-3 sm:py-2 rounded-lg text-sm font-semibold text-indigo-600 hover:bg-indigo-50 flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"><Plus className="w-4 h-4" /><span className="hidden sm:inline">Новая задача</span></button>}
+            {backgroundActive && <BackgroundJobIndicator job={backgroundJob} onOpen={() => load(backgroundJob.jobId)} />}
             <button aria-label="История" onClick={() => setHistoryOpen(true)} className="p-2 sm:px-3 sm:py-2 rounded-lg text-sm font-semibold text-gray-600 hover:bg-gray-100 flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"><History className="w-4 h-4" /><span className="hidden sm:inline">История</span></button>
+            <AiSettingsDisclosure model={model}><ModelControls models={models} model={model} setModel={setModel} temperature={temperature} setTemperature={setTemperature} /></AiSettingsDisclosure>
             <button ref={debugTriggerRef} aria-label="Debug" title={job ? 'Debug' : 'Debug станет доступен после запуска задачи'} disabled={!job} onClick={() => setDebugOpen(true)} className="ml-auto p-2 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 disabled:text-slate-300 disabled:hover:bg-transparent disabled:cursor-not-allowed flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"><Bug className="w-4 h-4" /></button>
           </div>
         </div>
@@ -1203,36 +1418,20 @@ export default function AsyncJobWorkspace() {
       {routeUnavailable ? <main className="max-w-3xl mx-auto px-4 py-16"><section className="rounded-2xl border border-red-200 bg-white p-8 text-center"><AlertTriangle className="w-10 h-10 text-red-500 mx-auto mb-3" /><h1 className="text-xl font-bold text-slate-900">Задача недоступна</h1><p className="text-sm text-slate-500 mt-2">Проверьте адрес или права доступа. Другая задача не была открыта автоматически.</p><button onClick={() => navigate(null)} className="mt-5 px-4 py-2.5 rounded-lg bg-indigo-600 text-white text-sm font-semibold">Создать новую задачу</button></section></main> : workspace === 'requirements' ? (
         <main className="max-w-7xl mx-auto px-4 py-6">
           {(contextComplete || activeLinkedResearch || (linkedResearch && result)) && <WorkflowStepper currentStage={currentStage} completedStage={completedStage} skippedStages={directFinalReady ? [3] : []} />}
-          {activeLinkedResearch && !contextComplete ? <section className="bg-white rounded-2xl border border-slate-200 p-5 md:p-6 mb-5 flex items-center justify-between gap-5 flex-wrap">
-            <div className="flex items-center gap-4">
-              <span className="w-10 h-10 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0"><Loader2 className="w-5 h-5 animate-spin" /></span>
-              <div><h1 className="text-2xl md:text-3xl font-bold text-slate-900">AI-исследование требований</h1><p className="text-sm text-slate-500 mt-1">Анализируем проверенную версию и формируем предложения по улучшению.</p></div>
-            </div>
-            <button onClick={cancelActiveJob} className="px-4 py-2.5 rounded-lg border border-slate-300 bg-white text-sm font-semibold text-slate-600 hover:text-red-600 hover:border-red-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">Отменить</button>
-          </section> : contextComplete && !directFinalReady ? <section className="bg-white rounded-2xl border border-slate-200 mb-5 overflow-hidden">
-            <div className="p-5 md:px-6 flex items-start justify-between gap-6 flex-wrap">
+          {showReadOnlyBusinessContext && <section className="bg-white rounded-2xl border border-slate-200 mb-5 overflow-hidden"><OriginalBusinessContext value={requirements} loading={businessContextLoading} /></section>}
+          {activeLinkedResearch && !contextComplete ? <div className="mb-5"><ActiveJobPanel job={job} onCancel={cancelActiveJob} onBackground={continueInBackground} /></div> : contextComplete && !directFinalReady ? <section className="bg-white rounded-2xl border border-slate-200 mb-5 overflow-hidden">
+            <div className="p-5 md:px-6"><h1 className="text-2xl md:text-3xl font-bold text-slate-900">Проверка требований</h1></div>
+            <OriginalBusinessContext value={requirements} loading={businessContextLoading} editable>
               <div>
-                <h1 className="text-2xl md:text-3xl font-bold text-slate-900">{activeLinkedResearch ? 'AI-исследование требований' : 'Проверка требований'}</h1>
-                <p className="text-sm text-slate-500 mt-1">{activeLinkedResearch ? 'Анализируем сохранённую версию. Требования ниже показаны для контроля исходных данных.' : 'Изучите формулировки по категориям и сохраните проверенную версию.'}</p>
-              </div>
-              <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold ${activeLinkedResearch ? 'bg-indigo-50 text-indigo-700' : 'bg-emerald-50 text-emerald-700'}`}>{activeLinkedResearch ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}{activeLinkedResearch ? 'Исследование выполняется' : 'Контекст обработан'}</span>
-            </div>
-            <details className="group border-t border-slate-200">
-              <summary aria-label="Исходный бизнес-контекст" className="list-none cursor-pointer px-5 md:px-6 py-3.5 flex items-center justify-between gap-4 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">
-                <span className="min-w-0"><span className="font-semibold text-slate-700">Исходная бизнес-задача</span><span className="block text-xs text-slate-500 truncate mt-0.5 max-w-3xl">{requirements.trim() || 'Бизнес-контекст сохранён в исходной задаче'}</span></span>
-                <span className="font-semibold text-indigo-600 whitespace-nowrap">Посмотреть и изменить</span>
-              </summary>
-              <div className="border-t border-slate-200 bg-slate-50/60 p-4 md:p-6">
                 <h2 className="text-lg md:text-xl font-bold text-gray-900 mb-1">Изменить бизнес-задачу</h2>
                 <p className="text-sm text-slate-500 mb-4">После изменений запустите декомпозицию повторно.</p>
                 {contextFormBody}
               </div>
-            </details>
+            </OriginalBusinessContext>
           </section> : (linkedResearch && result) || directFinalReady ? null : <>
-            <div className="mb-6"><h1 className="text-2xl md:text-3xl font-bold text-gray-900">Подготовка требований</h1><p className="text-sm text-slate-500 mt-1">От бизнес-контекста до проверенной финальной версии</p></div>
+            <div className="mb-6"><h1 className="text-2xl md:text-3xl font-bold text-gray-900">Подготовка требований</h1></div>
             <WorkflowStepper currentStage={currentStage} completedStage={completedStage} skippedStages={directFinalReady ? [3] : []} />
             <section className="bg-white rounded-2xl shadow-sm border border-gray-200 p-4 md:p-6 mb-6">
-              <div className="text-xs font-semibold text-indigo-600 mb-1">ЭТАП 1 · БИЗНЕС-КОНТЕКСТ</div>
               <h2 className="text-lg md:text-xl font-bold text-gray-900 mb-1">Сформулируйте бизнес-задачу</h2>
               <p className="text-sm text-slate-500 mb-4">Опишите цель, ограничения и ожидаемый результат обычным языком.</p>
               {contextFormBody}
@@ -1241,8 +1440,9 @@ export default function AsyncJobWorkspace() {
           {error && <div className="mb-6 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg p-3 whitespace-pre-wrap">{error}</div>}
           <div className="space-y-6">
             {remoteRequirementsVersions && <section role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-4 flex items-center justify-between gap-4 flex-wrap"><div><p className="text-sm font-semibold text-amber-900">Доступна новая сохранённая версия</p><p className="text-xs text-amber-700 mt-1">Она создана в другом клиенте. Текущие несохранённые изменения оставлены без изменений.</p></div><button onClick={loadRemoteRequirementsVersion} className="px-4 py-2 rounded-lg border border-amber-300 bg-white text-sm font-semibold text-amber-800 hover:bg-amber-100">Загрузить новую версию</button></section>}
+            {progressingJob && !activeLinkedResearch && <ActiveJobPanel job={job} onCancel={cancelActiveJob} onBackground={continueInBackground} />}
             <JobStateCard job={job} onCancel={cancelActiveJob} />
-            {result && <ResultPanel result={result} resultContent={resultContent} latestVersion={requirementsVersions[0] || null} onSaveRequirements={saveRequirementsVersion} onStartResearch={startResearchFromDecomposition} onSaveFinal={saveRequirementsVersion} onDirtyChange={handleEditorDirty} busy={versionBusy} researchBusy={linkedResearchBusy} />}
+            {result && <ResultPanel result={result} resultContent={resultContent} latestVersion={requirementsVersions[0] || null} businessContext={requirements} businessContextLoading={businessContextLoading} onSaveRequirements={saveRequirementsVersion} onStartResearch={startResearchFromDecomposition} onSaveFinal={saveRequirementsVersion} onDirtyChange={handleEditorDirty} busy={versionBusy} researchBusy={linkedResearchBusy} />}
           </div>
         </main>
       ) : (
@@ -1259,8 +1459,7 @@ export default function AsyncJobWorkspace() {
                   {commonInput}
                 </>}
 
-                <AiSettingsDisclosure model={model}><div className="space-y-5">
-                {mode !== 'MODEL_COMPARE' && <ModelControls models={models} model={model} setModel={setModel} temperature={temperature} setTemperature={setTemperature} />}
+                <div className="space-y-5">
                 {mode === 'PROMPT_TEST' && <label className="block"><span className="text-sm font-semibold text-slate-700 mb-2 block">Системный промпт</span><textarea aria-label="Системный промпт" value={systemPrompt} onChange={(event) => setSystemPrompt(event.target.value)} placeholder="Вставьте системный промпт (role: system)..." className="w-full h-32 px-3 py-2 border-2 border-slate-200 rounded-lg focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100 resize-none bg-white" /></label>}
                 {['STANDARD_RESEARCH', 'AGENT_RESEARCH', 'AGENT_COMPARE'].includes(mode) && <div className="space-y-4">
                   <label className="block"><span className="text-sm font-semibold text-slate-700 mb-2 block">Категории (необязательно, по одной на строку)</span><textarea value={categories} onChange={(event) => setCategories(event.target.value)} className="w-full h-24 px-3 py-2 border-2 border-slate-200 rounded-lg focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100 resize-none bg-white" /></label>
@@ -1273,13 +1472,13 @@ export default function AsyncJobWorkspace() {
                   {compareTarget === 'RESEARCH' && <label className="block mt-4"><span className="text-sm font-semibold text-slate-700 mb-2 block">Тип исследования</span><select value={researchKind} onChange={(event) => setResearchKind(event.target.value)} className="w-full px-3 py-2 border-2 border-slate-200 rounded-lg bg-white focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100">{Object.entries(RESEARCH_KIND_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>}
                   <div className="grid gap-4 md:grid-cols-2">{[['A', variantA, setVariantA], ['B', variantB, setVariantB]].map(([label, value, setter]) => <fieldset key={label} className="border border-slate-200 bg-white rounded-xl p-4"><legend className="px-1 text-sm font-semibold text-slate-600">Вариант {label}</legend><label className="block mb-4"><span className="text-sm font-semibold text-slate-700 mb-2 block">Модель</span><select value={value.model} onChange={(event) => setter({ ...value, model: event.target.value })} className="w-full px-3 py-2 border-2 border-slate-200 rounded-lg bg-white focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100">{models.map((item) => <option key={item}>{item}</option>)}</select></label><label className="block"><span className="text-sm font-semibold text-slate-700 mb-2 block">Температура</span><input aria-label={`Температура ${label}`} type="number" min="0" max="2" step="0.1" value={value.temperature} onChange={(event) => setter({ ...value, temperature: Number(event.target.value) })} className="w-full px-3 py-2 border-2 border-slate-200 rounded-lg bg-white focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100" /></label></fieldset>)}</div>
                 </div>}
-                </div></AiSettingsDisclosure>
+                </div>
                 <div className="mt-6 flex flex-col sm:flex-row justify-end gap-2">
                   {submitButton}
-                  {normalActiveJob && <button onClick={cancelActiveJob} className="w-full sm:w-auto px-4 py-3 rounded-lg border border-slate-300 bg-white text-sm font-semibold text-slate-600 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">Отменить</button>}
                 </div>
                 {error && <div className="mt-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg p-3">{error}</div>}
               </section>
+              {progressingJob && <ActiveJobPanel job={job} onCancel={cancelActiveJob} onBackground={continueInBackground} />}
               <JobStateCard job={job} onCancel={cancelActiveJob} />
               {result && <ResultPanel result={result} resultContent={resultContent} latestVersion={requirementsVersions[0] || null} onSaveRequirements={saveRequirementsVersion} onStartResearch={startResearchFromDecomposition} onSaveFinal={saveRequirementsVersion} onDirtyChange={handleEditorDirty} busy={versionBusy} researchBusy={linkedResearchBusy} />}
             </div>
@@ -1289,11 +1488,12 @@ export default function AsyncJobWorkspace() {
 
       <HistoryDrawer open={historyOpen} onClose={() => setHistoryOpen(false)} history={history} filter={historyFilter} setFilter={setHistoryFilter} activeJobId={jobId} onSelect={load} cursor={cursor} onLoadMore={async () => { const page = await enterpriseApi.listJobs({ limit: 20, cursor }); setHistory((current) => [...current, ...page.items]); setCursor(page.nextCursor); }} />
       <DebugPanel open={debugOpen} onClose={() => setDebugOpen(false)} jobId={jobId} observations={sseObservations} refreshKey={debugRefreshKey} triggerRef={debugTriggerRef} onDownload={result?.resultArtifactId ? download : null} />
+      {completionNotice && <section role="status" aria-label="Задача завершена" className="fixed right-5 bottom-5 z-[90] w-[min(24rem,calc(100vw-2.5rem))] rounded-2xl border border-slate-200 bg-white shadow-2xl p-4"><div className="flex items-start gap-3"><span className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${completionNotice.status === 'SUCCEEDED' ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500'}`}>{completionNotice.status === 'SUCCEEDED' ? <CheckCircle2 className="w-5 h-5" /> : <AlertTriangle className="w-5 h-5" />}</span><div className="min-w-0 flex-1"><p className="font-semibold text-slate-900">{completionNotice.status === 'SUCCEEDED' ? 'Задача готова' : STATUS_LABELS[completionNotice.status]}</p><p className="text-sm text-slate-500 mt-0.5">{MODE_LABELS[completionNotice.mode] || TYPE_LABELS[completionNotice.type]}</p><div className="flex gap-2 mt-3"><button onClick={() => { const id = completionNotice.jobId; setCompletionNotice(null); load(id); }} className="px-3 py-2 rounded-lg bg-indigo-600 text-white text-xs font-semibold">Открыть результат</button><button aria-label="Закрыть уведомление" onClick={() => setCompletionNotice(null)} className="px-3 py-2 rounded-lg border border-slate-200 text-slate-600 text-xs font-semibold">Закрыть</button></div></div></div></section>}
     </div>
   );
 }
 
-function ResultPanel({ result, resultContent, latestVersion, onSaveRequirements, onStartResearch, onSaveFinal, onDirtyChange, busy, researchBusy = false }) {
+function ResultPanel({ result, resultContent, latestVersion, businessContext, businessContextLoading, onSaveRequirements, onStartResearch, onSaveFinal, onDirtyChange, busy, researchBusy = false }) {
   const parsedContent = safeJson(resultContent);
   const embeddedInsights = parsedContent?.mode === 'REQUIREMENTS_INSIGHTS';
   const decompositionResult = result.type === 'DECOMPOSITION' || ['DECOMPOSITION', 'DECOMPOSITION_WITH_INSIGHTS'].includes(result.mode) || ['DECOMPOSITION', 'DECOMPOSITION_WITH_INSIGHTS'].includes(parsedContent?.mode) || Array.isArray(parsedContent?.decomposition);
@@ -1306,7 +1506,7 @@ function ResultPanel({ result, resultContent, latestVersion, onSaveRequirements,
         </div>
         {result.outcome === 'PARTIAL' && <div className="mt-4 flex gap-2 text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3"><AlertTriangle className="w-5 h-5 shrink-0" /><p className="text-sm">Частичный результат: некоторые этапы завершились ошибкой.</p></div>}
       </div>}
-      <ResultView key={`${result.jobId}:${latestVersion?.versionId || 'base'}`} metadata={result} content={resultContent || result.summary || ''} latestVersion={latestVersion} onSaveRequirements={onSaveRequirements} onStartResearch={onStartResearch} onSaveFinal={onSaveFinal} onDirtyChange={onDirtyChange} busy={busy} researchBusy={researchBusy} />
+      <ResultView key={`${result.jobId}:${latestVersion?.versionId || 'base'}`} metadata={result} content={resultContent || result.summary || ''} latestVersion={latestVersion} businessContext={businessContext} businessContextLoading={businessContextLoading} onSaveRequirements={onSaveRequirements} onStartResearch={onStartResearch} onSaveFinal={onSaveFinal} onDirtyChange={onDirtyChange} busy={busy} researchBusy={researchBusy} />
     </section>
   );
 }

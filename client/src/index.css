@@ -11,3 +11,20 @@ body,
 body {
   margin: 0;
 }
+
+@keyframes reqai-progress-shimmer {
+  0% { left: -35%; }
+  100% { left: 105%; }
+}
+
+.reqai-progress-shimmer {
+  width: 30%;
+  animation: reqai-progress-shimmer 1.8s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reqai-progress-shimmer {
+    animation: none;
+    left: 35%;
+  }
+}

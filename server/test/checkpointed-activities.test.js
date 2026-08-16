@@ -35,3 +35,36 @@ test('finalization records COMPLETE, PARTIAL or FAILED and result artifact', asy
   assert.deepEqual(transitions.map((x) => [x.toStatus, x.outcome]), [['SUCCEEDED','COMPLETE'],['SUCCEEDED','PARTIAL'],['FAILED',null]]);
   assert.equal(transitions[1].patch.resultArtifactId, 'r2');
 });
+
+test('checkpoint activities publish confirmed user-facing milestones without fabricating model progress', async () => {
+  const progress = [];
+  const activities = createCheckpointedActivities({
+    siteId: 'dc-a', heartbeatFn() {},
+    handlers: {
+      async generateRequirementsInsights() { return { artifactId: 'insights' }; },
+    },
+    jobRepository: {
+      async findCheckpoint() { return null; },
+      async saveCheckpoint() {},
+      async updateProgress(value) { progress.push(value); return { job: value, replayed: false }; },
+    },
+  });
+  await activities.generateRequirementsInsights({ tenantId: 't', jobId: 'j' });
+  assert.deepEqual(progress.map(({ progress: value, currentStep }) => [value, currentStep]), [[20, 'model'], [90, 'assembly']]);
+  assert.match(progress[0].message, /AI анализирует/);
+});
+
+test('replayed checkpoint restores its completed milestone without executing the handler', async () => {
+  const progress = [];
+  const activities = createCheckpointedActivities({
+    siteId: 'dc-a', heartbeatFn() {}, handlers: { async mergeDecomposition() { throw new Error('must not execute'); } },
+    jobRepository: {
+      async findCheckpoint() { return { summary: { complete: true }, result_artifact_id: 'result' }; },
+      async saveCheckpoint() {},
+      async updateProgress(value) { progress.push(value); return { job: value, replayed: false }; },
+    },
+  });
+  const result = await activities.mergeDecomposition({ tenantId: 't', jobId: 'j' });
+  assert.equal(result.checkpointReplayed, true);
+  assert.deepEqual(progress.map(({ progress: value, currentStep }) => [value, currentStep]), [[95, 'persistence']]);
+});

@@ -8,11 +8,13 @@ function repositoryPool({ checkpointConflict = false } = {}) {
   const client = {
     async query(sql, params) {
       calls.push({ sql, params });
+      if (sql.includes('SELECT status, version, sequence, progress')) return { rowCount: 1, rows: [{ status: 'RUNNING', version: 2, sequence: 4, progress: 20, current_step: 'prepare', message: 'Подготавливаем данные' }] };
       if (sql.includes('SELECT status, version')) return { rowCount: 1, rows: [{ status: 'RUNNING', version: 2 }] };
       if (sql.includes('SELECT * FROM "reqai".jobs') && sql.includes('FOR UPDATE')) {
         return { rowCount: 1, rows: [{ id: params[1], status: 'RUNNING', sequence: 1, version: 2 }] };
       }
       if (sql.includes("SET status = 'CANCEL_REQUESTED'")) return { rowCount: 1, rows: [{ id: params[1], status: 'CANCEL_REQUESTED', version: 3 }] };
+      if (sql.includes('UPDATE "reqai".jobs') && sql.includes('GREATEST(progress')) return { rowCount: 1, rows: [{ id: params[1], status: 'RUNNING', progress: params[2], current_step: params[3], message: params[4], sequence: 5, version: 3 }] };
       if (sql.includes('UPDATE "reqai".jobs')) return { rowCount: 1, rows: [{ id: params[1], status: params[2], version: 3 }] };
       if (sql.includes('INSERT INTO "reqai".job_steps')) {
         return checkpointConflict ? { rowCount: 0, rows: [] } : { rowCount: 1, rows: [{ step_id: params[2] }] };
@@ -66,4 +68,38 @@ test('checkpoint rejects a repeated step with a different input hash', async () 
     }),
     (error) => error.code === 'CHECKPOINT_INPUT_CONFLICT',
   );
+});
+
+test('progress projection advances monotonically and publishes an ordered event', async () => {
+  const pool = repositoryPool();
+  const repository = new JobRepository(pool);
+  const result = await repository.updateProgress({
+    tenantId: 'tenant-a',
+    jobId: '00000000-0000-4000-8000-000000000001',
+    progress: 30,
+    currentStep: 'model',
+    message: 'AI анализирует требования',
+  });
+  assert.equal(result.replayed, false);
+  assert.equal(result.job.progress, 30);
+  const update = pool.calls.find(({ sql }) => sql.includes('GREATEST(progress'));
+  assert.deepEqual(update.params.slice(2, 5), [30, 'model', 'AI анализирует требования']);
+  const event = pool.calls.find(({ sql }) => sql.includes("'job.progress'"));
+  assert.ok(event);
+  assert.equal(event.params[3], 5);
+  assert.equal(JSON.parse(event.params[4]).currentStep, 'model');
+});
+
+test('progress projection ignores an older milestone without publishing', async () => {
+  const pool = repositoryPool();
+  const repository = new JobRepository(pool);
+  const result = await repository.updateProgress({
+    tenantId: 'tenant-a',
+    jobId: '00000000-0000-4000-8000-000000000001',
+    progress: 10,
+    currentStep: 'validate',
+    message: 'Проверяем данные',
+  });
+  assert.equal(result.replayed, true);
+  assert.equal(pool.calls.some(({ sql }) => sql.includes("'job.progress'")), false);
 });

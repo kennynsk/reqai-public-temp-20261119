@@ -117,7 +117,7 @@ The first async implementation uses one ZAI provider. `ZAI_API_KEY` is a secret;
 |---|---:|---|---|
 | `LLM_PROVIDER_MODE` | `zai` | `zai`; `mock` only for local tests (`gigachat` retained for legacy compatibility) | ConfigMap |
 | `ZAI_BASE_URL` | `https://api.z.ai/api/coding/paas/v4` | HTTPS URL | ConfigMap |
-| `ZAI_MODELS` | `glm-5.2,glm-5-turbo,glm-4.7,glm-4.7-flash` | comma-separated distinct provider model identifiers | ConfigMap |
+| `ZAI_MODELS` | `glm-5.3,glm-5-turbo,glm-4.7,glm-4.7-flash` | comma-separated distinct provider model identifiers | ConfigMap |
 | `ZAI_API_KEY` | none | required for workflow workers in ZAI mode | Secret |
 | `LLM_MODEL_PRIORITY` | first 3 entries of `ZAI_MODELS` | optional comma-separated 1–3 models contained in `ZAI_MODELS` | ConfigMap |
 | `LLM_MAX_MODELS_PER_STEP` | `3` | 1–3 | ConfigMap |

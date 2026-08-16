@@ -96,3 +96,10 @@ Research после decomposition MUST запускаться только по 
 #### Scenario: Requirements insights complete
 - **WHEN** связанная `REQUIREMENTS_INSIGHTS` job успешно завершается
 - **THEN** frontend показывает категорийные карточки с применимостью, источниками, связями `relatedTo` и готовыми `enhancements`, позволяя вернуться к требованиям и применить выбранные улучшения
+
+### Requirement: Restorable original business context
+На этапах проверки требований, связанного AI-исследования и финальной версии frontend SHALL позволять просмотреть исходную бизнес-задачу, использованную родительской decomposition job, включая восстановление после прямого открытия child job или перезагрузки страницы.
+
+#### Scenario: User opens linked research from history
+- **WHEN** пользователь открывает связанную research job напрямую или возвращается к ней из истории
+- **THEN** frontend разрешает `parentJobId`, загружает input artifact исходной decomposition job и показывает раскрываемый блок «Исходная бизнес-задача» без перехода из текущего workflow

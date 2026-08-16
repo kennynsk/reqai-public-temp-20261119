@@ -146,3 +146,28 @@
 - [x] 16.2 Keep linked research navigation inside the «Бизнес-требования» workspace and restore the original AI-Ресерчер cards, category filters and back-to-requirements interaction.
 - [x] 16.3 Map selected insight enhancements into the final reviewed requirements version while preserving research/decomposition lineage.
 - [x] 16.4 Add workflow and frontend regression tests proving that linked AI-Ресерч does not activate the standalone market-research module and remains reload-safe.
+
+## 17. Honest Progress and Background Tasks
+
+- [x] 17.1 Add an idempotent repository/service operation that persists safe `currentStep`, `message` and confirmed milestone `progress` without performing a lifecycle transition, and publishes an ordered progress event through the transactional outbox.
+- [x] 17.2 Map checkpoint start/completion for decomposition and research workflows to stable user-facing phases and progress milestones, preserving indeterminate progress during active LLM calls and REST recovery after missed SSE events.
+- [x] 17.3 Replace the separate decomposition/research loading fragments with a shared `ActiveJobPanel` that shows phase, confirmed progress, elapsed time, honest duration guidance, cancellation and «Продолжить в фоне».
+- [x] 17.4 Keep known active jobs reconciled at workspace level, add a compact header indicator and show an in-app terminal notification with an action that opens a background job result.
+- [x] 17.5 Add backend and frontend regression tests for ordered milestone events, REST reconciliation, non-fabricated progress, background navigation, completion notification and return to the finished task.
+
+## 18. Living Progress Experience
+
+- [x] 18.1 Add a deterministic monotonic ease-out visual progress estimator for long model phases that starts from the authoritative milestone, remains below the next server-confirmed boundary, restores from job timing data and yields immediately to REST/SSE progress.
+- [x] 18.2 Redesign `ActiveJobPanel` with workflow-specific rotating focus messages, a confirmed-phase mini-timeline, stronger continuous activity treatment and honest estimate guidance; remove the competing percentage from the four-step business journey.
+- [x] 18.3 Add frontend tests for estimator boundaries and reload stability, semantic message rotation, confirmed mini-timeline states, authoritative progress jumps and the absence of competing business percentages.
+
+## 19. Original Business Context Navigation
+
+- [x] 19.1 Restore the original decomposition input artifact when a requirements-insights child job is opened directly or after reload, and expose it throughout the later requirements journey.
+- [x] 19.2 Add a persistent read-only «Исходная бизнес-задача» disclosure to research and final views with frontend regression coverage that preserves the current research view and decisions.
+
+## 20. Concise Requirements Journey
+
+- [x] 20.1 Remove redundant framing and loading copy, replace «Сейчас в фокусе» with the direct activity message, and move the orientational progress explanation behind an accessible information tooltip.
+- [x] 20.2 Consolidate saved-version states and research source navigation, hide inactive save actions, and apply progressive disclosure to research card details and enhancements.
+- [x] 20.3 Update frontend regression tests for the concise hierarchy, tooltip copy, source-data navigation, conditional save actions and collapsed research details.

@@ -127,7 +127,7 @@ export function loadConfig(env = process.env, { loadFiles = env === process.env 
   const providerMode = choice(env, 'LLM_PROVIDER_MODE', 'zai', ['zai', 'gigachat', 'mock']);
   const defaultProviderModels = providerMode === 'gigachat'
     ? ['GC-Max', 'GC-M', 'GC-Lite']
-    : ['glm-5.2', 'glm-5-turbo', 'glm-4.7', 'glm-4.7-flash'];
+    : ['glm-5.3', 'glm-5-turbo', 'glm-4.7', 'glm-4.7-flash'];
   const availableModels = providerMode === 'gigachat'
     ? csv(env, 'LLM_MODEL_PRIORITY', defaultProviderModels)
     : csv(env, 'ZAI_MODELS', defaultProviderModels);
