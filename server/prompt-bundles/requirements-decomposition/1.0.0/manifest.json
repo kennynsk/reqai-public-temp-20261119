@@ -1,0 +1,17 @@
+{
+  "id": "requirements-decomposition",
+  "version": "1.0.0",
+  "workflowPurposes": [
+    "DECOMPOSITION"
+  ],
+  "outputSchemaVersion": "decomposition.v1",
+  "templates": {
+    "decompose": {
+      "path": "decompose.md",
+      "requiredVariables": [
+        "businessContext"
+      ],
+      "sha256": "11d58efa8b8e7772549440636d2ff8b5726f1f8503805806fcdad67002ad3241"
+    }
+  }
+}

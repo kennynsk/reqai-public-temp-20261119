@@ -1,0 +1,18 @@
+{
+  "id": "requirements-insights",
+  "version": "1.0.0",
+  "workflowPurposes": [
+    "REQUIREMENTS_INSIGHTS"
+  ],
+  "outputSchemaVersion": "requirements-insights.v1",
+  "templates": {
+    "insights": {
+      "path": "insights.md",
+      "requiredVariables": [
+        "businessContext",
+        "requirementsSection"
+      ],
+      "sha256": "4a5e1e7e4a58f2634477a7cf7b3b0e1bb244772f7dcfeba0c5cae339f2c97d87"
+    }
+  }
+}

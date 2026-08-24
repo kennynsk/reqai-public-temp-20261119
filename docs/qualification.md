@@ -25,3 +25,11 @@ client tests cover linked-research routing, legacy-selection conflicts, back/for
 cursor resume, Debug accessibility and removal of the old inline technical block.
 
 The remaining gates are: Temporal replicas/UI/schema in both DCs; load and provider calibration; 100 MB soak with DB backup/restore; pod/API/worker/Temporal/Kafka/PostgreSQL disruptions; controlled DC outage with measured RPO/RTO; security suite; additive migration; decomposition and research canaries; incremental SSE/webhook enablement; full `/api/v1` routing; compatibility-window expiry; endpoint removal and formal sign-off.
+
+## Requirements integration implementation qualification — 2026-08-24
+
+`add-requirements-integration-api` is implementation-ready for controlled rollout. The complete server suite passed 133/133 tests, prompt catalog qualification accepted five active `1.0.0` bundles (including the compatibility-only combined-decomposition bundle), and strict OpenSpec validation passed. Mock-provider HTTP qualification covered decomposition, standalone research and requirements-version research through accepted job, canonical status and result retrieval. A direct Docker API smoke run also completed a decomposition job through `glm-5.3`. This record is implementation evidence, not a replacement for the production environment gates above.
+
+## Requirements MCP gateway qualification — 2026-08-25
+
+The follow-up `add-requirements-mcp-server` is implemented as a separately deployable, disabled-by-default gateway. Its suite passed 27/27 tests, including official SDK Streamable HTTP conformance and all three starts through ReqAI REST and the mock provider. The server suite remains 133/133, frontend build and strict OpenSpec validation pass, the standalone image builds with zero known production vulnerabilities, and a live Docker MCP smoke created and read the same canonical decomposition job. See [MCP release qualification](mcp-qualification.md); real IAM/tenant canary sign-off remains an environment-specific production publication gate.

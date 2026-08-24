@@ -14,15 +14,21 @@ import { createJobService } from '../services/job-service.js';
 import { createJobQueryService } from '../services/job-query-service.js';
 import { createReadinessService } from '../services/readiness-service.js';
 import { createRequirementsVersionService } from '../services/requirements-version-service.js';
+import { createRequirementsIntegrationService } from '../services/requirements-integration-service.js';
 import { createJobTraceService } from '../services/job-trace-service.js';
+import { createPromptCatalog, defaultPromptBundleRoot } from '../prompts/prompt-catalog.js';
+import { createPromptProfileResolver } from '../prompts/prompt-profile-resolver.js';
 
 export async function startApiRuntime(config, { createAppFn = createApp } = {}) {
+  const promptCatalog = config.features?.versionedPrompts === false ? null : createPromptCatalog({ rootDir: defaultPromptBundleRoot(), maxRenderedBytes: config.prompts.maxRenderedBytes });
+  const promptProfileResolver = promptCatalog ? createPromptProfileResolver({ catalog: promptCatalog, policy: config.prompts.policy }) : null;
+  if (promptCatalog) logEvent('info', 'prompt.catalog.ready', { bundles: promptCatalog.inventory() });
   const databasePool = config.asyncEnabled ? createDatabasePool(config) : null;
   const operationalRepository = databasePool ? new OperationalRepository(databasePool, { schema: config.database.schema, siteId: config.process.siteId }) : null;
   const readiness = createReadinessService({
     checks: databasePool ? [{ name: 'postgresql', check: () => checkDatabaseHealth(databasePool) }, { name: 'operational-mode', check: async () => ({ ok: (await operationalRepository.get({ tenantId: config.tenancy.defaultTenantId }))?.mode !== 'DRAIN' }) }] : [],
   });
-  const jobRepository = databasePool ? new JobRepository(databasePool, { schema: config.database.schema }) : null;
+  const jobRepository = databasePool ? new JobRepository(databasePool, { schema: config.database.schema, artifactSchema: config.database.artifactSchema }) : null;
   const auditRepository = databasePool ? new AuditRepository(databasePool, { schema: config.database.schema }) : null;
   const artifactRepository = databasePool ? new ArtifactRepository(databasePool, { schema: config.database.schema, artifactSchema: config.database.artifactSchema }) : null;
   const eventRepository = databasePool ? new EventRepository(databasePool, { schema: config.database.schema }) : null;
@@ -37,8 +43,10 @@ export async function startApiRuntime(config, { createAppFn = createApp } = {}) 
     versionRepository: requirementsVersionRepository,
     auditRepository,
   }) : null;
+  const jobService = createJobService({ config, jobRepository, operationalRepository, requirementsVersionService, jobTraceRepository, promptProfileResolver });
+  const requirementsIntegrationService = databasePool ? createRequirementsIntegrationService({ config, artifactRepository, jobService, requirementsVersionService }) : null;
   const services = {
-    jobService: createJobService({ config, jobRepository, operationalRepository, requirementsVersionService, jobTraceRepository }),
+    jobService,
     jobQueryService: createJobQueryService({ config, jobRepository, auditRepository }),
     jobTraceService: databasePool ? createJobTraceService({ config, jobTraceRepository, artifactRepository, auditRepository }) : null,
     artifactRepository,
@@ -49,6 +57,8 @@ export async function startApiRuntime(config, { createAppFn = createApp } = {}) 
     operationalRepository,
     requirementsVersionService,
     jobTraceRepository,
+    promptCatalog,
+    requirementsIntegrationService,
   };
   const created = createAppFn({ siteId: config.process.siteId, readiness, config, services });
   const { app } = created;

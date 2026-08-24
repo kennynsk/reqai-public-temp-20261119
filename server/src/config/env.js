@@ -62,6 +62,19 @@ function csv(env, name, fallback = []) {
   return raw.split(',').map((item) => item.trim()).filter(Boolean);
 }
 
+function promptRelease(env, prefix) {
+  const active = optionalString(env, `${prefix}_ACTIVE_VERSION`, '1.0.0');
+  const released = csv(env, `${prefix}_RELEASED_VERSIONS`, ['1.0.0']);
+  if (!/^[1-9]\d*\.\d+\.\d+$/.test(active) || released.some((version) => !/^[1-9]\d*\.\d+\.\d+$/.test(version))) {
+    throw new Error(`${prefix} versions must use semantic versioning`);
+  }
+  if (released.length < 1 || released.length > 10 || new Set(released).size !== released.length) {
+    throw new Error(`${prefix}_RELEASED_VERSIONS must contain 1 to 10 unique versions`);
+  }
+  if (!released.includes(active)) throw new Error(`${prefix}_ACTIVE_VERSION must be present in ${prefix}_RELEASED_VERSIONS`);
+  return { active, released };
+}
+
 function intMap(env, name, fallback = {}) {
   const raw = optionalString(env, name);
   if (!raw) return { ...fallback };
@@ -173,6 +186,20 @@ export function loadConfig(env = process.env, { loadFiles = env === process.env 
   const config = {
     environment: production ? 'production' : 'development',
     asyncEnabled,
+    features: {
+      requirementsIntegrationApi: bool(env, 'REQUIREMENTS_INTEGRATION_API_ENABLED', true),
+      versionedPrompts: bool(env, 'VERSIONED_PROMPTS_ENABLED', true),
+    },
+    prompts: {
+      maxRenderedBytes: integer(env, 'PROMPT_MAX_RENDERED_BYTES', 2_097_152, { min: 1024, max: 10_485_760 }),
+      policy: {
+        'requirements-decomposition': promptRelease(env, 'PROMPT_DECOMPOSITION'),
+        'legacy-decomposition-with-insights': promptRelease(env, 'PROMPT_LEGACY_DECOMPOSITION_WITH_INSIGHTS'),
+        'requirements-insights': promptRelease(env, 'PROMPT_REQUIREMENTS_INSIGHTS'),
+        'standard-research': promptRelease(env, 'PROMPT_STANDARD_RESEARCH'),
+        'agent-research': promptRelease(env, 'PROMPT_AGENT_RESEARCH'),
+      },
+    },
     process: {
       role: choice(env, 'APP_ROLE', 'api', ['api', 'workflow-worker', 'event-worker', 'maintenance-worker']),
       siteId: validateIdentifier('DEPLOYMENT_SITE_ID', optionalString(env, 'DEPLOYMENT_SITE_ID', 'local')),

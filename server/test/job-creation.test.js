@@ -72,6 +72,55 @@ test('accepted job, idempotency, outbox and audit are committed in one transacti
   assert.ok(pool.calls.some(({ sql }) => sql === 'COMMIT'));
 });
 
+test('inline input artifact and accepted job are committed in the same idempotent transaction', async () => {
+  const pool = creationPool();
+  const repository = new JobRepository(pool, { artifactSchema: 'reqai_artifacts' });
+  await repository.createAcceptedWithInlineArtifact({
+    tenantId: 'tenant-a', ownerUserId: 'user-a', idempotencyKey: 'inline-request-0001', requestHash: 'hash-inline',
+    idempotencyExpiresAt: new Date('2026-01-02T00:00:00Z'),
+    inlineArtifact: { content: 'business context', contentType: 'text/plain', sha256: 'a'.repeat(64), expiresAt: new Date('2026-01-02T00:00:00Z') },
+    job: { id: '00000000-0000-4000-8000-000000000011', type: 'DECOMPOSITION', parentJobId: null, inputArtifactId: '00000000-0000-4000-8000-000000000012', priority: 50, configurationSnapshot: {}, createdSite: 'dc-a', deadlineAt: new Date('2026-01-01T01:00:00Z') },
+    event: { id: '00000000-0000-4000-8000-000000000013', type: 'job.accepted', payload: { status: 'ACCEPTED' } },
+    audit: { id: '00000000-0000-4000-8000-000000000014', action: 'job.create', actorRoles: ['user'], requestId: 'req-inline', metadata: {} },
+  });
+  const artifactInsert = pool.calls.find(({ sql }) => sql.includes('INSERT INTO "reqai".artifacts'));
+  const contentInsert = pool.calls.find(({ sql }) => sql.includes('INSERT INTO "reqai_artifacts".artifact_content'));
+  const jobInsert = pool.calls.find(({ sql }) => sql.includes('INSERT INTO "reqai".jobs'));
+  assert.ok(artifactInsert && contentInsert && jobInsert);
+  assert.ok(pool.calls.indexOf(artifactInsert) < pool.calls.indexOf(jobInsert));
+  assert.equal(pool.calls.filter(({ sql }) => sql === 'COMMIT').length, 1);
+});
+
+test('identical inline replay returns one job without another artifact and changed hash conflicts', async () => {
+  const calls = []; let existing = null;
+  const client = {
+    async query(sql, params) {
+      calls.push({ sql, params });
+      if (sql.includes('SELECT i.request_hash')) return { rowCount: existing ? 1 : 0, rows: existing ? [existing] : [] };
+      if (sql.includes('INSERT INTO "reqai".jobs')) {
+        existing = { id: params[0], type: params[4], status: 'ACCEPTED', request_hash: 'same-hash' };
+        return { rowCount: 1, rows: [{ id: params[0], type: params[4], status: 'ACCEPTED' }] };
+      }
+      return { rowCount: 1, rows: [] };
+    },
+    release() {},
+  };
+  const repository = new JobRepository({ connect: async () => client });
+  const submission = (requestHash) => repository.createAcceptedWithInlineArtifact({
+    tenantId: 'tenant-a', ownerUserId: 'user-a', idempotencyKey: 'inline-replay-0001', requestHash,
+    idempotencyExpiresAt: new Date('2026-01-02T00:00:00Z'),
+    inlineArtifact: { content: 'context', contentType: 'text/plain', sha256: 'a'.repeat(64), expiresAt: null },
+    job: { id: '00000000-0000-4000-8000-000000000021', type: 'DECOMPOSITION', parentJobId: null, inputArtifactId: '00000000-0000-4000-8000-000000000022', priority: 50, configurationSnapshot: {}, createdSite: 'dc-a', deadlineAt: new Date() },
+    event: { id: '00000000-0000-4000-8000-000000000023', type: 'job.accepted', payload: {} },
+    audit: { id: '00000000-0000-4000-8000-000000000024', action: 'job.create', actorRoles: ['user'], metadata: {} },
+  });
+  assert.equal((await submission('same-hash')).replayed, false);
+  assert.equal((await submission('same-hash')).replayed, true);
+  await assert.rejects(() => submission('changed-hash'), (error) => error.code === 'IDEMPOTENCY_KEY_CONFLICT');
+  assert.equal(calls.filter(({ sql }) => sql.includes('INSERT INTO "reqai".artifacts')).length, 1);
+  assert.equal(calls.filter(({ sql }) => sql.includes('INSERT INTO "reqai".jobs')).length, 1);
+});
+
 test('job service snapshots GC model priority and returns repository replay state', async () => {
   let input;
   const config = {
@@ -101,6 +150,28 @@ test('job service snapshots GC model priority and returns repository replay stat
   assert.deepEqual(input.job.configurationSnapshot.models, ['GC-Max', 'GC-M', 'GC-Lite']);
   assert.equal(input.event.type, 'job.accepted');
   assert.equal(input.audit.requestId, 'req-1');
+});
+
+test('new production jobs snapshot the resolved immutable prompt profile', async () => {
+  let accepted;
+  const promptProfile = { id: 'requirements-decomposition', version: '1.0.0', manifestHash: 'a'.repeat(64), outputSchemaVersion: 'decomposition.v1', templates: { decompose: { sha256: 'b'.repeat(64) } } };
+  const service = createJobService({
+    config: {
+      asyncEnabled: true, features: { versionedPrompts: true }, process: { siteId: 'dc-a' },
+      jobs: { decompositionDeadlineMs: 3_600_000, researchDeadlineMs: 14_400_000, maxResearchCategories: 10 },
+      llm: { models: ['GC-Max'], maxModelsPerStep: 1, maxAttemptsPerModel: 1, requestTimeoutMs: 300_000 },
+    },
+    promptProfileResolver: { resolve(input) { assert.equal(input.requestedVersion, '1.0.0'); return promptProfile; } },
+    jobRepository: { async createAccepted(value) { accepted = value; return { job: value.job, replayed: false }; } },
+    uuid: () => '00000000-0000-4000-8000-000000000001',
+  });
+  await service.create({
+    auth: { tenantId: 'tenant-a', userId: 'user-a', roles: ['user'] }, idempotencyKey: 'profile-request-001',
+    body: { type: 'DECOMPOSITION', inputArtifactId: '00000000-0000-4000-8000-000000000099', options: { mode: 'DECOMPOSITION', promptVersion: '1.0.0' } },
+  });
+  assert.equal(accepted.job.configurationSnapshot.promptProfile, promptProfile);
+  assert.equal(accepted.audit.metadata.promptProfile.manifestHash, promptProfile.manifestHash);
+  assert.equal(JSON.stringify(accepted.event.payload).includes('prompt'), false);
 });
 
 test('job service snapshots original application mode, temperature and comparison variants', async () => {

@@ -5,6 +5,7 @@
 | Исходный сценарий | Durable mode | Backend execution |
 | --- | --- | --- |
 | Декомпозиция и ручная проверка требований | `DECOMPOSITION` | chunked decomposition → merge → редактирование и сохранение версии пользователем |
+| AI-исследование сохранённой версии | `REQUIREMENTS_INSIGHTS` | один специализированный insights prompt → карточки улучшений → выбор пользователем → финальная версия |
 | Обычное исследование | `STANDARD_RESEARCH` | категории → trends/competitors/practices → synthesis → improve |
 | Сравнение моделей и температуры | `MODEL_COMPARE` | два варианта с отдельными model/temperature snapshots |
 | Агентное сравнение | `AGENT_COMPARE` | standard и agent analysis/research/improve в одной job |
@@ -15,6 +16,6 @@
 
 Prompt test передаёт текст system/user prompt внутри input artifact, а не в REST, Kafka или Temporal metadata. Это сохраняет reference-only control plane и единые retention/access rules.
 
-## Визуальный паритет
+## Текущая информационная архитектура
 
-Асинхронный frontend сохраняет дизайн исходного приложения: белую верхнюю навигацию ReqAI с разделами «Бизнес-требования» и «Исследование рынка», исходную бизнес-форму с шагом декомпозиции, пять внутренних research-вкладок, типографику, цветовую схему и карточное представление результатов. Durable-статус, история и metadata моделей встроены в те же визуальные паттерны и не возвращают orchestration в браузер.
+Асинхронный frontend открывает основной четырёхэтапный workspace «Подготовка требований»: «Контекст» → «Требования» → необязательное «AI-исследование» → «Финальная версия». Самостоятельные `STANDARD_RESEARCH`, `MODEL_COMPARE`, `AGENT_COMPARE`, `AGENT_RESEARCH` и `PROMPT_TEST` находятся в меню «Дополнительные инструменты» и не смешиваются с linked requirements research. Durable-статус, история, task permalink и metadata моделей загружаются с backend по `jobId`; браузер не оркестрирует LLM-цепочки.

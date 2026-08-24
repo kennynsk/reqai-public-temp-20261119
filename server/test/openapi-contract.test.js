@@ -9,6 +9,9 @@ const specPath = path.resolve(testDir, '..', '..', 'docs', 'api', 'openapi.v1.js
 const spec = JSON.parse(await readFile(specPath, 'utf8'));
 
 const requiredOperations = {
+  'POST /api/v1/decompositions': ['202', '400', '401', '403', '404', '409', '413', '429', '503'],
+  'POST /api/v1/research': ['202', '400', '401', '403', '404', '409', '413', '429', '503'],
+  'POST /api/v1/requirements/versions/{versionId}/research': ['202', '400', '401', '403', '404', '409', '429', '503'],
   'POST /api/v1/jobs': ['202', '400', '401', '409', '429', '503'],
   'GET /api/v1/jobs': ['200', '401'],
   'GET /api/v1/jobs/{jobId}': ['200', '401', '404'],
@@ -61,4 +64,13 @@ test('jobId remains the only durable identifier and no parallel task API is intr
   assert.equal(spec.components.schemas.JobAccepted.properties.taskId, undefined);
   assert.equal(Object.keys(spec.paths).some((path) => path.startsWith('/api/v1/tasks')), false);
   assert.equal(spec.components.schemas.JobTrace.properties.jobId.format, 'uuid');
+});
+
+test('domain contracts expose product options and strict mutually exclusive inputs', () => {
+  assert.equal(spec.components.schemas.DecompositionRequest.oneOf.length, 2);
+  assert.equal(spec.components.schemas.StandaloneResearchRequest.oneOf.length, 2);
+  assert.deepEqual(spec.components.schemas.StandaloneResearchRequest.oneOf[0].properties.strategy.enum, ['standard', 'agent']);
+  assert.equal(spec.components.schemas.RequirementsResearchRequest.additionalProperties, false);
+  assert.ok(spec.components.schemas.JobOptions.properties.promptVersion);
+  for (const field of ['statusUrl', 'eventsUrl', 'resultUrl', 'cancelUrl']) assert.ok(spec.components.schemas.JobAccepted.properties[field]);
 });

@@ -150,5 +150,17 @@ export function createRequirementsVersionService({ config, jobRepository, artifa
       }
       return version;
     },
+
+    async resolveResearchSource({ auth, versionId }) {
+      const version = await visibleVersion(auth, versionId);
+      if (version.content.sourceJobType !== 'DECOMPOSITION') {
+        throw new ApiError({ status: 409, code: 'INVALID_RESEARCH_PARENT', message: 'Requirements research requires a version produced by decomposition' });
+      }
+      const parent = await visibleJob(auth, version.row.source_job_id);
+      if (parent.type !== 'DECOMPOSITION' || parent.status !== 'SUCCEEDED') {
+        throw new ApiError({ status: 409, code: 'INVALID_RESEARCH_PARENT', message: 'Requirements research requires a completed decomposition parent' });
+      }
+      return Object.freeze({ versionId: version.row.id, inputArtifactId: version.row.id, parentJobId: parent.id, inputSha256: version.metadata.sha256 });
+    },
   };
 }

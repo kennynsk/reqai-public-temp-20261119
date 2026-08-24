@@ -9,9 +9,17 @@
 ## Запуск
 
 ```bash
-docker compose up --build -d
+npm run dev
+```
+
+Это основной локальный entrypoint: он выполняет `docker compose up --build` в foreground и показывает общие логи. Для фонового режима:
+
+```bash
+npm run dev:detached
 docker compose ps -a
 ```
+
+Прямой `docker compose up --build` эквивалентен `npm run dev`. Команда `npm run dev:legacy` намеренно запускает прежнюю standalone-пару Node/Vite на портах `5178`/`5177`; она нужна только для проверки legacy-функционала и не показывает текущий enterprise workflow.
 
 Первый запуск загружает образы и может занять несколько минут. Одноразовые контейнеры `migrate`, `kafka-init` и `temporal-init` должны завершиться с кодом `0`; остальные сервисы должны быть `Up`/`healthy`.
 

@@ -35,9 +35,9 @@ function validateComparison(config, comparison) {
   }));
 }
 
-export function createJobService({ config, jobRepository, operationalRepository, requirementsVersionService, jobTraceRepository, clock = () => new Date(), uuid = randomUUID }) {
+export function createJobService({ config, jobRepository, operationalRepository, requirementsVersionService, jobTraceRepository, promptProfileResolver = null, clock = () => new Date(), uuid = randomUUID }) {
   return {
-    async create({ auth, idempotencyKey, body, requestId }) {
+    async create({ auth, idempotencyKey, body, requestId, requestHashOverride = null, inlineArtifact = null }) {
       if (!config.asyncEnabled || !jobRepository) {
         throw new ApiError({ status: 503, code: 'ASYNC_PLATFORM_DISABLED', message: 'Asynchronous job processing is disabled', retryable: true });
       }
@@ -73,17 +73,26 @@ export function createJobService({ config, jobRepository, operationalRepository,
       const comparison = body.options?.mode === 'MODEL_COMPARE'
         ? validateComparison(config, { variantA: body.options.variantA, variantB: body.options.variantB })
         : null;
+      const featureMode = body.options?.mode || (body.type === 'DECOMPOSITION' ? 'DECOMPOSITION' : 'AGENT_RESEARCH');
+      const promptProfile = config.features?.versionedPrompts === true && featureMode !== 'PROMPT_TEST'
+        ? promptProfileResolver?.resolve({ type: body.type, mode: featureMode, requestedVersion: body.options?.promptVersion })
+        : null;
+      if (config.features?.versionedPrompts === true && featureMode !== 'PROMPT_TEST' && !promptProfile) {
+        throw new ApiError({ status: 503, code: 'PROMPT_POLICY_UNAVAILABLE', message: 'Versioned prompt policy is unavailable', retryable: true });
+      }
 
       const now = clock();
       const deadlineMs = body.type === 'RESEARCH' ? config.jobs.researchDeadlineMs : config.jobs.decompositionDeadlineMs;
-      const requestHash = createHash('sha256').update(canonicalJson(body)).digest('hex');
+      const requestHash = requestHashOverride || createHash('sha256').update(canonicalJson(body)).digest('hex');
       const jobId = uuid();
-      const result = await jobRepository.createAccepted({
+      const persist = inlineArtifact ? jobRepository.createAcceptedWithInlineArtifact.bind(jobRepository) : jobRepository.createAccepted.bind(jobRepository);
+      const result = await persist({
         tenantId: auth.tenantId,
         ownerUserId: auth.userId,
         idempotencyKey,
         requestHash,
         idempotencyExpiresAt: new Date(now.getTime() + 24 * 60 * 60 * 1000),
+        ...(inlineArtifact ? { inlineArtifact } : {}),
         job: {
           id: jobId,
           type: body.type,
@@ -95,7 +104,8 @@ export function createJobService({ config, jobRepository, operationalRepository,
           configurationSnapshot: {
             models: selectedModels,
             configuredModels: availableModels,
-            featureMode: body.options?.mode || (body.type === 'DECOMPOSITION' ? 'DECOMPOSITION' : 'AGENT_RESEARCH'),
+            featureMode,
+            ...(promptProfile ? { promptProfile } : {}),
             temperature: body.options?.temperature ?? 0.2,
             comparison,
             compareTarget: body.options?.compareTarget || 'CATEGORIES',
@@ -134,14 +144,14 @@ export function createJobService({ config, jobRepository, operationalRepository,
           action: 'job.create',
           actorRoles: auth.roles,
           requestId,
-          metadata: { type: body.type, parentJobId: body.parentJobId || null, inputArtifactId: body.inputArtifactId },
+          metadata: { type: body.type, parentJobId: body.parentJobId || null, inputArtifactId: body.inputArtifactId, ...(promptProfile ? { promptProfile: { id: promptProfile.id, version: promptProfile.version, manifestHash: promptProfile.manifestHash, outputSchemaVersion: promptProfile.outputSchemaVersion } } : {}) },
         },
       });
       if (!result.replayed && jobTraceRepository) {
         const append = (entry) => jobTraceRepository.append({ tenantId: auth.tenantId, jobId: result.job.id, ...entry }).catch((error) => {
           logEvent('warn', 'job.trace.append.failed', { jobId: result.job.id, category: entry.category, errorType: error?.name || 'Error' });
         });
-        await append({ category: 'LIFECYCLE', name: 'Task created', status: 'COMPLETED', startedAt: now, completedAt: now, durationMs: 0, metadata: { type: body.type, mode: body.options?.mode || null, requestId } });
+        await append({ category: 'LIFECYCLE', name: 'Task created', status: 'COMPLETED', startedAt: now, completedAt: now, durationMs: 0, metadata: { type: body.type, mode: body.options?.mode || null, requestId, ...(promptProfile ? { promptProfile: { id: promptProfile.id, version: promptProfile.version, manifestHash: promptProfile.manifestHash, outputSchemaVersion: promptProfile.outputSchemaVersion } } : {}) } });
         await append({ category: 'INSTRUCTIONS', name: 'Adapted Skill instructions', status: 'INFO', startedAt: now, completedAt: now, durationMs: 0, metadata: { skillUsage: 'NOT_APPLICABLE' } });
       }
       return result;

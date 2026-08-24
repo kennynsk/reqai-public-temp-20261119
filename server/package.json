@@ -9,6 +9,7 @@
     "start": "NODE_ENV=production node index.js",
     "config:check": "node ./scripts/print-effective-config.mjs",
     "db:migrate": "node ./scripts/migrate.mjs",
+    "prompts:qualify": "node ./scripts/qualify-prompt-catalog.mjs",
     "test": "node --test"
   },
   "dependencies": {

@@ -4,13 +4,18 @@
   "version": "0.0.0",
   "workspaces": [
     "client",
-    "server"
+    "server",
+    "mcp-gateway"
   ],
   "scripts": {
-    "predev": "node ./scripts/free-dev-ports.mjs",
-    "dev": "NODE_ENV=development concurrently -n server,client -c green,blue \"npm -w server run dev\" \"npm -w client run dev\"",
+    "dev": "docker compose up --build",
+    "dev:detached": "docker compose up --build -d",
+    "predev:legacy": "node ./scripts/free-dev-ports.mjs",
+    "dev:legacy": "NODE_ENV=development concurrently -n server,client -c green,blue \"npm -w server run dev\" \"npm -w client run dev\"",
     "build": "npm -w client run build",
     "start": "NODE_ENV=production npm -w server run start",
+    "start:mcp": "npm -w mcp-gateway run start",
+    "test:mcp": "npm -w mcp-gateway run test",
     "fix:links": "node scripts/fix-workspace-links.mjs",
     "postinstall": "node scripts/fix-workspace-links.mjs",
     "qualify:load": "node scripts/qualification/load.mjs",

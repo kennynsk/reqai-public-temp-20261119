@@ -29,6 +29,7 @@ import { GigaChatProvider } from '../provider/gigachat-provider.js';
 import { ZaiProvider } from '../provider/zai-provider.js';
 import { MockLlmProvider } from '../provider/mock-llm-provider.js';
 import { startWorkerHealthServer } from './worker-health.js';
+import { createPromptCatalog, defaultPromptBundleRoot } from '../prompts/prompt-catalog.js';
 
 function lifecycleShell(config) {
   const keepAlive = setInterval(() => {}, 60_000);
@@ -112,7 +113,7 @@ export async function startWorkerRuntime(config, { ConnectionClass = NativeConne
   if (activitiesFactory) activities = await activitiesFactory(config);
   else {
     pool = createDatabasePool(config);
-    const jobRepository = new JobRepository(pool, { schema: config.database.schema });
+    const jobRepository = new JobRepository(pool, { schema: config.database.schema, artifactSchema: config.database.artifactSchema });
     const artifactRepository = new ArtifactRepository(pool, { schema: config.database.schema, artifactSchema: config.database.artifactSchema });
     const attempts = new AttemptRepository(pool, { schema: config.database.schema });
     const coordination = new ModelCoordinationRepository(pool, { schema: config.database.schema, siteId: config.process.siteId, failureThreshold: config.llm.circuitFailureThreshold, windowMs: config.llm.circuitWindowMs, openMs: config.llm.circuitOpenMs });
@@ -124,7 +125,9 @@ export async function startWorkerRuntime(config, { ConnectionClass = NativeConne
         ? new ZaiProvider({ apiKey: config.llm.apiKey, baseUrl: config.llm.baseUrl })
         : new GigaChatProvider(createGigaChatClient(config), { modelAliases: config.llm.modelAliases });
     const modelExecutor = createModelExecutor({ provider, coordination, attempts, jobTraceRepository, diagnosticCapture });
-    const handlers = createEnterpriseActivityHandlers({ artifactRepository, modelExecutor, config });
+    const promptCatalog = config.features?.versionedPrompts === false ? null : createPromptCatalog({ rootDir: defaultPromptBundleRoot(), maxRenderedBytes: config.prompts.maxRenderedBytes });
+    if (promptCatalog) logEvent('info', 'prompt.catalog.ready', { bundles: promptCatalog.inventory() });
+    const handlers = createEnterpriseActivityHandlers({ artifactRepository, modelExecutor, promptCatalog, config });
     activities = createCheckpointedActivities({ jobRepository, jobTraceRepository, diagnosticCapture, handlers, siteId: config.process.siteId });
   }
   const worker = await WorkerClass.create({

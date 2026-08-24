@@ -8,6 +8,76 @@
   "servers": [{ "url": "/" }],
   "security": [{ "bearerAuth": [] }],
   "paths": {
+    "/api/v1": {
+      "get": {
+        "operationId": "discoverApiCapabilities",
+        "summary": "Discover the authenticated API and enabled capabilities",
+        "responses": {
+          "200": { "description": "Tenant-scoped API capability and safe prompt-release metadata", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiCapabilities" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" }
+        }
+      }
+    },
+    "/api/v1/decompositions": {
+      "post": {
+        "operationId": "startDecomposition",
+        "summary": "Start asynchronous requirements decomposition",
+        "description": "Inline businessContext is limited to the JSON request limit. Upload larger inputs through POST /api/v1/artifacts and provide inputArtifactId.",
+        "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DecompositionRequest" } } } },
+        "responses": {
+          "202": { "description": "Canonical job accepted", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JobAccepted" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "413": { "$ref": "#/components/responses/PayloadTooLarge" },
+          "429": { "$ref": "#/components/responses/Overloaded" },
+          "503": { "$ref": "#/components/responses/Unavailable" }
+        }
+      }
+    },
+    "/api/v1/research": {
+      "post": {
+        "operationId": "startStandaloneResearch",
+        "summary": "Start asynchronous standalone requirements research",
+        "description": "Exposes product strategies standard and agent. Internal comparison and prompt-test modes are intentionally unavailable.",
+        "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/StandaloneResearchRequest" } } } },
+        "responses": {
+          "202": { "description": "Canonical job accepted", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JobAccepted" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "413": { "$ref": "#/components/responses/PayloadTooLarge" },
+          "429": { "$ref": "#/components/responses/Overloaded" },
+          "503": { "$ref": "#/components/responses/Unavailable" }
+        }
+      }
+    },
+    "/api/v1/requirements/versions/{versionId}/research": {
+      "post": {
+        "operationId": "startRequirementsResearch",
+        "summary": "Start research from an immutable requirements version",
+        "description": "The input artifact and source decomposition lineage are derived server-side.",
+        "parameters": [{ "$ref": "#/components/parameters/RequirementsVersionId" }, { "$ref": "#/components/parameters/IdempotencyKey" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RequirementsResearchRequest" } } } },
+        "responses": {
+          "202": { "description": "Canonical child job accepted", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JobAccepted" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "429": { "$ref": "#/components/responses/Overloaded" },
+          "503": { "$ref": "#/components/responses/Unavailable" }
+        }
+      }
+    },
     "/api/v1/jobs": {
       "post": {
         "operationId": "createJob",
@@ -227,6 +297,78 @@
           "404": { "$ref": "#/components/responses/NotFound" }
         }
       }
+    },
+    "/api/v1/admin/webhooks/{deliveryId}/redeliver": {
+      "post": {
+        "operationId": "redeliverWebhook",
+        "summary": "Redeliver a webhook DLQ entry",
+        "parameters": [{ "name": "deliveryId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+        "responses": {
+          "202": { "description": "Delivery returned to pending state" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/v1/admin/workflows/{jobId}/reset": {
+      "post": {
+        "operationId": "resetWorkflow",
+        "summary": "Reset a Temporal workflow for an existing job",
+        "parameters": [{ "$ref": "#/components/parameters/JobId" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["runId", "workflowTaskFinishEventId", "reason"], "properties": { "runId": { "type": "string", "minLength": 1 }, "workflowTaskFinishEventId": { "type": "integer", "minimum": 1 }, "reason": { "type": "string", "minLength": 1 } }, "additionalProperties": false } } } },
+        "responses": {
+          "202": { "description": "Workflow reset accepted" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/v1/admin/operations/mode": {
+      "get": {
+        "operationId": "getOperationalMode",
+        "summary": "Read tenant operational mode",
+        "responses": {
+          "200": { "description": "Current operational mode", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OperationalMode" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" }
+        }
+      },
+      "put": {
+        "operationId": "setOperationalMode",
+        "summary": "Change tenant operational mode with optimistic concurrency",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["mode", "reason", "expectedVersion"], "properties": { "mode": { "type": "string", "enum": ["NORMAL", "ACCEPT_AND_QUEUE", "DRAIN", "REJECT_NEW", "FAILOVER_IN_PROGRESS"] }, "reason": { "type": "string", "minLength": 1 }, "expectedVersion": { "type": "integer", "minimum": 0 } }, "additionalProperties": false } } } },
+        "responses": {
+          "200": { "description": "Updated operational mode", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OperationalMode" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/health/live": {
+      "get": {
+        "operationId": "getLiveness",
+        "security": [],
+        "responses": { "200": { "description": "Process is live" }, "503": { "description": "Process is not live" } }
+      }
+    },
+    "/health/ready": {
+      "get": {
+        "operationId": "getReadiness",
+        "security": [],
+        "responses": { "200": { "description": "Dependencies are ready" }, "503": { "description": "One or more dependencies are unavailable" } }
+      }
+    },
+    "/metrics": {
+      "get": {
+        "operationId": "getPrometheusMetrics",
+        "security": [],
+        "responses": { "200": { "description": "Prometheus text exposition", "content": { "text/plain": { "schema": { "type": "string" } } } } }
+      }
     }
   },
   "components": {
@@ -245,6 +387,35 @@
       "FeatureMode": { "type": "string", "enum": ["DECOMPOSITION", "DECOMPOSITION_WITH_INSIGHTS", "REQUIREMENTS_INSIGHTS", "STANDARD_RESEARCH", "AGENT_RESEARCH", "MODEL_COMPARE", "AGENT_COMPARE", "PROMPT_TEST"] },
       "JobStatus": { "type": "string", "enum": ["ACCEPTED", "QUEUED", "RUNNING", "RETRY_WAIT", "SUCCEEDED", "FAILED", "CANCEL_REQUESTED", "CANCELLED"] },
       "JobOutcome": { "type": ["string", "null"], "enum": ["COMPLETE", "PARTIAL", null] },
+      "ExecutionOptions": {
+        "type": "object",
+        "properties": {
+          "model": { "type": "string", "minLength": 1 },
+          "temperature": { "type": "number", "minimum": 0, "maximum": 2 },
+          "promptVersion": { "type": "string", "pattern": "^[1-9][0-9]*\\.[0-9]+\\.[0-9]+$" }
+        }
+      },
+      "DecompositionRequest": {
+        "oneOf": [
+          { "type": "object", "required": ["businessContext"], "properties": { "businessContext": { "type": "string", "minLength": 1, "maxLength": 1048576 }, "model": { "type": "string", "minLength": 1 }, "temperature": { "type": "number", "minimum": 0, "maximum": 2 }, "promptVersion": { "type": "string", "pattern": "^[1-9][0-9]*\\.[0-9]+\\.[0-9]+$" } }, "additionalProperties": false },
+          { "type": "object", "required": ["inputArtifactId"], "properties": { "inputArtifactId": { "type": "string", "format": "uuid" }, "model": { "type": "string", "minLength": 1 }, "temperature": { "type": "number", "minimum": 0, "maximum": 2 }, "promptVersion": { "type": "string", "pattern": "^[1-9][0-9]*\\.[0-9]+\\.[0-9]+$" } }, "additionalProperties": false }
+        ]
+      },
+      "StandaloneResearchRequest": {
+        "oneOf": [
+          { "type": "object", "required": ["researchContext"], "properties": { "researchContext": { "type": "string", "minLength": 1, "maxLength": 1048576 }, "strategy": { "type": "string", "enum": ["standard", "agent"], "default": "agent" }, "model": { "type": "string", "minLength": 1 }, "temperature": { "type": "number", "minimum": 0, "maximum": 2 }, "promptVersion": { "type": "string", "pattern": "^[1-9][0-9]*\\.[0-9]+\\.[0-9]+$" }, "researchCategories": { "type": "array", "maxItems": 10, "items": { "type": "string", "minLength": 1 } }, "researchKinds": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "enum": ["trends", "competitors", "practices"] } } }, "additionalProperties": false },
+          { "type": "object", "required": ["inputArtifactId"], "properties": { "inputArtifactId": { "type": "string", "format": "uuid" }, "strategy": { "type": "string", "enum": ["standard", "agent"], "default": "agent" }, "model": { "type": "string", "minLength": 1 }, "temperature": { "type": "number", "minimum": 0, "maximum": 2 }, "promptVersion": { "type": "string", "pattern": "^[1-9][0-9]*\\.[0-9]+\\.[0-9]+$" }, "researchCategories": { "type": "array", "maxItems": 10, "items": { "type": "string", "minLength": 1 } }, "researchKinds": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "enum": ["trends", "competitors", "practices"] } } }, "additionalProperties": false }
+        ]
+      },
+      "RequirementsResearchRequest": {
+        "type": "object",
+        "properties": {
+          "model": { "type": "string", "minLength": 1 },
+          "temperature": { "type": "number", "minimum": 0, "maximum": 2 },
+          "promptVersion": { "type": "string", "pattern": "^[1-9][0-9]*\\.[0-9]+\\.[0-9]+$" }
+        },
+        "additionalProperties": false
+      },
       "CreateJobRequest": {
         "type": "object",
         "required": ["type", "inputArtifactId"],
@@ -279,17 +450,20 @@
           "compareTarget": { "type": "string", "enum": ["CATEGORIES", "RESEARCH"] },
           "researchKind": { "type": "string", "enum": ["trends", "competitors", "practices"] },
           "inputFormat": { "type": "string", "enum": ["TEXT", "PROMPT_JSON"] }
+          ,"promptVersion": { "type": "string", "pattern": "^[1-9][0-9]*\\.[0-9]+\\.[0-9]+$" }
         },
         "additionalProperties": false
       },
       "JobAccepted": {
         "type": "object",
-        "required": ["jobId", "status", "statusUrl", "eventsUrl"],
+        "required": ["jobId", "status", "statusUrl", "eventsUrl", "resultUrl", "cancelUrl"],
         "properties": {
           "jobId": { "type": "string", "format": "uuid" },
           "status": { "$ref": "#/components/schemas/JobStatus" },
           "statusUrl": { "type": "string" },
           "eventsUrl": { "type": "string" },
+          "resultUrl": { "type": "string" },
+          "cancelUrl": { "type": "string" },
           "idempotencyReplayed": { "type": "boolean" }
         }
       },
@@ -450,6 +624,39 @@
           "createdAt": { "type": "string", "format": "date-time" }
         }
       },
+      "ApiCapabilities": {
+        "type": "object",
+        "required": ["name", "version", "requestId", "userId", "tenantId", "capabilities"],
+        "properties": {
+          "name": { "type": "string" },
+          "version": { "type": "string" },
+          "requestId": { "type": "string" },
+          "userId": { "type": "string" },
+          "tenantId": { "type": "string" },
+          "capabilities": {
+            "type": "object",
+            "required": ["models", "decompositionModes", "researchModes", "researchKinds", "domainOperations", "promptReleases"],
+            "properties": {
+              "models": { "type": "array", "items": { "type": "string" } },
+              "decompositionModes": { "type": "array", "items": { "$ref": "#/components/schemas/FeatureMode" } },
+              "researchModes": { "type": "array", "items": { "$ref": "#/components/schemas/FeatureMode" } },
+              "researchKinds": { "type": "array", "items": { "type": "string", "enum": ["trends", "competitors", "practices"] } },
+              "domainOperations": { "type": "array", "items": { "type": "string", "enum": ["decomposition", "standalone-research", "requirements-research"] } },
+              "promptReleases": { "type": "object", "additionalProperties": { "type": "object", "required": ["active", "selectable"], "properties": { "active": { "type": "string" }, "selectable": { "type": "array", "items": { "type": "string" } } } }
+            }
+          }
+        }
+      },
+      "OperationalMode": {
+        "type": "object",
+        "properties": {
+          "mode": { "type": "string", "enum": ["NORMAL", "ACCEPT_AND_QUEUE", "DRAIN", "REJECT_NEW", "FAILOVER_IN_PROGRESS"] },
+          "reason": { "type": ["string", "null"] },
+          "version": { "type": "integer", "minimum": 0 },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        },
+        "additionalProperties": true
+      },
       "ApiError": {
         "type": "object",
         "required": ["error"],
@@ -479,4 +686,5 @@
       "Unavailable": { "description": "Service unavailable or not accepting new jobs", "headers": { "Retry-After": { "schema": { "type": "integer" } } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } }
     }
   }
+}
 }

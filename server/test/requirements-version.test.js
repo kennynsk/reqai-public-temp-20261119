@@ -81,6 +81,21 @@ test('linked research accepts only a version owned by its completed decompositio
   await assert.rejects(() => service.validateResearchInput({ auth, parentJobId: 'parent', versionId: 'version' }), (error) => error.code === 'INVALID_RESEARCH_PARENT');
 });
 
+test('requirements research source resolver returns server-authoritative immutable lineage', async () => {
+  const service = createRequirementsVersionService({
+    config,
+    jobRepository: { async findVisibleById() { return { id: 'parent', type: 'DECOMPOSITION', status: 'SUCCEEDED' }; } },
+    versionRepository: { async findVisibleById() { return { id: 'version', source_job_id: 'parent', created_at: new Date() }; } },
+    artifactRepository: {
+      async metadata() { return { id: 'version', sha256: 'a'.repeat(64) }; },
+      async readText() { return JSON.stringify({ kind: 'REQUIREMENTS_VERSION', sourceJobType: 'DECOMPOSITION', requirements: { business: [], functional: [], nonfunctional: [] } }); },
+    },
+  });
+  assert.deepEqual(await service.resolveResearchSource({ auth, versionId: 'version' }), {
+    versionId: 'version', inputArtifactId: 'version', parentJobId: 'parent', inputSha256: 'a'.repeat(64),
+  });
+});
+
 test('saved versions can restore their requirements after a page reload', async () => {
   const service = createRequirementsVersionService({
     config,

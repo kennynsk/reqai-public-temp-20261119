@@ -1,28 +1,25 @@
-# Исследователь бизнес‑требований
+# ReqAI — подготовка и исследование требований
 
-[![Node.js](https://img.shields.io/badge/Node.js-18%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-22-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=000)](https://react.dev/)
 [![Vite](https://img.shields.io/badge/Vite-7-646CFF?logo=vite&logoColor=white)](https://vitejs.dev/)
 
-React‑приложение для анализа бизнес‑требований, выделения категорий и последующего исследования рынка.  
-Фронтенд: Vite + React + Tailwind + `lucide-react`  
-Бэкенд: Node.js + Express (проксирует запросы к LLM‑провайдерам, чтобы не светить ключ в браузере)
+Enterprise-приложение для декомпозиции, проверки, исследования и сохранения требований. Основной интерфейс работает поверх асинхронных jobs, immutable artifacts, PostgreSQL, Kafka и Temporal; LLM-ключи доступны только workflow workers.
 
 Соответствие функций исходного интерфейса асинхронным enterprise jobs описано в [docs/functional-parity.md](docs/functional-parity.md).
 
 ## Что умеет приложение
 
-### Модуль 1: Бизнес-требования
+### Основной workflow «Подготовка требований»
 
-- Ввод бизнес-задачи и декомпозиция на:
-  - бизнес-требования;
-  - функциональные требования;
-  - нефункциональные требования.
-- Быстрый переход от общей бизнес-цели к структуре требований для дальнейшей проработки.
+1. «Контекст» — ввод бизнес-задачи или загрузка файла.
+2. «Требования» — AI-декомпозиция на бизнес-, функциональные и нефункциональные требования, ручная проверка и сохранение immutable-версии.
+3. «AI-исследование» — необязательный отдельный запуск одного requirements-insights workflow для сохранённой версии.
+4. «Финальная версия» — применение выбранных улучшений и сохранение результата.
 
-### Модуль 2: Исследование рынка
+### «Дополнительные инструменты»
 
-Внутри модуля доступны разные форматы работы:
+Отдельно от основного workflow доступны:
 
 - `Исследование` — базовый анализ требований и исследование по категориям (тренды, конкуренты, практики).
 - `Сравнение (модели, температура)` — A/B-сравнение результатов при разных моделях и/или температуре.
@@ -32,7 +29,7 @@ React‑приложение для анализа бизнес‑требова
 
 ## Быстрый старт
 
-Для запуска полного enterprise-контура без внешних зависимостей используйте [инструкцию Docker Compose](docs/local-development.md).
+Основной локальный режим — полный enterprise-контур в Docker Compose. Подробности приведены в [инструкции локального запуска](docs/local-development.md).
 
 ### 1) Установить зависимости
 
@@ -44,9 +41,9 @@ npm install
 
 ### 2) Настроить env-переменные
 
-Сервер сам выбирает env-файл по `NODE_ENV`/`APP_ENV`:
+Docker Compose читает корневой `.env.dev`. В явном legacy-режиме сервер сам выбирает env-файл по `NODE_ENV`/`APP_ENV`:
 
-- для dev (`npm run dev`) читается `.env.dev`;
+- для legacy dev (`npm run dev:legacy`) читается `.env.dev`;
 - для production (`npm run start`) читается `.env.prod`;
 - если stage-файл не найден, используется фолбэк `.env`.
 
@@ -58,37 +55,57 @@ npm install
 Рекомендуемый вариант для вашего проекта: использовать корневые `.env.dev` и `.env.prod`.  
 Шаблон значений можно взять из `server/env.example`.
 
-Пример содержимого:
+Пример для актуального Docker enterprise-контура:
 
 ```env
-# Вариант A: OpenRouter
-OPENROUTER_API_KEY=...
-OPENROUTER_MODEL=...
-
-# Вариант B: Z.AI (например, GLM‑4.7)
+LLM_PROVIDER_MODE=zai
 ZAI_API_KEY=...
-ZAI_BASE_URL=https://api.z.ai/api/paas/v4
-OPENROUTER_MODEL=glm-4.7
+ZAI_BASE_URL=https://api.z.ai/api/coding/paas/v4
+ZAI_MODELS=glm-5.3,glm-5-turbo,glm-4.7,glm-4.7-flash
+LLM_MODEL_PRIORITY=glm-5.3,glm-5-turbo,glm-4.7
+```
 
-# Вариант C: GigaChat
+GigaChat поддерживается отдельным `LLM_PROVIDER_MODE=gigachat`. OpenRouter-переменные относятся только к `npm run dev:legacy` и не настраивают enterprise workers:
+
+```env
+# Только legacy standalone
+OPENROUTER_API_KEY=...
+<redacted>
+
+# Альтернативный enterprise provider
+LLM_PROVIDER_MODE=gigachat
 GIGACHAT_AUTH_KEY=...
-# или пара:
-# GIGACHAT_CLIENT_ID=...
-# GIGACHAT_CLIENT_SECRET=...
-
 ```
 
 ### 3) Запуск
 
 #### Dev
 
-Использует `.env.dev`, поднимает одновременно сервер и фронтенд:
+Собирает и запускает актуальные frontend, API, workers, PostgreSQL, Kafka и Temporal через Docker Compose:
 
 ```bash
 npm run dev
 ```
 
-Откройте фронтенд: `http://localhost:5177`
+Откройте фронтенд: `http://localhost:8080`. Команда работает в foreground; `Ctrl+C` останавливает контейнеры. Для фонового запуска используйте `npm run dev:detached`.
+
+Прежний standalone Node/Vite интерфейс доступен только для целевой проверки legacy-функционала:
+
+```bash
+npm run dev:legacy
+```
+
+Он открывается на `http://localhost:5177` и не является текущим enterprise-интерфейсом.
+
+#### MCP API для внешних AI-клиентов
+
+Gateway выключен по умолчанию и запускается отдельным Docker Compose profile:
+
+```bash
+docker compose --profile mcp up --build
+```
+
+Streamable HTTP endpoint: `http://localhost:5180/mcp`. Он предоставляет пять асинхронных tools поверх REST API декомпозиции и исследования; подробности — в [документации MCP gateway](docs/mcp-requirements-adapter.md).
 
 #### Production
 
@@ -104,15 +121,15 @@ npm run start
 
 ## Примечания
 
-- Фронтенд проксирует `/api/*` на `http://localhost:5178` через `client/vite.config.js`.
-- Перед `npm run dev` автоматически завершаются "зависшие" dev-процессы на портах `5177` и `5178` (`scripts/free-dev-ports.mjs`).
+- Docker frontend проксирует `/api/*` на backend API; внешний вход — `http://localhost:8080`.
+- Только перед `npm run dev:legacy` автоматически завершаются "зависшие" standalone-процессы на портах `5177` и `5178` (`scripts/free-dev-ports.mjs`).
 - Перед `npm -w server run dev` сервер также пытается освободить свой порт (`server/scripts/free-dev-port.mjs`).
 - Если задан `PORT_RETRY_LIMIT`, сервер при занятом `PORT` пробует следующие порты: `PORT+1`, `PORT+2`, ...
-- Для OpenRouter можно (не обязательно) указать `OPENROUTER_HTTP_REFERER` и `OPENROUTER_X_TITLE`.
+- `OPENROUTER_HTTP_REFERER` и `OPENROUTER_X_TITLE` используются только legacy standalone backend.
 - Для Z.AI в coding‑сценариях используйте `ZAI_BASE_URL=https://api.z.ai/api/coding/paas/v4` (см. [Quick Start](https://docs.z.ai/guides/overview/quick-start)).
 - Актуальный пример всех переменных есть в `server/env.example`.
 
-## Если на `http://localhost:5177` пустой экран
+## Если legacy-интерфейс на `http://localhost:5177` показывает пустой экран
 
 Обычно это означает, что Vite упал на оптимизации зависимостей (например, после `npm install` при запущенном dev).
 
@@ -120,5 +137,5 @@ npm run start
 
 ```bash
 npm run fix:links
-npm run dev
+npm run dev:legacy
 ```

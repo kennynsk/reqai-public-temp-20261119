@@ -22,7 +22,7 @@ function validateVariant(value, field) {
 }
 
 function validateJobOptions(type, options = {}) {
-  const allowed = new Set(['mode', 'model', 'temperature', 'researchCategories', 'researchKinds', 'allCategories', 'variantA', 'variantB', 'compareTarget', 'researchKind', 'inputFormat']);
+  const allowed = new Set(['mode', 'model', 'temperature', 'researchCategories', 'researchKinds', 'allCategories', 'variantA', 'variantB', 'compareTarget', 'researchKind', 'inputFormat', 'promptVersion']);
   const unsupported = Object.keys(options).filter((key) => !allowed.has(key));
   if (unsupported.length) throw badRequest('VALIDATION_ERROR', 'options contains unsupported fields', { fields: unsupported });
   const mode = options.mode || (type === 'DECOMPOSITION' ? 'DECOMPOSITION' : 'AGENT_RESEARCH');
@@ -36,6 +36,7 @@ function validateJobOptions(type, options = {}) {
   if (options.compareTarget != null && !['CATEGORIES', 'RESEARCH'].includes(options.compareTarget)) throw badRequest('VALIDATION_ERROR', 'options.compareTarget must be CATEGORIES or RESEARCH', { field: 'options.compareTarget' });
   if (options.researchKind != null && !RESEARCH_KINDS.has(options.researchKind)) throw badRequest('VALIDATION_ERROR', 'options.researchKind is unsupported', { field: 'options.researchKind' });
   if (options.inputFormat != null && !['TEXT', 'PROMPT_JSON'].includes(options.inputFormat)) throw badRequest('VALIDATION_ERROR', 'options.inputFormat is unsupported', { field: 'options.inputFormat' });
+  if (options.promptVersion != null && !/^[1-9]\d*\.\d+\.\d+$/.test(options.promptVersion)) throw badRequest('VALIDATION_ERROR', 'options.promptVersion must use semantic versioning', { field: 'options.promptVersion' });
   if (mode === 'MODEL_COMPARE') {
     validateVariant(options.variantA, 'options.variantA');
     validateVariant(options.variantB, 'options.variantB');
@@ -77,6 +78,8 @@ function acceptedResponse(res, result) {
     status: result.job.status,
     statusUrl,
     eventsUrl: `${statusUrl}/events`,
+    resultUrl: `${statusUrl}/result`,
+    cancelUrl: `${statusUrl}/cancel`,
     idempotencyReplayed: result.replayed,
   });
 }
@@ -132,9 +135,44 @@ export function createApiV1Router({ config, services = {} }) {
         decompositionModes: [...DECOMPOSITION_MODES],
         researchModes: [...RESEARCH_MODES],
         researchKinds: [...RESEARCH_KINDS],
+        domainOperations: config.features?.requirementsIntegrationApi ? ['decomposition', 'standalone-research', 'requirements-research'] : [],
+        promptReleases: config.features?.versionedPrompts ? Object.fromEntries(Object.entries(config.prompts.policy).map(([id, release]) => [id, { active: release.active, selectable: release.released }])) : {},
       },
     });
   });
+
+  if (config.features?.requirementsIntegrationApi) {
+    router.post('/api/v1/decompositions', requireAnyRole('user', 'tenant-admin', 'system-admin'), asyncRoute(async (req, res) => {
+      if (!services.requirementsIntegrationService) throw new ApiError({ status: 503, code: 'ASYNC_PLATFORM_DISABLED', message: 'Requirements integration API is unavailable', retryable: true });
+      acceptedResponse(res, await services.requirementsIntegrationService.startDecomposition({
+        auth: req.auth,
+        idempotencyKey: req.get('Idempotency-Key'),
+        requestId: req.context?.requestId,
+        command: req.body,
+      }));
+    }));
+
+    router.post('/api/v1/research', requireAnyRole('user', 'tenant-admin', 'system-admin'), asyncRoute(async (req, res) => {
+      if (!services.requirementsIntegrationService) throw new ApiError({ status: 503, code: 'ASYNC_PLATFORM_DISABLED', message: 'Requirements integration API is unavailable', retryable: true });
+      acceptedResponse(res, await services.requirementsIntegrationService.startStandaloneResearch({
+        auth: req.auth,
+        idempotencyKey: req.get('Idempotency-Key'),
+        requestId: req.context?.requestId,
+        command: req.body,
+      }));
+    }));
+
+    router.post('/api/v1/requirements/versions/:versionId/research', requireAnyRole('user', 'tenant-admin', 'system-admin'), asyncRoute(async (req, res) => {
+      if (!services.requirementsIntegrationService) throw new ApiError({ status: 503, code: 'ASYNC_PLATFORM_DISABLED', message: 'Requirements integration API is unavailable', retryable: true });
+      acceptedResponse(res, await services.requirementsIntegrationService.startRequirementsResearch({
+        auth: req.auth,
+        idempotencyKey: req.get('Idempotency-Key'),
+        requestId: req.context?.requestId,
+        versionId: requireUuid(req.params.versionId, 'versionId'),
+        command: req.body,
+      }));
+    }));
+  }
 
   router.post('/api/v1/jobs', requireAnyRole('user', 'tenant-admin', 'system-admin'), asyncRoute(async (req, res) => {
     const result = await services.jobService.create({

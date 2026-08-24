@@ -186,6 +186,42 @@ services:
       retries: 12
       start_period: 15s
 
+  mcp-gateway:
+    profiles: ["mcp"]
+    build:
+      context: .
+      dockerfile: mcp-gateway/Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      MCP_ENABLED: "true"
+      MCP_TRANSPORT: streamable-http
+      MCP_HOST: 0.0.0.0
+      MCP_PORT: "5180"
+      MCP_PUBLIC_ENDPOINT: http://localhost:5180/mcp
+      MCP_ALLOWED_HOSTS: localhost,127.0.0.1,mcp-gateway
+      MCP_BACKEND_API_URL: http://reqai-api:5178
+      MCP_IAM_AUDIENCE_MODE: forward-same-audience
+      MCP_READINESS_BEARER_TOKEN: local-readiness-token
+      MCP_TOOL_SCHEMA_VERSION: 1.0.0
+      MCP_BUILD_VERSION: 1.0.0
+    depends_on:
+      reqai-api:
+        condition: service_healthy
+    ports:
+      - "5180:5180"
+    read_only: true
+    tmpfs:
+      - /tmp
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5180/health/ready').then(r=>{if(!r.ok)process.exit(1)})"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    networks:
+      - reqai
+
   event-worker:
     <<: *app-service
     environment:

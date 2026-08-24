@@ -24,3 +24,9 @@ PostgreSQL: API readiness false, не принимать jobs. Kafka: бизне
 
 ## Rollback
 Вернуть frontend `VITE_ASYNC_PLATFORM_ENABLED=false` и NGAM route на legacy API. Миграции additive и не откатываются destructive SQL. Отключение legacy допускается только после compatibility window и sign-off.
+
+## MCP gateway: canary, incident и rollback
+
+Gateway публикуется отдельно и по умолчанию имеет `replicas: 0`, `MCP_ENABLED=false`. Перед canary выставить подтверждённые HTTPS host/backend URL и same-audience IAM, затем прогнать MCP protocol, auth/tenant, idempotency и failure qualification. Ограничить ingress allowlist первыми клиентами и следить за `reqai_mcp_tool_calls_total`, auth rejections, backend errors, latency и readiness.
+
+При incident снять ingress route или вернуть `MCP_ENABLED=false`/`replicas: 0`. Не останавливать API и workers: уже принятые REST jobs продолжаются, а их `jobId` остаются валидны. Проверить отсутствие токенов/requirements в логах, отозвать скомпрометированные JWT в IAM и только после устранения причины снова провести canary. Gateway не хранит job state, поэтому отдельное восстановление данных не требуется.

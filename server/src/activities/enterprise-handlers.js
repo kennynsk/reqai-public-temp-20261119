@@ -58,7 +58,21 @@ function normalizeRequirementsInsights(value) {
     .filter((item) => item.title && item.summary);
 }
 
-export function createEnterpriseActivityHandlers({ artifactRepository, modelExecutor, config }) {
+export function createEnterpriseActivityHandlers({ artifactRepository, modelExecutor, promptCatalog = null, config }) {
+  function renderedPrompt(input, step, variables, legacyBuilder) {
+    const profile = input.configurationSnapshot.promptProfile;
+    if (!profile) return legacyBuilder();
+    if (!promptCatalog) throw Object.assign(new Error('Snapshotted prompt catalog is unavailable'), { type: 'PROMPT_BUNDLE_UNAVAILABLE' });
+    const declaration = promptCatalog.get(profile.id, profile.version).templates[step];
+    if (!declaration) throw Object.assign(new Error(`Prompt step ${step} is unavailable`), { type: 'PROMPT_INTEGRITY_ERROR' });
+    const declaredVariables = Object.fromEntries(declaration.requiredVariables.map((name) => [name, variables[name]]));
+    return promptCatalog.render(profile, step, declaredVariables).text;
+  }
+
+  function requirementsSection(requirements) {
+    return requirements ? `\nТекущие требования:\n${JSON.stringify(requirements, null, 2)}` : '';
+  }
+
   async function complete(input, stepId, prompt, execution = {}) {
     const messages = [
       ...(execution.systemPrompt ? [{ role: 'system', content: execution.systemPrompt }] : []),
@@ -130,7 +144,8 @@ export function createEnterpriseActivityHandlers({ artifactRepository, modelExec
 
     async decomposeChunk(input) {
       const source = await artifactText(input, input.chunk.artifactId);
-      const response = await complete(input, `decompose-chunk:${input.chunk.chunkId}`, buildDecomposePrompt(source));
+      const prompt = renderedPrompt(input, 'decompose', { businessContext: source }, () => buildDecomposePrompt(source));
+      const response = await complete(input, `decompose-chunk:${input.chunk.chunkId}`, prompt);
       const saved = await store(input, response.text);
       return { ...saved, chunkId: input.chunk.chunkId, success: true, actualModel: response.actualModel, fallbackApplied: response.fallbackApplied };
     },
@@ -151,7 +166,8 @@ export function createEnterpriseActivityHandlers({ artifactRepository, modelExec
     async generateDecompositionInsights(input) {
       const source = await artifactText(input, input.inputArtifactId);
       const decomposition = parseJson(await artifactText(input, input.decompositionArtifactId));
-      const response = await complete(input, 'decomposition-insights', buildInsightsPrompt(source, decomposition));
+      const prompt = renderedPrompt(input, 'insights', { businessContext: source, requirementsSection: requirementsSection(decomposition) }, () => buildInsightsPrompt(source, decomposition));
+      const response = await complete(input, 'decomposition-insights', prompt);
       let insights;
       try { insights = parseJson(response.text); } catch { insights = { raw: response.text }; }
       const result = { schemaVersion: 1, mode: 'DECOMPOSITION_WITH_INSIGHTS', ...decomposition, insights };
@@ -166,7 +182,8 @@ export function createEnterpriseActivityHandlers({ artifactRepository, modelExec
       const businessContext = envelope.businessContextArtifactId
         ? await artifactText(input, envelope.businessContextArtifactId)
         : JSON.stringify(envelope.requirements);
-      const response = await complete(input, 'requirements-insights', buildInsightsPrompt(businessContext, envelope.requirements));
+      const prompt = renderedPrompt(input, 'insights', { businessContext, requirementsSection: requirementsSection(envelope.requirements) }, () => buildInsightsPrompt(businessContext, envelope.requirements));
+      const response = await complete(input, 'requirements-insights', prompt);
       let parsed;
       try { parsed = parseJson(response.text); } catch { throw Object.assign(new Error('Requirements insights response must be valid JSON'), { type: 'INVALID_REQUIREMENTS_INSIGHTS' }); }
       const insights = normalizeRequirementsInsights(parsed);
@@ -192,10 +209,12 @@ export function createEnterpriseActivityHandlers({ artifactRepository, modelExec
       }
       const source = await artifactText(input, input.inputArtifactId);
       const style = input.analysisStyle || 'AGENT';
+      const step = style === 'AGENT' ? 'agent-analyze' : 'analyze';
+      const prompt = renderedPrompt(input, step, { requirements: source }, () => (style === 'AGENT' ? buildAgentAnalyzePrompt(source) : buildAnalyzePrompt(source)));
       const response = await complete(
         input,
         `analyze-categories:${input.stepKey || input.variant || style.toLowerCase()}`,
-        style === 'AGENT' ? buildAgentAnalyzePrompt(source) : buildAnalyzePrompt(source),
+        prompt,
         executionFor(input),
       );
       const parsed = parseJson(response.text);
@@ -215,7 +234,10 @@ export function createEnterpriseActivityHandlers({ artifactRepository, modelExec
       const style = input.researchStyle || 'AGENT';
       const kind = input.kind || 'agent';
       const key = input.stepKey || `${input.variant || style}:${input.category.id}:${kind}`;
-      const response = await complete(input, `research-category:${key}`, researchPrompt(style, kind, input.category, source), executionFor(input));
+      const step = style === 'STANDARD' ? `research-${kind}` : 'agent-research';
+      const variables = { name: input.category.name, description: input.category.description, level: input.category.level, requirements: source };
+      const prompt = renderedPrompt(input, step, variables, () => researchPrompt(style, kind, input.category, source));
+      const response = await complete(input, `research-category:${key}`, prompt, executionFor(input));
       const saved = await store(input, response.text);
       return {
         ...saved,
@@ -233,11 +255,13 @@ export function createEnterpriseActivityHandlers({ artifactRepository, modelExec
     async synthesizeResearch(input) {
       const source = await artifactText(input, input.inputArtifactId);
       const reports = await Promise.all(input.resultArtifactIds.map((id) => artifactText(input, id)));
-      const response = await complete(input, `synthesize-research:${input.stepKey || input.variant || input.researchStyle || 'default'}`, buildAgentSynthesisPrompt(source, reports.join('\n\n'), {
+      const metadata = {
         failedCategories: input.failedCategories,
         sourceArtifactIds: input.resultArtifactIds,
         mode: input.configurationSnapshot.featureMode,
-      }), executionFor(input));
+      };
+      const prompt = renderedPrompt(input, 'synthesis', { requirements: source, combinedReport: reports.join('\n\n'), metadata: String(metadata) }, () => buildAgentSynthesisPrompt(source, reports.join('\n\n'), metadata));
+      const response = await complete(input, `synthesize-research:${input.stepKey || input.variant || input.researchStyle || 'default'}`, prompt, executionFor(input));
       const saved = await store(input, response.text);
       return { ...saved, failedCategories: input.failedCategories, actualModel: response.actualModel, fallbackApplied: response.fallbackApplied };
     },
@@ -246,9 +270,10 @@ export function createEnterpriseActivityHandlers({ artifactRepository, modelExec
       const source = await artifactText(input, input.inputArtifactId);
       const synthesis = await artifactText(input, input.synthesisArtifactId);
       const style = input.researchStyle || 'AGENT';
-      const prompt = style === 'STANDARD'
+      const step = style === 'STANDARD' ? 'improve' : 'agent-improve';
+      const prompt = renderedPrompt(input, step, { requirements: source, researchReport: synthesis }, () => (style === 'STANDARD'
         ? buildImproveRequirementsPrompt(source, [synthesis])
-        : buildAgentImproveRequirementsPrompt(source, synthesis);
+        : buildAgentImproveRequirementsPrompt(source, synthesis)));
       const response = await complete(input, `improve-requirements:${input.stepKey || input.variant || style.toLowerCase()}`, prompt, executionFor(input));
       const saved = await store(input, response.text);
       return { ...saved, actualModel: response.actualModel, fallbackApplied: response.fallbackApplied };

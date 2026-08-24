@@ -5,9 +5,15 @@ import { assertJobTransition } from '../domain/job-state.js';
 import { withTenantTransaction } from '../db/transaction.js';
 
 export class JobRepository {
-  constructor(pool, { schema = 'reqai' } = {}) {
+  constructor(pool, { schema = 'reqai', artifactSchema = 'reqai_artifacts' } = {}) {
     this.pool = pool;
     this.schema = `"${schema}"`;
+    this.artifactSchema = `"${artifactSchema}"`;
+  }
+
+  async createAcceptedWithInlineArtifact({ inlineArtifact, ...args }) {
+    if (!inlineArtifact) throw new Error('inlineArtifact is required');
+    return this.createAccepted({ ...args, inlineArtifact });
   }
 
   async findById({ tenantId, jobId }) {
@@ -80,6 +86,7 @@ export class JobRepository {
     audit,
     admission,
     idempotencyExpiresAt,
+    inlineArtifact = null,
   }) {
     try {
       return await withTenantTransaction(this.pool, tenantId, async (client) => {
@@ -92,6 +99,22 @@ export class JobRepository {
         if (existing) return this.#resolveIdempotency(existing, requestHash);
 
         if (admission) await this.#enforceAdmission(client, { tenantId, ownerUserId, jobType: job.type, admission });
+
+        if (inlineArtifact) {
+          const content = Buffer.from(inlineArtifact.content);
+          await client.query(
+            `INSERT INTO ${this.schema}.artifacts(
+               id,tenant_id,owner_user_id,kind,content_type,size_bytes,sha256,storage_status,expires_at,completed_at
+             ) VALUES($1,$2,$3,'INPUT',$4,$5,$6,'AVAILABLE',$7,now())`,
+            [job.inputArtifactId, tenantId, ownerUserId, inlineArtifact.contentType, content.length, inlineArtifact.sha256, inlineArtifact.expiresAt],
+          );
+          for (let offset = 0, index = 0; offset < content.length; offset += 1024 * 1024, index += 1) {
+            await client.query(
+              `INSERT INTO ${this.artifactSchema}.artifact_content(artifact_id,tenant_id,chunk_index,content) VALUES($1,$2,$3,$4)`,
+              [job.inputArtifactId, tenantId, index, content.subarray(offset, offset + 1024 * 1024)],
+            );
+          }
+        }
 
         const inserted = await client.query(
           `INSERT INTO ${this.schema}.jobs (

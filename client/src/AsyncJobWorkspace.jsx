@@ -719,7 +719,7 @@ function RequirementsInsightsResult({ value, latestVersion, businessContext, bus
             <p className="text-sm text-gray-500 mt-2 leading-relaxed">{insight.summary}</p>
             <details className="mt-3 group">
               <summary className="list-none text-sm font-semibold text-indigo-600 hover:text-indigo-700 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded flex items-center gap-1"><ChevronDown aria-hidden="true" className="w-3.5 h-3.5 group-open:hidden" /><ChevronUp aria-hidden="true" className="w-3.5 h-3.5 hidden group-open:block" /><span className="group-open:hidden">Подробнее{insightEnhancements.length ? ` · ${proposalLabel}` : ''}</span><span className="hidden group-open:inline">Свернуть</span></summary>
-              <div className="mt-3 pt-3 border-t border-gray-100">
+              <div className="hidden group-open:block mt-3 pt-3 border-t border-gray-100">
                 {relatedTo.length > 0 && <div data-testid={`insight-relations-${insight.id}`} className="flex items-center gap-1.5 flex-wrap"><Link2 aria-hidden="true" className="w-3.5 h-3.5 text-gray-400 shrink-0" />{relatedTo.map((id) => <span key={id} className="text-xs font-mono font-medium text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">{id}</span>)}</div>}
                 {insight.detail && <p className="text-sm text-gray-600 leading-relaxed mt-3">{insight.detail}</p>}
                 {sourceTypes.length > 0 && <div className="flex items-center gap-1.5 flex-wrap mt-3"><ExternalLink aria-hidden="true" className="w-3 h-3 text-gray-400 shrink-0" />{sourceTypes.map((source) => <span key={source} className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">{SOURCE_TYPE_LABELS[source] || source}</span>)}</div>}
