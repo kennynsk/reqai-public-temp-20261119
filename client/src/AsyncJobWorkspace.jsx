@@ -716,7 +716,7 @@ function RequirementsInsightsResult({ value, latestVersion, businessContext, bus
           return <article key={insight.id} className="bg-white rounded-xl border border-gray-200 p-5 hover:shadow-md transition-shadow">
             <div className="flex items-center justify-between gap-2"><span className="flex items-center gap-2 min-w-0"><CategoryIcon data-testid={`insight-category-icon-${insight.category}`} aria-hidden="true" className="w-4 h-4 text-gray-400 shrink-0" /><span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${meta.color}`}>{meta.label}</span></span><ApplicabilityBars value={insight.applicability ?? 50} /></div>
             <h3 className="font-bold text-gray-900 mt-3">{insight.title}</h3>
-            <p className="text-sm text-gray-500 mt-2 leading-relaxed line-clamp-2">{insight.summary}</p>
+            <p className="text-sm text-gray-500 mt-2 leading-relaxed">{insight.summary}</p>
             <details className="mt-3 group">
               <summary className="list-none text-sm font-semibold text-indigo-600 hover:text-indigo-700 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded flex items-center gap-1"><ChevronDown aria-hidden="true" className="w-3.5 h-3.5 group-open:hidden" /><ChevronUp aria-hidden="true" className="w-3.5 h-3.5 hidden group-open:block" /><span className="group-open:hidden">Подробнее{insightEnhancements.length ? ` · ${proposalLabel}` : ''}</span><span className="hidden group-open:inline">Свернуть</span></summary>
               <div className="mt-3 pt-3 border-t border-gray-100">

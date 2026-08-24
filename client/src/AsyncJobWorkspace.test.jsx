@@ -546,6 +546,7 @@ test('restores requirements insights and applies explicit accepted enhancements'
   expect(applicabilitySegments.filter((segment) => segment.dataset.active === 'true')).toHaveLength(5);
   expect(within(insightCards).getByTestId('insight-category-icon-trends')).toBeInTheDocument();
   const insightCard = within(insightCards).getByRole('article');
+  expect(within(insightCard).getByText('Рынок переходит к автоматизации')).not.toHaveClass('line-clamp-2');
   expect(within(insightCard).getByTestId('insight-relations-i1')).not.toBeVisible();
   expect(within(insightCard).getByText('В функциональные')).not.toBeVisible();
   expect(within(insightCard).getByText('Клиенты ожидают быстрый ответ.')).not.toBeVisible();

@@ -171,3 +171,4 @@
 - [x] 20.1 Remove redundant framing and loading copy, replace «Сейчас в фокусе» with the direct activity message, and move the orientational progress explanation behind an accessible information tooltip.
 - [x] 20.2 Consolidate saved-version states and research source navigation, hide inactive save actions, and apply progressive disclosure to research card details and enhancements.
 - [x] 20.3 Update frontend regression tests for the concise hierarchy, tooltip copy, source-data navigation, conditional save actions and collapsed research details.
+- [x] 20.4 Keep the complete research-card summary visible while retaining progressive disclosure for relations, sources, detail and enhancements, with regression coverage.
