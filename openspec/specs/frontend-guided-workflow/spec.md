@@ -30,26 +30,19 @@ The frontend SHALL present the business-requirements journey as four ordered sta
 - **THEN** the frontend clears only the current selection and draft input, returns to stage one with an empty business-context form, and preserves the completed workflow in history
 
 ### Requirement: Primary and secondary navigation
-The frontend SHALL make «Подготовка требований» the default primary workspace. The name SHALL describe the end-to-end process and SHALL NOT use «Бизнес-требования», which is reserved for one decomposed requirement type. The standalone legacy research modes SHALL remain available under a secondary «Дополнительные инструменты» entry and SHALL NOT be activated by linked requirements research.
+The frontend SHALL make «Подготовка требований» the sole product workspace. It SHALL NOT expose «Дополнительные инструменты», standalone research launchers, model-comparison launchers, agent-comparison launchers, or prompt-testing launchers. AI research SHALL be available only as the optional requirements-linked stage after a reviewed requirements version has been saved.
 
 #### Scenario: User opens the application
-- **WHEN** the application loads without a persisted active standalone research job
-- **THEN** the requirements-preparation workspace is selected and the standalone research modes are not shown as an equal primary destination
+- **WHEN** the application loads without a task permalink
+- **THEN** the requirements-preparation workspace is selected and no standalone tool navigation is rendered
 
 #### Scenario: User deliberately opens an advanced tool
-- **WHEN** the user selects a standalone research mode from «Дополнительные инструменты»
-- **THEN** that mode opens with its existing inputs and durable job behavior intact
+- **WHEN** the user follows stale client state or navigation that previously selected a standalone tool
+- **THEN** the frontend does not render a standalone launcher and returns to the guided requirements workspace, unless the URL identifies a retained legacy job that must open read-only
 
-### Requirement: Unified visual system for standalone tools
-Every standalone mode under «Дополнительные инструменты» SHALL use the same color palette, page hierarchy, typography, content width, cards, spacing, AI-settings disclosure, action treatment, responsive breakpoints, and focus states as «Подготовка требований». Mode-specific inputs SHALL remain available without reintroducing the legacy visual hierarchy.
-
-#### Scenario: User opens a standalone tool
-- **WHEN** the user selects any mode under «Дополнительные инструменты»
-- **THEN** the page uses the same heading pattern, indigo accents, bordered white cards, control styling, and action hierarchy as the primary workspace
-
-#### Scenario: Standalone tool is opened on a narrow viewport
-- **WHEN** a standalone tool is displayed below the desktop breakpoint
-- **THEN** its cards and actions stack consistently with the primary workspace and do not cause horizontal overflow
+#### Scenario: User reaches optional AI research
+- **WHEN** the user has saved a reviewed requirements version from a completed decomposition
+- **THEN** the guided workflow offers «Улучшить требования с помощью AI» and starts only requirements-linked research
 
 ### Requirement: Progressive disclosure of AI settings
 The frontend SHALL keep recommended model and generation settings out of the primary action path and SHALL expose them through an explicitly labelled AI-settings disclosure.
@@ -61,17 +54,6 @@ The frontend SHALL keep recommended model and generation settings out of the pri
 #### Scenario: Expert changes settings
 - **WHEN** the user expands AI settings and changes supported values
 - **THEN** the selected values are used for the next eligible job and remain visibly reviewable before submission
-
-### Requirement: Summary-first research presentation
-The frontend SHALL render completed standalone research with a concise overview before detailed material and SHALL separate insights, risks, recommendations, and the full report into navigable sections. Detailed content SHALL remain available without forcing the user to scroll through it before reviewing improvements.
-
-#### Scenario: Standalone research result opens
-- **WHEN** a completed standalone research result is selected
-- **THEN** the overview is the initial section and the improvement-review action is discoverable without traversing the full report
-
-#### Scenario: User requests full detail
-- **WHEN** the user selects the full-report section
-- **THEN** the persisted complete report is rendered without changing or re-running the research job
 
 ### Requirement: Familiar linked-research result cards
 Completed `REQUIREMENTS_INSIGHTS` research SHALL open directly on the familiar filterable insight-card view instead of the standalone tabbed report shell. On desktop it SHALL show three parallel card columns. Every card SHALL expose a recognizable category icon and label, applicability as the familiar five-segment bar scale together with its exact percentage, title, summary, expandable detail, and any proposed requirement with explicit accept/reject actions. The applicability control SHALL expose its numeric value to assistive technology. The sticky final-save action and decision-lineage payload SHALL remain intact.
@@ -208,11 +190,11 @@ The primary workspace SHALL avoid nested bordered-card treatment for every struc
 - **THEN** structural borders and repeated controls do not compete visually with the requirement wording
 
 ### Requirement: Consistent product terminology
-User-facing copy SHALL use consistent Russian product language across the primary workflow and standalone tools. The interface SHALL use «AI-исследование» or «Улучшить требования с помощью AI» according to context and SHALL use «Соответствие требованиям» instead of the English `compliance` label. Raw technical terms MAY remain in technical details.
+User-facing copy SHALL use consistent Russian product language across the guided requirements workflow. The interface SHALL use «AI-исследование» or «Улучшить требования с помощью AI» according to context and SHALL use «Соответствие требованиям» instead of the English `compliance` label. It SHALL NOT present removed standalone research, comparison, agent, or prompt-testing terminology as available product actions. Raw technical terms MAY remain in technical details and retained historical metadata.
 
 #### Scenario: User navigates between workflow and tools
-- **WHEN** headings, actions, tabs, or requirement-type descriptions are displayed
-- **THEN** equivalent concepts use the same Russian terminology and capitalization
+- **WHEN** headings, actions, stages, or requirement-type descriptions are displayed
+- **THEN** equivalent concepts use the same Russian terminology and capitalization and no removed tool is advertised
 
 ### Requirement: User-facing status language
 The frontend SHALL display one localized primary status for each task and result. Raw lifecycle values, model attempts, provider metadata, and technical trace data SHALL appear only inside the separate optional Debug surface and SHALL NOT be rendered inline below the primary workflow.
@@ -247,15 +229,19 @@ The workflow indicator, secondary navigation, history drawer, result sections, d
 - **THEN** focus is visible, controls are reachable in logical order, and drawers or section navigation can be operated without pointer input
 
 ### Requirement: Durable behavior compatibility
-The redesign SHALL preserve existing durable task submission, URL-based active-task restoration, cancellation, artifact download, requirements-version lineage, and completed-result restoration behavior. A final version SHALL remain manually editable. Each saved manual revision SHALL reference its immediate base version and preserve the decisions and research-enhancement lineage of the final version it revises.
+The guided workflow SHALL preserve durable task submission, URL-based active-task restoration, cancellation, artifact download, requirements-version lineage, and completed-result restoration for supported decomposition and requirements-linked research. A final version SHALL remain manually editable. Each saved manual revision SHALL reference its immediate base version and preserve the decisions and research-enhancement lineage of the final version it revises. Retained jobs created with a removed legacy mode SHALL remain read-only and SHALL NOT expose controls that retry, clone, or restart that mode.
 
 #### Scenario: Page reloads during a job
-- **WHEN** the page reloads at `/tasks/{jobId}` while the task is active
+- **WHEN** the page reloads at `/tasks/{jobId}` while a decomposition or requirements-linked research task is active
 - **THEN** the correct workspace and workflow stage are restored from authoritative task state identified by the URL
 
 #### Scenario: User returns to an older result
-- **WHEN** a completed history entry is selected
+- **WHEN** a completed decomposition or requirements-linked research history entry is selected
 - **THEN** its canonical task URL, result, and any persisted reviewed requirements versions are restored without a new provider call
+
+#### Scenario: User opens a retained legacy result
+- **WHEN** a retained history entry or task permalink references a removed standalone mode
+- **THEN** the frontend presents its canonical status, safe result metadata, diagnostics access when authorized, and artifact download without rendering a creation or retry control for that mode
 
 #### Scenario: User edits research-assisted final requirements
 - **WHEN** the user edits and saves a final version produced from AI-research decisions
