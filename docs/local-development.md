@@ -42,10 +42,17 @@ docker compose ps -a
 ## Проверка
 
 ```bash
-node scripts/qualification/local-e2e.mjs DECOMPOSITION
-node scripts/qualification/local-e2e.mjs RESEARCH
+REQAI_E2E_MODEL=glm-5.3 node scripts/qualification/local-e2e.mjs FULL
+REQAI_E2E_MODEL=glm-5.3 node scripts/qualification/local-mcp-e2e.mjs
 npm run qualify:task-routing
 ```
+
+Первый прогон проверяет полный прямой REST-сценарий: декомпозицию, сохранение неизменяемой
+версии требований и связанное AI-исследование. Второй запускает обе операции через четыре
+публичных MCP-инструмента; REST используется только для сохранения версии, поскольку это
+доменный ресурс, а не MCP-операция. Оба скрипта завершаются ошибкой, если provider применил
+модель, отличную от `REQAI_E2E_MODEL`, или любой этап не завершился успешно. Для проверки
+только декомпозиции передайте `DECOMPOSITION` вместо `FULL`.
 
 Последняя команда создаёт одну задачу, открывает её deep link, подключает два независимых
 SSE-клиента к тому же `jobId`, сравнивает сохранённое состояние и проверяет trace pagination.
