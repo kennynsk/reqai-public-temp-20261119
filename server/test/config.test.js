@@ -9,6 +9,7 @@ test('enterprise config parses documented defaults when async processing is disa
   assert.equal(config.llm.providerMode, 'zai');
   assert.deepEqual(config.llm.availableModels, ['glm-5.3', 'glm-5-turbo', 'glm-4.7', 'glm-4.7-flash']);
   assert.deepEqual(config.llm.models, ['glm-5.3', 'glm-5-turbo', 'glm-4.7']);
+  assert.equal(config.llm.requestTimeoutMs, 600000);
   assert.equal(config.jobs.inputMaxBytes, 104857600);
   assert.equal(config.diagnostics.captureProtected, false);
   assert.equal(config.diagnostics.maxPageSize, 100);

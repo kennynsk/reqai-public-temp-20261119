@@ -300,7 +300,7 @@ export function loadConfig(env = process.env, { loadFiles = env === process.env 
       models: Object.freeze(models),
       maxModelsPerStep: integer(env, 'LLM_MAX_MODELS_PER_STEP', 3, { min: 1, max: 3 }),
       maxAttemptsPerModel: integer(env, 'LLM_MAX_ATTEMPTS_PER_MODEL', 2, { min: 1, max: 2 }),
-      requestTimeoutMs: integer(env, 'LLM_REQUEST_TIMEOUT_MS', 300000, { min: 1000, max: 1_800_000 }),
+      requestTimeoutMs: integer(env, 'LLM_REQUEST_TIMEOUT_MS', 600000, { min: 1000, max: 1_800_000 }),
       retryInitialDelayMs: retryInitial,
       retryMaxDelayMs: retryMax,
       retryJitterPercent: integer(env, 'LLM_RETRY_JITTER_PERCENT', 20, { min: 0, max: 100 }),

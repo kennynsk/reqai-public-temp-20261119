@@ -115,7 +115,7 @@ The first async implementation uses one ZAI provider. `ZAI_API_KEY` is a secret;
 | `LLM_MODEL_PRIORITY` | first 3 entries of `ZAI_MODELS` | optional comma-separated 1–3 models contained in `ZAI_MODELS` | ConfigMap |
 | `LLM_MAX_MODELS_PER_STEP` | `3` | 1–3 | ConfigMap |
 | `LLM_MAX_ATTEMPTS_PER_MODEL` | `2` | 1–2 | ConfigMap |
-| `LLM_REQUEST_TIMEOUT_MS` | `300000` | 1,000–1,800,000 | ConfigMap |
+| `LLM_REQUEST_TIMEOUT_MS` | `600000` | 1,000–1,800,000 | ConfigMap |
 | `LLM_RETRY_INITIAL_DELAY_MS` | `2000` | 100–60,000 | ConfigMap |
 | `LLM_RETRY_MAX_DELAY_MS` | `30000` | ≥ initial and ≤600,000 | ConfigMap |
 | `LLM_RETRY_JITTER_PERCENT` | `20` | 0–100 | ConfigMap |
