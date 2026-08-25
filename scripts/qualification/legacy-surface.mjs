@@ -12,7 +12,7 @@ const forbiddenByFile = new Map([
   ['mcp-gateway/src/schemas.js', ['start_research']],
   ['mcp-gateway/src/tools.js', ['start_research']],
   ['mcp-gateway/src/rest-client.js', ['start_research', 'startResearch']],
-  ['compose.yaml', ['synthesis-worker', 'requirements-synthesis']],
+  ['compose.yaml', ['synthesis-worker', 'requirements-synthesis', 'MCP_TOOL_SCHEMA_VERSION: 1.0.0']],
   ['deploy/k8s/workers.yaml', ['synthesis-worker', 'requirements-synthesis']],
   ['deploy/k8s/platform.yaml', ['TEMPORAL_TASK_QUEUE_SYNTHESIS', 'JOB_MAX_RESEARCH_CATEGORIES']],
 ]);
