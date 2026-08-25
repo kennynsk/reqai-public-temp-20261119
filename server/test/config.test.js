@@ -3,7 +3,7 @@ import test from 'node:test';
 
 import { loadConfig, redactedConfig } from '../src/config/env.js';
 
-test('enterprise config parses documented defaults without infrastructure in legacy mode', () => {
+test('enterprise config parses documented defaults when async processing is disabled', () => {
   const config = loadConfig({}, { loadFiles: false });
   assert.equal(config.asyncEnabled, false);
   assert.equal(config.llm.providerMode, 'zai');

@@ -25,8 +25,6 @@ registerOutputContract('requirements-insights.v1', (text) => {
   if (!Array.isArray(value.insights)) throw Object.assign(new Error('insights must be an array'), { type: 'OUTPUT_CONTRACT_VIOLATION' });
   return value;
 });
-registerOutputContract('standard-research.v1', (text) => requireObject(parseJson(text), 'standard-research.v1'));
-registerOutputContract('agent-research.v1', (text) => requireObject(parseJson(text), 'agent-research.v1'));
 
 export function getOutputContract(id) {
   const contract = CONTRACTS.get(id);

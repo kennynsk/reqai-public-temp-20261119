@@ -21,13 +21,11 @@ import {
   MoreHorizontal,
   Pencil,
   Plus,
-  Search,
   Settings2,
   Sparkles,
   TrendingUp,
   Trash2,
   Users,
-  Wrench,
   X,
   XCircle,
 } from 'lucide-react';
@@ -38,29 +36,16 @@ import { EXECUTION_PHASES, executionPhaseIndex, focusMessageForJob, isModelPhase
 
 const TERMINAL = new Set(['SUCCEEDED', 'FAILED', 'CANCELLED']);
 const BACKGROUND_JOB_KEY = 'reqai.backgroundJob';
-const RESEARCH_MODES = [
-  ['STANDARD_RESEARCH', 'Исследование'],
-  ['MODEL_COMPARE', 'Сравнение (модели, температура)'],
-  ['AGENT_COMPARE', 'Агентное сравнение'],
-  ['AGENT_RESEARCH', 'Агентное исследование'],
-  ['PROMPT_TEST', 'Тестирование промптов'],
-];
+const RETIRED_MODES = new Set(['DECOMPOSITION_WITH_INSIGHTS', 'STANDARD_RESEARCH', 'AGENT_RESEARCH', 'MODEL_COMPARE', 'AGENT_COMPARE', 'PROMPT_TEST']);
 const MODE_LABELS = {
   DECOMPOSITION: 'Подготовка требований',
-  DECOMPOSITION_WITH_INSIGHTS: 'Подготовка требований',
   REQUIREMENTS_INSIGHTS: 'AI-исследование требований',
-  ...Object.fromEntries(RESEARCH_MODES),
 };
 const TYPE_LABELS = { DECOMPOSITION: 'Подготовка требований', RESEARCH: 'Исследование' };
 const STATUS_LABELS = { ACCEPTED: 'Ожидает запуска', QUEUED: 'В очереди', RUNNING: 'Выполняется', RETRY_WAIT: 'Повторяем этап', SUCCEEDED: 'Готово', FAILED: 'Не выполнено', CANCEL_REQUESTED: 'Отменяется', CANCELLED: 'Отменено' };
 const OUTCOME_LABELS = { COMPLETE: 'Готово', PARTIAL: 'Готово частично', FAILED: 'Не выполнено' };
 const STATUS_TONES = { ACCEPTED: 'bg-slate-100 text-slate-600', QUEUED: 'bg-slate-100 text-slate-600', RUNNING: 'bg-indigo-100 text-indigo-700', RETRY_WAIT: 'bg-amber-100 text-amber-700', SUCCEEDED: 'bg-emerald-100 text-emerald-700', FAILED: 'bg-red-100 text-red-700', CANCEL_REQUESTED: 'bg-amber-100 text-amber-700', CANCELLED: 'bg-slate-100 text-slate-600' };
 const DEFAULT_MODELS = ['glm-5.3', 'glm-5-turbo', 'glm-4.7', 'glm-4.7-flash'];
-const RESEARCH_KIND_LABELS = {
-  trends: 'Тренды',
-  competitors: 'Конкуренты',
-  practices: 'Лучшие практики',
-};
 const INSIGHT_CATEGORY_META = {
   trends: { label: 'Тренды рынка', color: 'bg-emerald-100 text-emerald-700', active: 'bg-emerald-600 text-white', icon: TrendingUp },
   patterns: { label: 'Архитектурные паттерны', color: 'bg-violet-100 text-violet-700', active: 'bg-violet-600 text-white', icon: Sparkles },
@@ -92,10 +77,6 @@ const REQUIREMENT_COLUMNS = [
 
 function safeJson(text) {
   try { return JSON.parse(text); } catch { return null; }
-}
-
-function workspaceForMode(mode, type) {
-  return type === 'DECOMPOSITION' || ['DECOMPOSITION', 'DECOMPOSITION_WITH_INSIGHTS', 'REQUIREMENTS_INSIGHTS'].includes(mode) ? 'requirements' : 'tools';
 }
 
 function primaryStatus(jobOrResult) {
@@ -337,51 +318,6 @@ function DecompositionResult({ value, latestVersion, onSave, onStartResearch, on
         </section>)}
       </div>
     </div>
-  );
-}
-
-function ResearchImprovementReview({ value, latestVersion, onSaveFinal, busy }) {
-  const suggestions = Array.isArray(value.improvementSuggestions) ? value.improvementSuggestions : [];
-  const [decisions, setDecisions] = useState({});
-  if (!suggestions.length || !value.baseRequirements) return null;
-  const labels = { business: 'Бизнес-требование', functional: 'Функциональное', nonfunctional: 'Нефункциональное' };
-
-  function finalRequirements() {
-    const result = Object.fromEntries(Object.entries(value.baseRequirements).map(([key, items]) => [key, items.map((item) => ({ ...item }))]));
-    for (const suggestion of suggestions) {
-      if (decisions[suggestion.id] !== 'accepted' || !result[suggestion.targetType] || !suggestion.proposedRequirement) continue;
-      const prefixes = { business: 'BT', functional: 'FT', nonfunctional: 'NFT' };
-      const next = result[suggestion.targetType].reduce((max, item) => Math.max(max, Number(String(item.id).match(/\d+$/)?.[0] || 0)), 0) + 1;
-      result[suggestion.targetType].push({ id: `${prefixes[suggestion.targetType]}-${next}`, text: suggestion.proposedRequirement, fromResearch: true });
-    }
-    return result;
-  }
-
-  const acceptedIds = suggestions.filter((item) => decisions[item.id] === 'accepted').map((item) => item.id);
-  const rejectedIds = suggestions.filter((item) => decisions[item.id] === 'rejected').map((item) => item.id);
-  return (
-    <section className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 md:p-6">
-      <h3 className="text-lg font-semibold text-slate-800">Предложения по улучшению требований</h3>
-      <p className="text-sm text-slate-500 mt-1 mb-4">Примите полезные изменения или отклоните неподходящие. Решения сохранятся вместе с финальной версией.</p>
-      <div className="space-y-3">
-        {suggestions.map((suggestion) => {
-          const decision = decisions[suggestion.id];
-          return <article key={suggestion.id} className={`border rounded-xl p-4 ${decision === 'accepted' ? 'border-emerald-400 bg-emerald-50' : decision === 'rejected' ? 'border-slate-300 bg-slate-50 opacity-75' : 'border-slate-200'}`}>
-            <div className="flex items-start justify-between gap-3 flex-wrap"><div><p className="font-semibold text-slate-800">{suggestion.title}</p><p className="text-xs font-semibold text-indigo-600 mt-1">{labels[suggestion.targetType] || suggestion.targetType}</p></div>{decision && <span className={`text-xs font-semibold px-2 py-1 rounded-full ${decision === 'accepted' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'}`}>{decision === 'accepted' ? 'Принято' : 'Отклонено'}</span>}</div>
-            <p className="text-sm text-slate-600 mt-3"><b className="text-slate-700">Зачем:</b> {suggestion.rationale}</p>
-            <div className="mt-3 rounded-lg border border-slate-200 bg-white p-3"><p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Предлагаемая формулировка</p><p className="text-sm text-slate-800 mt-1">{suggestion.proposedRequirement}</p></div>
-            <div className="flex gap-2 mt-4">
-              <button aria-label={`Принять: ${suggestion.title}`} aria-pressed={decision === 'accepted'} onClick={() => setDecisions((current) => ({ ...current, [suggestion.id]: 'accepted' }))} className={`px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${decision === 'accepted' ? 'bg-emerald-600 text-white' : 'border border-emerald-200 text-emerald-700 hover:bg-emerald-50'}`}><CheckCircle2 className="w-4 h-4" />Принять</button>
-              <button aria-label={`Отклонить: ${suggestion.title}`} aria-pressed={decision === 'rejected'} onClick={() => setDecisions((current) => ({ ...current, [suggestion.id]: 'rejected' }))} className={`px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 ${decision === 'rejected' ? 'bg-slate-700 text-white' : 'border border-slate-200 text-slate-600 hover:bg-slate-50'}`}><X className="w-4 h-4" />Отклонить</button>
-            </div>
-          </article>;
-        })}
-      </div>
-      <div className="sticky bottom-3 z-10 mt-5 flex items-center justify-between gap-4 flex-col sm:flex-row bg-white/95 backdrop-blur rounded-xl border border-slate-200 shadow-lg p-4">
-        <p className="text-sm text-slate-600"><b>Принято: {acceptedIds.length}</b> · Отклонено: {rejectedIds.length} из {suggestions.length}{latestVersion ? <span className="block text-xs text-emerald-600 mt-1">Финальная версия сохранена {new Date(latestVersion.createdAt).toLocaleString()}</span> : null}</p>
-        <button disabled={busy} onClick={() => onSaveFinal({ requirements: finalRequirements(), baseVersionId: value.inputRequirementsVersionId, decisions: { acceptedSuggestionIds: acceptedIds, rejectedSuggestionIds: rejectedIds } })} className="w-full sm:w-auto px-5 py-2.5 bg-indigo-600 text-white text-sm font-semibold rounded-xl hover:bg-indigo-700 disabled:bg-gray-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">Сохранить финальную версию</button>
-      </div>
-    </section>
   );
 }
 
@@ -734,52 +670,15 @@ function RequirementsInsightsResult({ value, latestVersion, businessContext, bus
   );
 }
 
-function ResultView({ metadata, content, latestVersion, businessContext, businessContextLoading, onSaveRequirements, onStartResearch, onSaveFinal, onDirtyChange, busy, researchBusy = false }) {
+function ResultView({ content, latestVersion, businessContext, businessContextLoading, onSaveRequirements, onStartResearch, onSaveFinal, onDirtyChange, busy, researchBusy = false }) {
   const value = safeJson(content);
-  const [activeSection, setActiveSection] = useState('overview');
   if (!value) return <Markdown>{content}</Markdown>;
-  if (value.mode === 'PROMPT_TEST') return <Markdown>{value.text}</Markdown>;
   if (value.mode === 'REQUIREMENTS_INSIGHTS') return <RequirementsInsightsResult value={value} latestVersion={latestVersion} businessContext={businessContext} businessContextLoading={businessContextLoading} onSaveFinal={onSaveFinal} onDirtyChange={onDirtyChange} busy={busy} />;
-  if (value.mode === 'DECOMPOSITION' || value.mode === 'DECOMPOSITION_WITH_INSIGHTS' || Array.isArray(value.decomposition)) {
+  if (value.mode === 'DECOMPOSITION' || Array.isArray(value.decomposition)) {
     if (latestVersion?.decisions?.skippedResearch) return <FinalRequirementsEditor latestVersion={latestVersion} onSave={onSaveRequirements} onStartResearch={onStartResearch} onDirtyChange={onDirtyChange} busy={busy} researchBusy={researchBusy} researchSkipped />;
     return <DecompositionResult value={value} latestVersion={latestVersion} onSave={onSaveRequirements} onStartResearch={onStartResearch} onDirtyChange={onDirtyChange} busy={busy} researchBusy={researchBusy} />;
   }
-
-  const analyses = value.analyses || [];
-  const reports = value.reports || [];
-  const suggestions = value.improvementSuggestions || [];
-  const tabs = [
-    ['overview', 'Краткий вывод'],
-    ['insights', `Инсайты${reports.length ? ` · ${reports.length}` : ''}`],
-    ['risks', 'Риски'],
-    ['recommendations', `Улучшения${suggestions.length ? ` · ${suggestions.length}` : ''}`],
-    ['full', 'Полный отчёт'],
-  ];
-
-  const categoryCards = analyses.flatMap((analysis) => analysis.categories || []);
-  const reportsView = <div className="space-y-3">{reports.map((report, index) => <details key={`${report.variant}-${report.categoryId}-${report.kind}-${index}`} className="bg-white rounded-xl border border-slate-200 p-4" open={index === 0}><summary className="font-semibold text-slate-800 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded">{report.categoryName || report.categoryId} · {RESEARCH_KIND_LABELS[report.kind] || report.kind}{report.variant ? ` · ${report.variant}` : ''}</summary>{report.content ? <div className="mt-4"><Markdown>{report.content}</Markdown></div> : <p className="text-red-700 mt-3">Не удалось получить раздел: {report.reasonCode}</p>}</details>)}</div>;
-
-  return (
-    <div className="space-y-4">
-      <div role="tablist" aria-label="Разделы результата исследования" className="flex gap-2 overflow-x-auto pb-1">
-        {tabs.map(([key, label]) => <button key={key} role="tab" aria-selected={activeSection === key} onClick={() => setActiveSection(key)} className={`px-3 py-2 rounded-lg text-sm font-semibold whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${activeSection === key ? 'bg-indigo-600 text-white' : 'bg-white border border-slate-200 text-slate-600 hover:border-indigo-300'}`}>{label}</button>)}
-      </div>
-
-      {activeSection === 'overview' && <section role="tabpanel" className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 md:p-6">
-        <div className="grid gap-3 sm:grid-cols-3 mb-6"><div className="rounded-xl bg-indigo-50 p-4"><p className="text-xs text-indigo-500">Категорий</p><p className="text-2xl font-bold text-indigo-900 mt-1">{categoryCards.length}</p></div><div className="rounded-xl bg-emerald-50 p-4"><p className="text-xs text-emerald-600">Разделов исследования</p><p className="text-2xl font-bold text-emerald-900 mt-1">{reports.length}</p></div><div className="rounded-xl bg-amber-50 p-4"><p className="text-xs text-amber-600">Предложений</p><p className="text-2xl font-bold text-amber-900 mt-1">{suggestions.length}</p></div></div>
-        <h3 className="text-lg font-semibold text-slate-900 mb-3">Главное</h3>{value.synthesis ? <Markdown>{value.synthesis}</Markdown> : <p className="text-sm text-slate-500">Краткая сводка отсутствует. Перейдите к инсайтам или полному отчёту.</p>}
-        {suggestions.length > 0 && <button onClick={() => setActiveSection('recommendations')} className="mt-5 px-4 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-semibold hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">Перейти к улучшениям</button>}
-      </section>}
-
-      {activeSection === 'insights' && <section role="tabpanel" className="space-y-4">{categoryCards.length > 0 && <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{categoryCards.map((category) => <article key={category.id} className="bg-white rounded-xl border border-slate-200 p-4"><h4 className="font-semibold text-slate-800">{category.name}</h4><p className="text-sm text-slate-600 mt-1">{category.description}</p></article>)}</div>}{reportsView}</section>}
-
-      {activeSection === 'risks' && <section role="tabpanel" className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 md:p-6"><h3 className="text-lg font-semibold text-slate-900 mb-3">Риски и ограничения</h3>{metadata?.failedSteps?.length > 0 && <p className="text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">Некоторые этапы завершились неуспешно: {metadata.failedSteps.length}. Подробности доступны в технической информации.</p>}{value.risks ? <Markdown>{typeof value.risks === 'string' ? value.risks : JSON.stringify(value.risks, null, 2)}</Markdown> : value.synthesis ? <Markdown>{value.synthesis}</Markdown> : <p className="text-sm text-slate-500">Отдельный раздел рисков не сформирован. Проверьте полный отчёт.</p>}</section>}
-
-      {activeSection === 'recommendations' && <div role="tabpanel"><ResearchImprovementReview value={value} latestVersion={latestVersion} onSaveFinal={onSaveFinal} busy={busy} />{!suggestions.length && value.improvedRequirements && <section className="bg-white rounded-xl border border-slate-200 p-5"><h3 className="text-lg font-semibold text-slate-800 mb-3">Улучшенные требования</h3><textarea readOnly value={value.improvedRequirements} className="w-full h-80 px-3 py-2 border border-slate-200 rounded-lg focus:outline-none resize-none" /></section>}{!suggestions.length && !value.improvedRequirements && <p className="bg-white rounded-xl border border-slate-200 p-5 text-sm text-slate-500">Предложения по улучшению не сформированы.</p>}</div>}
-
-      {activeSection === 'full' && <section role="tabpanel" className="space-y-4">{reportsView}{value.comparison && <div className="bg-white rounded-xl border border-slate-200 p-5"><h3 className="text-lg font-semibold text-slate-800 mb-3">Сравнение</h3><pre className="text-xs whitespace-pre-wrap bg-slate-50 rounded-lg p-4 border border-slate-200 overflow-auto">{JSON.stringify(value.comparison, null, 2)}</pre></div>}{!reports.length && !value.comparison && <pre className="text-xs whitespace-pre-wrap bg-white rounded-xl border border-slate-200 p-5 overflow-auto">{JSON.stringify(value, null, 2)}</pre>}</section>}
-    </div>
-  );
+  return <p className="text-sm text-slate-500">Формат результата не поддерживается текущей версией интерфейса.</p>;
 }
 
 function ModelControls({ models, model, setModel, temperature, setTemperature }) {
@@ -931,7 +830,7 @@ function HistoryDrawer({ open, onClose, history, filter, setFilter, activeJobId,
     <aside className="absolute right-0 top-0 h-full w-full max-w-md bg-white shadow-2xl flex flex-col">
       <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between gap-3"><div><h2 className="font-bold text-slate-900">История задач</h2><p className="text-xs text-slate-500 mt-0.5">Откройте ранее сохранённый результат</p></div><button aria-label="Закрыть" onClick={onClose} className="p-2 rounded-lg text-slate-500 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"><X className="w-5 h-5" /></button></div>
       <div className="px-5 py-3 border-b border-slate-100 flex gap-2" role="group" aria-label="Фильтр истории">{[['all', 'Все'], ['decomposition', 'Декомпозиция'], ['research', 'Исследования']].map(([key, label]) => <button key={key} aria-pressed={filter === key} onClick={() => setFilter(key)} className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${filter === key ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{label}</button>)}</div>
-      <div className="flex-1 overflow-y-auto p-4 space-y-2">{filtered.length === 0 ? <p className="text-sm text-slate-400 text-center py-10">В этой категории задач пока нет.</p> : filtered.map((item) => { const status = primaryStatus(item); return <button key={item.jobId} aria-current={activeJobId === item.jobId ? 'true' : undefined} onClick={() => onSelect(item.jobId)} className={`w-full rounded-xl border p-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${activeJobId === item.jobId ? 'border-indigo-300 bg-indigo-50' : 'border-slate-200 hover:border-indigo-200 hover:bg-slate-50'}`}><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="text-sm font-semibold text-slate-900 truncate">{MODE_LABELS[item.mode] || TYPE_LABELS[item.type] || 'Задача'}</p><span className={`inline-flex mt-1.5 px-2 py-0.5 rounded-full text-xs font-semibold ${status.tone}`}>{status.label}</span></div><time className="text-xs text-slate-400 whitespace-nowrap">{new Date(item.createdAt).toLocaleString([], { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</time></div></button>; })}</div>
+      <div className="flex-1 overflow-y-auto p-4 space-y-2">{filtered.length === 0 ? <p className="text-sm text-slate-400 text-center py-10">В этой категории задач пока нет.</p> : filtered.map((item) => { const status = primaryStatus(item); const label = RETIRED_MODES.has(item.mode) ? 'Архивная задача' : MODE_LABELS[item.mode] || TYPE_LABELS[item.type] || 'Задача'; return <button key={item.jobId} aria-current={activeJobId === item.jobId ? 'true' : undefined} onClick={() => onSelect(item.jobId)} className={`w-full rounded-xl border p-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${activeJobId === item.jobId ? 'border-indigo-300 bg-indigo-50' : 'border-slate-200 hover:border-indigo-200 hover:bg-slate-50'}`}><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="text-sm font-semibold text-slate-900 truncate">{label}</p><span className={`inline-flex mt-1.5 px-2 py-0.5 rounded-full text-xs font-semibold ${status.tone}`}>{status.label}</span></div><time className="text-xs text-slate-400 whitespace-nowrap">{new Date(item.createdAt).toLocaleString([], { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</time></div></button>; })}</div>
       {cursor && <div className="p-4 border-t border-slate-200"><button onClick={onLoadMore} className="w-full px-4 py-2.5 rounded-xl border border-indigo-200 text-indigo-700 text-sm font-semibold hover:bg-indigo-50">Загрузить ещё</button></div>}
     </aside>
   </div>;
@@ -1010,10 +909,26 @@ function DebugPanel({ open, onClose, jobId, observations, refreshKey, triggerRef
   </div>;
 }
 
+function ArchivedLegacyResult({ job, result, onDownload }) {
+  const status = primaryStatus(result || job);
+  const timestamps = [['Создана', job.createdAt], ['Запущена', job.startedAt], ['Завершена', job.completedAt]].filter(([, value]) => value);
+  return <section aria-label="Архивный результат" className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 md:p-6">
+    <div className="flex items-start justify-between gap-4 flex-wrap">
+      <div><p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Архивная задача · только чтение</p><h1 className="text-2xl font-bold text-slate-900 mt-1">Результат старой версии</h1><p className="text-sm text-slate-500 mt-2">Этот сценарий больше нельзя запускать или повторять. Сохранённые данные и диагностика остаются доступны.</p></div>
+      <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${status.tone}`}>{status.label}</span>
+    </div>
+    <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 mt-6">
+      <div className="rounded-xl bg-slate-50 border border-slate-200 p-3"><dt className="text-xs text-slate-400">Режим</dt><dd className="font-mono text-xs text-slate-700 mt-1 break-all">{job.mode || 'UNKNOWN'}</dd></div>
+      {timestamps.map(([label, value]) => <div key={label} className="rounded-xl bg-slate-50 border border-slate-200 p-3"><dt className="text-xs text-slate-400">{label}</dt><dd className="text-xs font-semibold text-slate-700 mt-1">{new Date(value).toLocaleString()}</dd></div>)}
+    </dl>
+    {(result?.summary || job.message) && <div className="mt-5 rounded-xl border border-slate-200 p-4"><h2 className="text-sm font-semibold text-slate-800">Сводка</h2><p className="text-sm text-slate-600 mt-2 whitespace-pre-wrap">{result?.summary || job.message}</p></div>}
+    {result?.outcome === 'PARTIAL' && <div className="mt-4 flex gap-2 text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3"><AlertTriangle className="w-5 h-5 shrink-0" /><p className="text-sm">Архивный результат завершён частично.</p></div>}
+    {onDownload && <button onClick={onDownload} className="mt-5 px-4 py-2.5 rounded-xl border border-indigo-200 text-indigo-700 text-sm font-semibold hover:bg-indigo-50"><Download className="inline w-4 h-4 mr-2" />Скачать артефакт</button>}
+  </section>;
+}
+
 export default function AsyncJobWorkspace() {
   const [routeJobId, setRouteJobId] = useState(() => jobIdFromPath());
-  const [mode, setMode] = useState('DECOMPOSITION');
-  const [workspace, setWorkspace] = useState('requirements');
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyFilter, setHistoryFilter] = useState('all');
   const [requirements, setRequirements] = useState('');
@@ -1022,15 +937,6 @@ export default function AsyncJobWorkspace() {
   const [models, setModels] = useState(DEFAULT_MODELS);
   const [model, setModel] = useState('glm-5.3');
   const [temperature, setTemperature] = useState(0.2);
-  const [variantA, setVariantA] = useState({ model: 'glm-5.3', temperature: 0.2 });
-  const [variantB, setVariantB] = useState({ model: 'glm-5-turbo', temperature: 0.2 });
-  const [compareTarget, setCompareTarget] = useState('CATEGORIES');
-  const [researchKind, setResearchKind] = useState('trends');
-  const [researchKinds, setResearchKinds] = useState(['trends', 'competitors', 'practices']);
-  const [categories, setCategories] = useState('');
-  const [allCategories, setAllCategories] = useState(true);
-  const [systemPrompt, setSystemPrompt] = useState('');
-  const [userPrompt, setUserPrompt] = useState('');
   const [upload, setUpload] = useState(0);
   const [job, setJob] = useState(null);
   const [result, setResult] = useState(null);
@@ -1054,10 +960,9 @@ export default function AsyncJobWorkspace() {
   const debugTriggerRef = useRef(null);
   const routeJobIdRef = useRef(routeJobId);
   const jobId = job?.jobId;
-  const isDecomposition = mode === 'DECOMPOSITION' || mode === 'DECOMPOSITION_WITH_INSIGHTS';
-  const type = isDecomposition ? 'DECOMPOSITION' : 'RESEARCH';
   const parsedResult = safeJson(resultContent);
-  const decompositionReady = Boolean(result && (job?.type === 'DECOMPOSITION' || ['DECOMPOSITION', 'DECOMPOSITION_WITH_INSIGHTS'].includes(parsedResult?.mode)));
+  const legacyJob = Boolean(job && RETIRED_MODES.has(job.mode));
+  const decompositionReady = Boolean(result && !legacyJob && (job?.type === 'DECOMPOSITION' || parsedResult?.mode === 'DECOMPOSITION'));
   const linkedResearch = job?.mode === 'REQUIREMENTS_INSIGHTS' || parsedResult?.mode === 'REQUIREMENTS_INSIGHTS';
   const activeLinkedResearch = Boolean(job?.type === 'RESEARCH' && job?.mode === 'REQUIREMENTS_INSIGHTS' && !TERMINAL.has(job.status));
   const linkedResearchBusy = versionBusy || activeLinkedResearch;
@@ -1136,8 +1041,6 @@ export default function AsyncJobWorkspace() {
         if (!configured?.length) return;
         setModels(configured);
         setModel(configured[0]);
-        setVariantA((current) => ({ ...current, model: configured[0] }));
-        setVariantB((current) => ({ ...current, model: configured[1] || configured[0] }));
       }),
     ]).catch((cause) => setError(cause.message));
   }, [refresh]);
@@ -1163,8 +1066,7 @@ export default function AsyncJobWorkspace() {
       try {
         const selected = await enterpriseApi.getJob(routeJobId, { signal: controller.signal });
         if (controller.signal.aborted || routeJobIdRef.current !== routeJobId) return;
-        setJob(selected); setWorkspace(workspaceForMode(selected.mode, selected.type));
-        if (selected.mode) setMode(selected.mode === 'REQUIREMENTS_INSIGHTS' ? 'DECOMPOSITION' : selected.mode);
+        setJob(selected);
         if (selected.type === 'DECOMPOSITION' || selected.mode === 'REQUIREMENTS_INSIGHTS') {
           setRequirements('');
           setBusinessContextLoading(true);
@@ -1246,26 +1148,17 @@ export default function AsyncJobWorkspace() {
     return () => { stopped = true; window.clearInterval(timer); };
   }, [backgroundJob?.jobId, backgroundJob?.status]);
 
-  const options = useMemo(() => {
-    const base = { mode, model, temperature: Number(temperature), allCategories };
-    const selectedCategories = categories.split('\n').map((value) => value.trim()).filter(Boolean);
-    if (selectedCategories.length) base.researchCategories = selectedCategories;
-    if (mode === 'STANDARD_RESEARCH' || mode === 'AGENT_COMPARE') base.researchKinds = researchKinds;
-    if (mode === 'MODEL_COMPARE') Object.assign(base, { variantA, variantB, compareTarget, researchKind });
-    if (mode === 'PROMPT_TEST') base.inputFormat = 'PROMPT_JSON';
-    return base;
-  }, [allCategories, categories, compareTarget, mode, model, researchKind, researchKinds, temperature, variantA, variantB]);
+  const options = useMemo(() => ({ mode: 'DECOMPOSITION', model, temperature: Number(temperature) }), [model, temperature]);
 
   async function submit() {
-    const promptEnvelope = mode === 'PROMPT_TEST' ? JSON.stringify({ systemPrompt, userPrompt }) : null;
-    const input = promptEnvelope ? new Blob([promptEnvelope], { type: 'application/json' }) : file || new Blob([requirements], { type: 'text/plain; charset=utf-8' });
-    if ((!file && !requirements.trim() && mode !== 'PROMPT_TEST') || (mode === 'PROMPT_TEST' && !userPrompt.trim())) return;
+    const input = file || new Blob([requirements], { type: 'text/plain; charset=utf-8' });
+    if (!file && !requirements.trim()) return;
     setBusy(true);
     setError('');
     setUpload(0);
     try {
       const artifact = await enterpriseApi.uploadArtifact(input, setUpload);
-      const accepted = await enterpriseApi.createJob({ type, inputArtifactId: artifact.artifactId, options });
+      const accepted = await enterpriseApi.createJob({ type: 'DECOMPOSITION', inputArtifactId: artifact.artifactId, options });
       navigate(accepted.jobId);
       await refresh();
     } catch (cause) { setError(`${cause.code || 'ERROR'}: ${cause.message}`); }
@@ -1291,8 +1184,6 @@ export default function AsyncJobWorkspace() {
   function startNewTask() {
     if (editorDirtyRef.current && !window.confirm('Есть несохранённые изменения. Начать новую задачу и отбросить их?')) return;
     navigate(null);
-    setWorkspace('requirements');
-    setMode('DECOMPOSITION');
     setRequirements('');
     setFile(null);
     setUpload(0);
@@ -1326,18 +1217,12 @@ export default function AsyncJobWorkspace() {
   }
 
   async function startResearchFromDecomposition({ requirementsVersionId }) {
-    const parentJobId = result?.jobId;
-    if (!parentJobId || !requirementsVersionId || linkedResearchSubmissionRef.current || versionBusy || activeLinkedResearch) return;
+    if (!result?.jobId || !requirementsVersionId || linkedResearchSubmissionRef.current || versionBusy || activeLinkedResearch) return;
     linkedResearchSubmissionRef.current = true;
     setVersionBusy(true);
     setError('');
     try {
-      const accepted = await enterpriseApi.createJob({
-        type: 'RESEARCH',
-        inputArtifactId: requirementsVersionId,
-        parentJobId,
-        options: { mode: 'REQUIREMENTS_INSIGHTS', model, temperature: Number(temperature), allCategories: true },
-      });
+      const accepted = await enterpriseApi.researchRequirements(requirementsVersionId, { model, temperature: Number(temperature) });
       navigate(accepted.jobId);
       await refresh();
     } catch (cause) { setError(userFacingError(cause)); }
@@ -1357,19 +1242,17 @@ export default function AsyncJobWorkspace() {
     URL.revokeObjectURL(url);
   }
 
-  const canSubmit = mode === 'PROMPT_TEST' ? userPrompt.trim() : file || requirements.trim();
+  const canSubmit = file || requirements.trim();
   const activeJob = job && !TERMINAL.has(job.status);
   const progressingJob = job && ['ACCEPTED', 'QUEUED', 'RUNNING'].includes(job.status);
   const backgroundActive = backgroundJob && !TERMINAL.has(backgroundJob.status);
   const submissionBlocked = activeJob || backgroundActive;
   const cancelActiveJob = () => enterpriseApi.cancelJob(job.jobId).then(() => enterpriseApi.getJob(job.jobId)).then((next) => setJob(next));
-  const submitLabel = isDecomposition ? 'Декомпозировать требования' : mode === 'STANDARD_RESEARCH' ? 'Анализировать требования' : 'Запустить задачу';
 
-  const commonInput = mode !== 'PROMPT_TEST' && (
+  const commonInput = (
     <>
       <label className="block mb-4">
-        {!isDecomposition && <span className="text-lg font-semibold text-slate-700 mb-2 block">Введите бизнес-требования</span>}
-        <textarea value={requirements} onChange={(event) => setRequirements(event.target.value)} placeholder={isDecomposition ? 'Опишите бизнес-задачу...' : 'Например: Разработать приложение с функциями оплаты, отслеживания и программы лояльности...'} className={`w-full px-4 py-3 border-2 border-slate-200 rounded-lg focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100 resize-none bg-slate-50/50 ${isDecomposition ? 'h-32' : 'h-48'}`} />
+        <textarea value={requirements} onChange={(event) => setRequirements(event.target.value)} placeholder="Опишите бизнес-задачу..." className="w-full h-32 px-4 py-3 border-2 border-slate-200 rounded-lg focus:border-indigo-500 focus:outline-none focus:ring-2 focus:outline-none focus:ring-indigo-100 resize-none bg-slate-50/50" />
       </label>
       <label className="inline-flex items-center gap-2 text-sm text-slate-500 cursor-pointer hover:text-indigo-600">
         <FileUp className="w-4 h-4" /><span>{file ? file.name : 'Приложить файл до 100 МБ'}</span>
@@ -1379,12 +1262,12 @@ export default function AsyncJobWorkspace() {
   );
 
   const submitButton = (
-    <button disabled={!canSubmit || busy || submissionBlocked || (researchKinds.length === 0 && ['STANDARD_RESEARCH', 'AGENT_COMPARE'].includes(mode))} onClick={submit} className="w-full sm:w-auto text-white py-3 px-6 rounded-lg font-semibold disabled:bg-slate-300 disabled:cursor-not-allowed flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2">
-      {busy ? <><Loader2 className="w-5 h-5 animate-spin" />Загрузка {Math.round(upload * 100)}%</> : submissionBlocked ? <><Loader2 className="w-5 h-5 animate-spin" />{activeJob ? job.type === 'DECOMPOSITION' ? 'Декомпозиция выполняется…' : 'Исследование выполняется…' : 'Другая задача выполняется…'}</> : <>{isDecomposition ? <Sparkles className="w-4 h-4" /> : <Search className="w-5 h-5" />}{submitLabel}</>}
+    <button disabled={!canSubmit || busy || submissionBlocked} onClick={submit} className="w-full sm:w-auto text-white py-3 px-6 rounded-lg font-semibold disabled:bg-slate-300 disabled:cursor-not-allowed flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2">
+      {busy ? <><Loader2 className="w-5 h-5 animate-spin" />Загрузка {Math.round(upload * 100)}%</> : submissionBlocked ? <><Loader2 className="w-5 h-5 animate-spin" />{activeJob ? job.type === 'DECOMPOSITION' ? 'Декомпозиция выполняется…' : 'Исследование выполняется…' : 'Другая задача выполняется…'}</> : <><Sparkles className="w-4 h-4" />Декомпозировать требования</>}
     </button>
   );
 
-  const contextComplete = Boolean(result && (job?.type === 'DECOMPOSITION' || ['DECOMPOSITION', 'DECOMPOSITION_WITH_INSIGHTS'].includes(result.mode)));
+  const contextComplete = Boolean(result && !legacyJob && (job?.type === 'DECOMPOSITION' || result.mode === 'DECOMPOSITION'));
   const showReadOnlyBusinessContext = Boolean(activeLinkedResearch || directFinalReady);
   const contextFormBody = <>
     {commonInput}
@@ -1401,12 +1284,8 @@ export default function AsyncJobWorkspace() {
         <div className="max-w-7xl mx-auto px-4">
           <div className="flex items-center min-h-16 gap-3 sm:gap-6">
             <span className="text-base font-extrabold text-gray-900 tracking-tight mr-auto sm:mr-3">ReqAI</span>
-            <button onClick={() => { setWorkspace('requirements'); setMode('DECOMPOSITION'); }} aria-current={workspace === 'requirements' ? 'page' : undefined} className={`h-16 px-1 text-sm font-semibold border-b-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${workspace === 'requirements' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Подготовка требований</button>
-            <details className="relative group">
-              <summary aria-label="Дополнительные инструменты" title="Дополнительные инструменты" className={`list-none cursor-pointer p-2 sm:px-3 sm:py-2 rounded-lg text-sm font-semibold flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${workspace === 'tools' ? 'bg-indigo-50 text-indigo-700' : 'text-gray-500 hover:bg-gray-50'}`}><Wrench className="w-4 h-4" /><span className="hidden sm:inline">Дополнительные инструменты</span></summary>
-              <div className="absolute right-0 top-full mt-2 w-72 rounded-xl border border-slate-200 bg-white shadow-xl p-2 z-50">{RESEARCH_MODES.map(([key, label]) => <button key={key} onClick={(event) => { setWorkspace('tools'); setMode(key); event.currentTarget.closest('details').removeAttribute('open'); }} className={`w-full text-left px-3 py-2.5 rounded-lg text-sm ${mode === key && workspace === 'tools' ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-slate-600 hover:bg-slate-50'}`}>{label}</button>)}</div>
-            </details>
-            {workspace === 'requirements' && job && TERMINAL.has(job.status) && <button aria-label="Новая задача" onClick={startNewTask} className="p-2 sm:px-3 sm:py-2 rounded-lg text-sm font-semibold text-indigo-600 hover:bg-indigo-50 flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"><Plus className="w-4 h-4" /><span className="hidden sm:inline">Новая задача</span></button>}
+            <button onClick={() => startNewTask()} aria-current="page" className="h-16 px-1 text-sm font-semibold border-b-2 border-indigo-600 text-indigo-600 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">Подготовка требований</button>
+            {job && TERMINAL.has(job.status) && <button aria-label="Новая задача" onClick={startNewTask} className="p-2 sm:px-3 sm:py-2 rounded-lg text-sm font-semibold text-indigo-600 hover:bg-indigo-50 flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"><Plus className="w-4 h-4" /><span className="hidden sm:inline">Новая задача</span></button>}
             {backgroundActive && <BackgroundJobIndicator job={backgroundJob} onOpen={() => load(backgroundJob.jobId)} />}
             <button aria-label="История" onClick={() => setHistoryOpen(true)} className="p-2 sm:px-3 sm:py-2 rounded-lg text-sm font-semibold text-gray-600 hover:bg-gray-100 flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"><History className="w-4 h-4" /><span className="hidden sm:inline">История</span></button>
             <AiSettingsDisclosure model={model}><ModelControls models={models} model={model} setModel={setModel} temperature={temperature} setTemperature={setTemperature} /></AiSettingsDisclosure>
@@ -1415,7 +1294,13 @@ export default function AsyncJobWorkspace() {
         </div>
       </nav>
 
-      {routeUnavailable ? <main className="max-w-3xl mx-auto px-4 py-16"><section className="rounded-2xl border border-red-200 bg-white p-8 text-center"><AlertTriangle className="w-10 h-10 text-red-500 mx-auto mb-3" /><h1 className="text-xl font-bold text-slate-900">Задача недоступна</h1><p className="text-sm text-slate-500 mt-2">Проверьте адрес или права доступа. Другая задача не была открыта автоматически.</p><button onClick={() => navigate(null)} className="mt-5 px-4 py-2.5 rounded-lg bg-indigo-600 text-white text-sm font-semibold">Создать новую задачу</button></section></main> : workspace === 'requirements' ? (
+      {routeUnavailable ? <main className="max-w-3xl mx-auto px-4 py-16"><section className="rounded-2xl border border-red-200 bg-white p-8 text-center"><AlertTriangle className="w-10 h-10 text-red-500 mx-auto mb-3" /><h1 className="text-xl font-bold text-slate-900">Задача недоступна</h1><p className="text-sm text-slate-500 mt-2">Проверьте адрес или права доступа. Другая задача не была открыта автоматически.</p><button onClick={() => navigate(null)} className="mt-5 px-4 py-2.5 rounded-lg bg-indigo-600 text-white text-sm font-semibold">Создать новую задачу</button></section></main> : legacyJob ? (
+        <main className="max-w-5xl mx-auto px-4 py-6 space-y-6">
+          {progressingJob && <ActiveJobPanel job={job} onCancel={cancelActiveJob} onBackground={continueInBackground} />}
+          <JobStateCard job={job} onCancel={cancelActiveJob} />
+          <ArchivedLegacyResult job={job} result={result} onDownload={result?.resultArtifactId ? download : null} />
+        </main>
+      ) : (
         <main className="max-w-7xl mx-auto px-4 py-6">
           {(contextComplete || activeLinkedResearch || (linkedResearch && result)) && <WorkflowStepper currentStage={currentStage} completedStage={completedStage} skippedStages={directFinalReady ? [3] : []} />}
           {showReadOnlyBusinessContext && <section className="bg-white rounded-2xl border border-slate-200 mb-5 overflow-hidden"><OriginalBusinessContext value={requirements} loading={businessContextLoading} /></section>}
@@ -1445,45 +1330,6 @@ export default function AsyncJobWorkspace() {
             {result && <ResultPanel result={result} resultContent={resultContent} latestVersion={requirementsVersions[0] || null} businessContext={requirements} businessContextLoading={businessContextLoading} onSaveRequirements={saveRequirementsVersion} onStartResearch={startResearchFromDecomposition} onSaveFinal={saveRequirementsVersion} onDirtyChange={handleEditorDirty} busy={versionBusy} researchBusy={linkedResearchBusy} />}
           </div>
         </main>
-      ) : (
-        <main className="max-w-7xl mx-auto px-4 py-6">
-          <div className="w-full">
-            <div className="mb-6"><div className="text-xs font-semibold text-indigo-600 mb-1">ДОПОЛНИТЕЛЬНЫЙ ИНСТРУМЕНТ</div><h1 className="text-2xl md:text-3xl font-bold text-gray-900">{MODE_LABELS[mode]}</h1><p className="text-sm text-slate-500 mt-1">Расширенный анализ вне основного сценария подготовки требований</p></div>
-            <div className="space-y-6">
-              <section className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4 md:p-6">
-                {mode === 'PROMPT_TEST' ? <>
-                  <h2 className="text-lg md:text-xl font-bold text-gray-900 mb-1">Запрос для проверки</h2><p className="text-sm text-slate-500 mb-4">Введите основной запрос. Системный промпт и модель доступны в настройках AI.</p>
-                  <label className="block mb-6"><span className="text-sm font-semibold text-slate-700 mb-2 block">Запрос к LLM</span><textarea aria-label="Пользовательский промпт" value={userPrompt} onChange={(event) => setUserPrompt(event.target.value)} placeholder="Введите пользовательский промпт..." className="w-full h-40 px-4 py-3 border-2 border-slate-200 rounded-lg bg-slate-50/50 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100 resize-none" /></label>
-                </> : <>
-                  <h2 className="text-lg md:text-xl font-bold text-gray-900 mb-1">Исходные данные</h2><p className="text-sm text-slate-500 mb-4">Добавьте требования или бизнес-контекст для анализа.</p>
-                  {commonInput}
-                </>}
-
-                <div className="space-y-5">
-                {mode === 'PROMPT_TEST' && <label className="block"><span className="text-sm font-semibold text-slate-700 mb-2 block">Системный промпт</span><textarea aria-label="Системный промпт" value={systemPrompt} onChange={(event) => setSystemPrompt(event.target.value)} placeholder="Вставьте системный промпт (role: system)..." className="w-full h-32 px-3 py-2 border-2 border-slate-200 rounded-lg focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100 resize-none bg-white" /></label>}
-                {['STANDARD_RESEARCH', 'AGENT_RESEARCH', 'AGENT_COMPARE'].includes(mode) && <div className="space-y-4">
-                  <label className="block"><span className="text-sm font-semibold text-slate-700 mb-2 block">Категории (необязательно, по одной на строку)</span><textarea value={categories} onChange={(event) => setCategories(event.target.value)} className="w-full h-24 px-3 py-2 border-2 border-slate-200 rounded-lg focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100 resize-none bg-white" /></label>
-                  <label className="flex items-center gap-2 text-sm text-slate-700"><input className="accent-indigo-600" type="checkbox" checked={allCategories} onChange={(event) => setAllCategories(event.target.checked)} /> Все категории</label>
-                  {(mode === 'STANDARD_RESEARCH' || mode === 'AGENT_COMPARE') && <div className="flex flex-wrap gap-4">{Object.entries(RESEARCH_KIND_LABELS).map(([kind, label]) => <label key={kind} className="flex items-center gap-2 text-sm text-slate-700"><input className="accent-indigo-600" type="checkbox" checked={researchKinds.includes(kind)} onChange={(event) => setResearchKinds((current) => event.target.checked ? [...new Set([...current, kind])] : current.filter((item) => item !== kind))} />{label}</label>)}</div>}
-                </div>}
-
-                {mode === 'MODEL_COMPARE' && <div className="space-y-6">
-                  <div className="mb-6 flex flex-wrap gap-2"><button onClick={() => setCompareTarget('CATEGORIES')} className={`px-3 py-2 rounded-lg text-sm font-semibold border-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${compareTarget === 'CATEGORIES' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-200'}`}>Категории</button><button onClick={() => setCompareTarget('RESEARCH')} className={`px-3 py-2 rounded-lg text-sm font-semibold border-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${compareTarget === 'RESEARCH' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-200'}`}>Исследование</button></div>
-                  {compareTarget === 'RESEARCH' && <label className="block mt-4"><span className="text-sm font-semibold text-slate-700 mb-2 block">Тип исследования</span><select value={researchKind} onChange={(event) => setResearchKind(event.target.value)} className="w-full px-3 py-2 border-2 border-slate-200 rounded-lg bg-white focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100">{Object.entries(RESEARCH_KIND_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>}
-                  <div className="grid gap-4 md:grid-cols-2">{[['A', variantA, setVariantA], ['B', variantB, setVariantB]].map(([label, value, setter]) => <fieldset key={label} className="border border-slate-200 bg-white rounded-xl p-4"><legend className="px-1 text-sm font-semibold text-slate-600">Вариант {label}</legend><label className="block mb-4"><span className="text-sm font-semibold text-slate-700 mb-2 block">Модель</span><select value={value.model} onChange={(event) => setter({ ...value, model: event.target.value })} className="w-full px-3 py-2 border-2 border-slate-200 rounded-lg bg-white focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100">{models.map((item) => <option key={item}>{item}</option>)}</select></label><label className="block"><span className="text-sm font-semibold text-slate-700 mb-2 block">Температура</span><input aria-label={`Температура ${label}`} type="number" min="0" max="2" step="0.1" value={value.temperature} onChange={(event) => setter({ ...value, temperature: Number(event.target.value) })} className="w-full px-3 py-2 border-2 border-slate-200 rounded-lg bg-white focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100" /></label></fieldset>)}</div>
-                </div>}
-                </div>
-                <div className="mt-6 flex flex-col sm:flex-row justify-end gap-2">
-                  {submitButton}
-                </div>
-                {error && <div className="mt-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg p-3">{error}</div>}
-              </section>
-              {progressingJob && <ActiveJobPanel job={job} onCancel={cancelActiveJob} onBackground={continueInBackground} />}
-              <JobStateCard job={job} onCancel={cancelActiveJob} />
-              {result && <ResultPanel result={result} resultContent={resultContent} latestVersion={requirementsVersions[0] || null} onSaveRequirements={saveRequirementsVersion} onStartResearch={startResearchFromDecomposition} onSaveFinal={saveRequirementsVersion} onDirtyChange={handleEditorDirty} busy={versionBusy} researchBusy={linkedResearchBusy} />}
-            </div>
-          </div>
-        </main>
       )}
 
       <HistoryDrawer open={historyOpen} onClose={() => setHistoryOpen(false)} history={history} filter={historyFilter} setFilter={setHistoryFilter} activeJobId={jobId} onSelect={load} cursor={cursor} onLoadMore={async () => { const page = await enterpriseApi.listJobs({ limit: 20, cursor }); setHistory((current) => [...current, ...page.items]); setCursor(page.nextCursor); }} />
@@ -1494,19 +1340,9 @@ export default function AsyncJobWorkspace() {
 }
 
 function ResultPanel({ result, resultContent, latestVersion, businessContext, businessContextLoading, onSaveRequirements, onStartResearch, onSaveFinal, onDirtyChange, busy, researchBusy = false }) {
-  const parsedContent = safeJson(resultContent);
-  const embeddedInsights = parsedContent?.mode === 'REQUIREMENTS_INSIGHTS';
-  const decompositionResult = result.type === 'DECOMPOSITION' || ['DECOMPOSITION', 'DECOMPOSITION_WITH_INSIGHTS'].includes(result.mode) || ['DECOMPOSITION', 'DECOMPOSITION_WITH_INSIGHTS'].includes(parsedContent?.mode) || Array.isArray(parsedContent?.decomposition);
-  const status = primaryStatus(result);
   return (
     <section className="space-y-4">
-      {!embeddedInsights && !decompositionResult && <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
-        <div className="flex justify-between items-center gap-4 flex-wrap">
-          <div><p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Результат задачи</p><div className="flex items-center gap-2 mt-1"><h2 className="text-xl font-semibold text-slate-800">{MODE_LABELS[result.mode] || TYPE_LABELS[result.type] || 'Исследование'}</h2><span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${status.tone}`}>{status.label}</span></div></div>
-        </div>
-        {result.outcome === 'PARTIAL' && <div className="mt-4 flex gap-2 text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3"><AlertTriangle className="w-5 h-5 shrink-0" /><p className="text-sm">Частичный результат: некоторые этапы завершились ошибкой.</p></div>}
-      </div>}
-      <ResultView key={`${result.jobId}:${latestVersion?.versionId || 'base'}`} metadata={result} content={resultContent || result.summary || ''} latestVersion={latestVersion} businessContext={businessContext} businessContextLoading={businessContextLoading} onSaveRequirements={onSaveRequirements} onStartResearch={onStartResearch} onSaveFinal={onSaveFinal} onDirtyChange={onDirtyChange} busy={busy} researchBusy={researchBusy} />
+      <ResultView key={`${result.jobId}:${latestVersion?.versionId || 'base'}`} content={resultContent || result.summary || ''} latestVersion={latestVersion} businessContext={businessContext} businessContextLoading={businessContextLoading} onSaveRequirements={onSaveRequirements} onStartResearch={onStartResearch} onSaveFinal={onSaveFinal} onDirtyChange={onDirtyChange} busy={busy} researchBusy={researchBusy} />
     </section>
   );
 }

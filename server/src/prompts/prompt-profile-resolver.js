@@ -2,12 +2,7 @@ import { ApiError } from '../errors/api-error.js';
 
 const BUNDLE_BY_MODE = Object.freeze({
   DECOMPOSITION: 'requirements-decomposition',
-  DECOMPOSITION_WITH_INSIGHTS: 'legacy-decomposition-with-insights',
   REQUIREMENTS_INSIGHTS: 'requirements-insights',
-  STANDARD_RESEARCH: 'standard-research',
-  MODEL_COMPARE: 'standard-research',
-  AGENT_RESEARCH: 'agent-research',
-  AGENT_COMPARE: 'agent-research',
 });
 
 export function createPromptProfileResolver({ catalog, policy }) {

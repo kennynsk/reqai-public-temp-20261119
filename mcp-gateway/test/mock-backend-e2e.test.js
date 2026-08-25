@@ -15,7 +15,7 @@ const VERSION_ID = '00000000-0000-4000-8000-000000000001';
 
 function iso() { return '2026-08-25T00:00:00.000Z'; }
 
-test('all three MCP starts complete through ReqAI REST and the mock provider', async () => {
+test('both MCP starts complete through ReqAI REST and the mock provider', async () => {
   const backendConfig = loadBackendConfig({ LLM_PROVIDER_MODE: 'mock' }, { loadFiles: false });
   const provider = new MockLlmProvider({ delayMs: 0 });
   const jobs = new Map();
@@ -53,7 +53,7 @@ test('all three MCP starts complete through ReqAI REST and the mock provider', a
   const backend = app.listen(0, '127.0.0.1');
   await new Promise((resolve) => backend.once('listening', resolve));
   const backendUrl = `http://127.0.0.1:${backend.address().port}`;
-  const gatewayConfig = { enabled: true, production: false, bodyLimitBytes: 1_100_000, responseLimitBytes: 262_144, maxConcurrency: 8, path: '/mcp', allowedHosts: [], buildVersion: '1.0.0', schemaVersion: '1.0.0', host: '127.0.0.1', port: 0, backendUrl, backendTimeoutMs: 1000, authTimeoutMs: 1000 };
+  const gatewayConfig = { enabled: true, production: false, bodyLimitBytes: 1_100_000, responseLimitBytes: 262_144, maxConcurrency: 8, path: '/mcp', allowedHosts: [], buildVersion: '1.0.0', schemaVersion: '2.0.0', host: '127.0.0.1', port: 0, backendUrl, backendTimeoutMs: 1000, authTimeoutMs: 1000 };
   const gateway = createHttpRuntime({ config: gatewayConfig, client: createReqAiClient({ config: gatewayConfig }), metrics: createMetrics() });
   gateway.setBackendReady(true);
   await gateway.listen();
@@ -63,7 +63,6 @@ test('all three MCP starts complete through ReqAI REST and the mock provider', a
   try {
     const starts = [
       ['decompose_requirements', { idempotencyKey: 'mock-decompose-0001', businessContext: 'Задача' }],
-      ['start_research', { idempotencyKey: 'mock-research-00001', researchContext: 'Контекст', strategy: 'agent' }],
       ['research_requirements', { idempotencyKey: 'mock-version-research', versionId: VERSION_ID }],
     ];
     for (const [name, args] of starts) {

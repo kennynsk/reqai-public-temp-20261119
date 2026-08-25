@@ -46,7 +46,7 @@ test('bearer parser rejects missing or malformed credentials', () => {
 });
 
 test('authentication qualifies the backend v1 domain capability contract', async () => {
-  const compatible = createReqAiClient({ config, fetchImpl: async () => new Response(JSON.stringify({ version: 'v1', capabilities: { domainOperations: ['decomposition', 'standalone-research', 'requirements-research'] } }), { status: 200 }) });
+  const compatible = createReqAiClient({ config, fetchImpl: async () => new Response(JSON.stringify({ version: 'v1', capabilities: { domainOperations: ['decomposition', 'requirements-research'] } }), { status: 200 }) });
   assert.equal((await compatible.authenticate('human-token')).version, 'v1');
   const incompatible = createReqAiClient({ config, fetchImpl: async () => new Response(JSON.stringify({ version: 'v1', capabilities: { domainOperations: ['decomposition'] } }), { status: 200 }) });
   await assert.rejects(incompatible.authenticate('human-token'), (error) => error.code === 'MCP_BACKEND_INCOMPATIBLE' && error.status === 503);

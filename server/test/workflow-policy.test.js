@@ -17,14 +17,15 @@ test('workflow bundle contains durable decomposition/research graphs and version
   const workflowsPath = fileURLToPath(new URL('../src/workflows/index.js', import.meta.url));
   const source = await readFile(workflowsPath, 'utf8');
   assert.match(source, /nonRetryableErrorTypes: \['ProviderError'/);
-  assert.match(source, /mode === 'REQUIREMENTS_INSIGHTS'/);
+  assert.match(source, /mode !== 'REQUIREMENTS_INSIGHTS'/);
   assert.match(source, /generateRequirementsInsights/);
+  assert.doesNotMatch(source, /PROMPT_TEST|MODEL_COMPARE|AGENT_COMPARE|STANDARD_RESEARCH|AGENT_RESEARCH/);
   const bundle = await bundleWorkflowCode({ workflowsPath });
-  assert.match(bundle.code, /decompositionWorkflow/); assert.match(bundle.code, /researchWorkflow/); assert.match(bundle.code, /reqai-workflow-v1/); assert.match(bundle.code, /requirements-synthesis/);
+  assert.match(bundle.code, /decompositionWorkflow/); assert.match(bundle.code, /researchWorkflow/); assert.match(bundle.code, /reqai-workflow-v1/); assert.doesNotMatch(bundle.code, /requirements-synthesis/);
 });
 
 test('current version replays a persisted Temporal workflow-start history', async () => {
-  const input = { jobId: '00000000-0000-4000-8000-000000000001', tenantId: 'tenant-a', ownerUserId: 'user-a', inputArtifactId: '00000000-0000-4000-8000-000000000002', deadlineAt: '2099-01-01T00:00:00Z', configurationSnapshot: { models: ['GC-Max'], maxAttemptsPerModel: 1, requestTimeoutMs: 1000, maxConcurrency: { 'GC-Max': 1 }, maxResearchCategories: 5 } };
+  const input = { jobId: '00000000-0000-4000-8000-000000000001', tenantId: 'tenant-a', ownerUserId: 'user-a', inputArtifactId: '00000000-0000-4000-8000-000000000002', deadlineAt: '2099-01-01T00:00:00Z', configurationSnapshot: { models: ['GC-Max'], maxAttemptsPerModel: 1, requestTimeoutMs: 1000, maxConcurrency: { 'GC-Max': 1 } } };
   const encoded = defaultPayloadConverter.toPayload(input);
   const payload = { metadata: Object.fromEntries(Object.entries(encoded.metadata).map(([key, value]) => [key, Buffer.from(value).toString('base64')])), data: Buffer.from(encoded.data).toString('base64') };
   const history = { events: [

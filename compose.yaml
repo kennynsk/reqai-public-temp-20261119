@@ -269,23 +269,6 @@ services:
       retries: 12
       start_period: 15s
 
-  synthesis-worker:
-    <<: *app-service
-    env_file:
-      - .env.dev
-    environment:
-      <<: *app-environment
-      APP_ROLE: workflow-worker
-      TEMPORAL_WORKER_TASK_QUEUE: requirements-synthesis
-      TEMPORAL_WORKER_IDENTITY: synthesis-local
-      WORKER_HEALTH_PORT: "8081"
-    healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8081/health/ready').then(r=>{if(!r.ok)process.exit(1)})"]
-      interval: 10s
-      timeout: 5s
-      retries: 12
-      start_period: 15s
-
   maintenance-worker:
     <<: *app-service
     environment:

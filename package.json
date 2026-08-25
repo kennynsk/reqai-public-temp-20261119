@@ -10,8 +10,6 @@
   "scripts": {
     "dev": "docker compose up --build",
     "dev:detached": "docker compose up --build -d",
-    "predev:legacy": "node ./scripts/free-dev-ports.mjs",
-    "dev:legacy": "NODE_ENV=development concurrently -n server,client -c green,blue \"npm -w server run dev\" \"npm -w client run dev\"",
     "build": "npm -w client run build",
     "start": "NODE_ENV=production npm -w server run start",
     "start:mcp": "npm -w mcp-gateway run start",
@@ -24,9 +22,8 @@
     "qualify:soak": "node scripts/qualification/soak.mjs",
     "qualify:failover": "node scripts/qualification/failover.mjs",
     "qualify:task-routing": "node scripts/qualification/task-permalink-debug.mjs",
-    "qualify:rollout-gate": "node scripts/qualification/rollout-gate.mjs"
-  },
-  "devDependencies": {
-    "concurrently": "^9.1.2"
+    "qualify:rollout-gate": "node scripts/qualification/rollout-gate.mjs",
+    "qualify:legacy-drain": "node scripts/qualification/legacy-drain.mjs",
+    "qualify:legacy-surface": "node scripts/qualification/legacy-surface.mjs"
   }
 }

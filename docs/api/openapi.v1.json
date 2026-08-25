@@ -39,26 +39,6 @@
         }
       }
     },
-    "/api/v1/research": {
-      "post": {
-        "operationId": "startStandaloneResearch",
-        "summary": "Start asynchronous standalone requirements research",
-        "description": "Exposes product strategies standard and agent. Internal comparison and prompt-test modes are intentionally unavailable.",
-        "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }],
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/StandaloneResearchRequest" } } } },
-        "responses": {
-          "202": { "description": "Canonical job accepted", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JobAccepted" } } } },
-          "400": { "$ref": "#/components/responses/BadRequest" },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "403": { "$ref": "#/components/responses/Forbidden" },
-          "404": { "$ref": "#/components/responses/NotFound" },
-          "409": { "$ref": "#/components/responses/Conflict" },
-          "413": { "$ref": "#/components/responses/PayloadTooLarge" },
-          "429": { "$ref": "#/components/responses/Overloaded" },
-          "503": { "$ref": "#/components/responses/Unavailable" }
-        }
-      }
-    },
     "/api/v1/requirements/versions/{versionId}/research": {
       "post": {
         "operationId": "startRequirementsResearch",
@@ -384,7 +364,7 @@
     },
     "schemas": {
       "JobType": { "type": "string", "enum": ["DECOMPOSITION", "RESEARCH"] },
-      "FeatureMode": { "type": "string", "enum": ["DECOMPOSITION", "DECOMPOSITION_WITH_INSIGHTS", "REQUIREMENTS_INSIGHTS", "STANDARD_RESEARCH", "AGENT_RESEARCH", "MODEL_COMPARE", "AGENT_COMPARE", "PROMPT_TEST"] },
+      "FeatureMode": { "type": "string", "enum": ["DECOMPOSITION", "REQUIREMENTS_INSIGHTS"] },
       "JobStatus": { "type": "string", "enum": ["ACCEPTED", "QUEUED", "RUNNING", "RETRY_WAIT", "SUCCEEDED", "FAILED", "CANCEL_REQUESTED", "CANCELLED"] },
       "JobOutcome": { "type": ["string", "null"], "enum": ["COMPLETE", "PARTIAL", null] },
       "ExecutionOptions": {
@@ -401,12 +381,6 @@
           { "type": "object", "required": ["inputArtifactId"], "properties": { "inputArtifactId": { "type": "string", "format": "uuid" }, "model": { "type": "string", "minLength": 1 }, "temperature": { "type": "number", "minimum": 0, "maximum": 2 }, "promptVersion": { "type": "string", "pattern": "^[1-9][0-9]*\\.[0-9]+\\.[0-9]+$" } }, "additionalProperties": false }
         ]
       },
-      "StandaloneResearchRequest": {
-        "oneOf": [
-          { "type": "object", "required": ["researchContext"], "properties": { "researchContext": { "type": "string", "minLength": 1, "maxLength": 1048576 }, "strategy": { "type": "string", "enum": ["standard", "agent"], "default": "agent" }, "model": { "type": "string", "minLength": 1 }, "temperature": { "type": "number", "minimum": 0, "maximum": 2 }, "promptVersion": { "type": "string", "pattern": "^[1-9][0-9]*\\.[0-9]+\\.[0-9]+$" }, "researchCategories": { "type": "array", "maxItems": 10, "items": { "type": "string", "minLength": 1 } }, "researchKinds": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "enum": ["trends", "competitors", "practices"] } } }, "additionalProperties": false },
-          { "type": "object", "required": ["inputArtifactId"], "properties": { "inputArtifactId": { "type": "string", "format": "uuid" }, "strategy": { "type": "string", "enum": ["standard", "agent"], "default": "agent" }, "model": { "type": "string", "minLength": 1 }, "temperature": { "type": "number", "minimum": 0, "maximum": 2 }, "promptVersion": { "type": "string", "pattern": "^[1-9][0-9]*\\.[0-9]+\\.[0-9]+$" }, "researchCategories": { "type": "array", "maxItems": 10, "items": { "type": "string", "minLength": 1 } }, "researchKinds": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "enum": ["trends", "competitors", "practices"] } } }, "additionalProperties": false }
-        ]
-      },
       "RequirementsResearchRequest": {
         "type": "object",
         "properties": {
@@ -420,37 +394,20 @@
         "type": "object",
         "required": ["type", "inputArtifactId"],
         "properties": {
-          "type": { "$ref": "#/components/schemas/JobType" },
+          "type": { "type": "string", "const": "DECOMPOSITION" },
           "inputArtifactId": { "type": "string", "format": "uuid" },
           "parentJobId": { "type": "string", "format": "uuid" },
           "options": { "$ref": "#/components/schemas/JobOptions" }
         },
         "additionalProperties": false
       },
-      "ModelVariant": {
-        "type": "object",
-        "required": ["model"],
-        "properties": {
-          "model": { "type": "string" },
-          "temperature": { "type": "number", "minimum": 0, "maximum": 2, "default": 0.2 }
-        },
-        "additionalProperties": false
-      },
       "JobOptions": {
         "type": "object",
         "properties": {
-          "mode": { "$ref": "#/components/schemas/FeatureMode" },
+          "mode": { "type": "string", "const": "DECOMPOSITION" },
           "model": { "type": "string" },
           "temperature": { "type": "number", "minimum": 0, "maximum": 2, "default": 0.2 },
-          "researchCategories": { "type": "array", "maxItems": 10, "items": { "type": "string", "minLength": 1 } },
-          "researchKinds": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "enum": ["trends", "competitors", "practices"] } },
-          "allCategories": { "type": "boolean", "default": true },
-          "variantA": { "$ref": "#/components/schemas/ModelVariant" },
-          "variantB": { "$ref": "#/components/schemas/ModelVariant" },
-          "compareTarget": { "type": "string", "enum": ["CATEGORIES", "RESEARCH"] },
-          "researchKind": { "type": "string", "enum": ["trends", "competitors", "practices"] },
-          "inputFormat": { "type": "string", "enum": ["TEXT", "PROMPT_JSON"] }
-          ,"promptVersion": { "type": "string", "pattern": "^[1-9][0-9]*\\.[0-9]+\\.[0-9]+$" }
+          "promptVersion": { "type": "string", "pattern": "^[1-9][0-9]*\\.[0-9]+\\.[0-9]+$" }
         },
         "additionalProperties": false
       },
@@ -475,7 +432,7 @@
           "parentJobId": { "type": ["string", "null"], "format": "uuid" },
           "inputArtifactId": { "type": "string", "format": "uuid" },
           "type": { "$ref": "#/components/schemas/JobType" },
-          "mode": { "anyOf": [{ "$ref": "#/components/schemas/FeatureMode" }, { "type": "null" }] },
+          "mode": { "type": ["string", "null"] },
           "status": { "$ref": "#/components/schemas/JobStatus" },
           "outcome": { "$ref": "#/components/schemas/JobOutcome" },
           "progress": { "type": "number", "minimum": 0, "maximum": 100 },
@@ -517,7 +474,7 @@
           "type": { "$ref": "#/components/schemas/JobType" },
           "status": { "$ref": "#/components/schemas/JobStatus" },
           "outcome": { "$ref": "#/components/schemas/JobOutcome" },
-          "mode": { "anyOf": [{ "$ref": "#/components/schemas/FeatureMode" }, { "type": "null" }] },
+          "mode": { "type": ["string", "null"] },
           "summary": { "type": ["string", "null"] },
           "resultArtifactId": { "type": ["string", "null"], "format": "uuid" },
           "resultContentUrl": { "type": ["string", "null"] },
@@ -549,7 +506,7 @@
         "properties": {
           "jobId": { "type": "string", "format": "uuid" },
           "type": { "$ref": "#/components/schemas/JobType" },
-          "mode": { "anyOf": [{ "$ref": "#/components/schemas/FeatureMode" }, { "type": "null" }] },
+          "mode": { "type": ["string", "null"] },
           "status": { "$ref": "#/components/schemas/JobStatus" },
           "outcome": { "$ref": "#/components/schemas/JobOutcome" },
           "currentStep": { "type": ["string", "null"] },
@@ -635,13 +592,12 @@
           "tenantId": { "type": "string" },
           "capabilities": {
             "type": "object",
-            "required": ["models", "decompositionModes", "researchModes", "researchKinds", "domainOperations", "promptReleases"],
+            "required": ["models", "decompositionModes", "researchModes", "domainOperations", "promptReleases"],
             "properties": {
               "models": { "type": "array", "items": { "type": "string" } },
               "decompositionModes": { "type": "array", "items": { "$ref": "#/components/schemas/FeatureMode" } },
               "researchModes": { "type": "array", "items": { "$ref": "#/components/schemas/FeatureMode" } },
-              "researchKinds": { "type": "array", "items": { "type": "string", "enum": ["trends", "competitors", "practices"] } },
-              "domainOperations": { "type": "array", "items": { "type": "string", "enum": ["decomposition", "standalone-research", "requirements-research"] } },
+              "domainOperations": { "type": "array", "items": { "type": "string", "enum": ["decomposition", "requirements-research"] } },
               "promptReleases": { "type": "object", "additionalProperties": { "type": "object", "required": ["active", "selectable"], "properties": { "active": { "type": "string" }, "selectable": { "type": "array", "items": { "type": "string" } } } }
             }
           }

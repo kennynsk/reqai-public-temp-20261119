@@ -194,10 +194,7 @@ export function loadConfig(env = process.env, { loadFiles = env === process.env 
       maxRenderedBytes: integer(env, 'PROMPT_MAX_RENDERED_BYTES', 2_097_152, { min: 1024, max: 10_485_760 }),
       policy: {
         'requirements-decomposition': promptRelease(env, 'PROMPT_DECOMPOSITION'),
-        'legacy-decomposition-with-insights': promptRelease(env, 'PROMPT_LEGACY_DECOMPOSITION_WITH_INSIGHTS'),
         'requirements-insights': promptRelease(env, 'PROMPT_REQUIREMENTS_INSIGHTS'),
-        'standard-research': promptRelease(env, 'PROMPT_STANDARD_RESEARCH'),
-        'agent-research': promptRelease(env, 'PROMPT_AGENT_RESEARCH'),
       },
     },
     process: {
@@ -250,7 +247,6 @@ export function loadConfig(env = process.env, { loadFiles = env === process.env 
       taskQueues: Object.freeze({
         decomposition: optionalString(env, 'TEMPORAL_TASK_QUEUE_DECOMPOSITION', 'requirements-decomposition'),
         research: optionalString(env, 'TEMPORAL_TASK_QUEUE_RESEARCH', 'requirements-research'),
-        synthesis: optionalString(env, 'TEMPORAL_TASK_QUEUE_SYNTHESIS', 'requirements-synthesis'),
       }),
       workerTaskQueue: optionalString(env, 'TEMPORAL_WORKER_TASK_QUEUE', optionalString(env, 'TEMPORAL_TASK_QUEUE_DECOMPOSITION', 'requirements-decomposition')),
       maxConcurrentActivities: integer(env, 'WORKER_MAX_CONCURRENT_ACTIVITIES', 10, { min: 1, max: 1000 }),
@@ -291,7 +287,6 @@ export function loadConfig(env = process.env, { loadFiles = env === process.env 
       hardBacklog,
       decompositionPriority: integer(env, 'DECOMPOSITION_QUEUE_PRIORITY', 100, { min: 0, max: 1000 }),
       researchPriority: integer(env, 'RESEARCH_QUEUE_PRIORITY', 50, { min: 0, max: 1000 }),
-      maxResearchCategories: integer(env, 'JOB_MAX_RESEARCH_CATEGORIES', 10, { min: 1, max: 10 }),
       decompositionDeadlineMs: integer(env, 'JOB_DECOMPOSITION_DEADLINE_MS', 3_600_000, { min: 60_000, max: 86_400_000 }),
       researchDeadlineMs: integer(env, 'JOB_RESEARCH_DEADLINE_MS', 14_400_000, { min: 60_000, max: 86_400_000 }),
       inputMaxBytes: integer(env, 'JOB_INPUT_MAX_BYTES', 104_857_600, { min: 1, max: 104_857_600 }),
@@ -347,9 +342,7 @@ export function loadConfig(env = process.env, { loadFiles = env === process.env 
       tlsKeyPassphrase: providerMode === 'gigachat' && !personalGigaChat ? optionalString(env, 'GIGACHAT_CORP_TLS_KEY_PASSPHRASE') : '',
       rejectUnauthorized: providerMode === 'gigachat' ? (personalGigaChat ? bool(env, 'GIGACHAT_REJECT_UNAUTHORIZED', true) : bool(env, 'GIGACHAT_CORP_REJECT_UNAUTHORIZED', true)) : true,
       chunkTargetTokens: integer(env, 'LLM_CHUNK_TARGET_TOKENS', 60000, { min: 1000, max: 120000 }),
-      chunkOverlapTokens: integer(env, 'LLM_CHUNK_OVERLAP_TOKENS', 1000, { min: 0, max: 10000 }),
       chunkConcurrency: integer(env, 'LLM_CHUNK_CONCURRENCY', 3, { min: 1, max: 20 }),
-      categoryConcurrency: integer(env, 'LLM_CATEGORY_CONCURRENCY', 3, { min: 1, max: 10 }),
     },
     webhook: {
       enabled: webhookEnabled,

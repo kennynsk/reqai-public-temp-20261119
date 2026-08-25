@@ -6,7 +6,8 @@ test('local durable workers use the real ZAI provider from env.dev without expos
   const compose = await readFile(new URL('../../compose.yaml', import.meta.url), 'utf8');
   assert.match(compose, /LLM_PROVIDER_MODE:\s+"\$\{LLM_PROVIDER_MODE:-zai\}"/);
   assert.match(compose, /ZAI_MODELS:\s+"\$\{ZAI_MODELS:-glm-5\.3,glm-5-turbo,glm-4\.7,glm-4\.7-flash\}"/);
-  assert.equal((compose.match(/env_file:\n\s+- \.env\.dev/g) || []).length, 3);
+  assert.equal((compose.match(/env_file:\n\s+- \.env\.dev/g) || []).length, 2);
+  assert.doesNotMatch(compose, /synthesis-worker|requirements-synthesis/);
 
   const apiBlock = compose.slice(compose.indexOf('  reqai-api:'), compose.indexOf('  event-worker:'));
   const eventBlock = compose.slice(compose.indexOf('  event-worker:'), compose.indexOf('  decomposition-worker:'));

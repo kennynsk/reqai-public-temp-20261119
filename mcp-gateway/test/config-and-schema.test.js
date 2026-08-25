@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { loadConfig } from '../src/config.js';
-import { TOOL_DEFINITIONS, decomposeRequirementsInput, startResearchInput, researchRequirementsInput, taskStatusOutput, taskResultOutput } from '../src/schemas.js';
+import { TOOL_DEFINITIONS, decomposeRequirementsInput, researchRequirementsInput, taskStatusOutput, taskResultOutput } from '../src/schemas.js';
 
 const UUID = '123e4567-e89b-42d3-a456-426614174000';
 
@@ -16,15 +16,14 @@ test('configuration is disabled by default and production fails closed', () => {
   assert.throws(() => loadConfig({ MCP_IAM_AUDIENCE_MODE: 'exchange' }), /forward-same-audience/);
 });
 
-test('exactly five versioned tools are exposed and no prompt/resource capability exists', () => {
-  assert.deepEqual(Object.keys(TOOL_DEFINITIONS), ['decompose_requirements', 'start_research', 'research_requirements', 'get_task_status', 'get_task_result']);
+test('exactly four versioned tools are exposed and no prompt/resource capability exists', () => {
+  assert.deepEqual(Object.keys(TOOL_DEFINITIONS), ['decompose_requirements', 'research_requirements', 'get_task_status', 'get_task_result']);
+  assert.equal(loadConfig({}).schemaVersion, '2.0.0');
 });
 
 test('tool input schemas reject unknown and technical identity or lineage fields', () => {
   assert.equal(decomposeRequirementsInput.safeParse({ idempotencyKey: 'key-123456789012', businessContext: 'x', tenantId: 'other' }).success, false);
   assert.equal(decomposeRequirementsInput.safeParse({ idempotencyKey: 'key-123456789012', businessContext: 'x', inputArtifactId: UUID }).success, false);
-  assert.equal(startResearchInput.safeParse({ idempotencyKey: 'key-123456789012', researchContext: 'x', strategy: 'MODEL_COMPARE' }).success, false);
-  assert.equal(startResearchInput.safeParse({ idempotencyKey: 'key-123456789012', researchContext: 'x', prompt: 'override' }).success, false);
   assert.equal(researchRequirementsInput.safeParse({ idempotencyKey: 'key-123456789012', versionId: UUID, parentJobId: UUID }).success, false);
 });
 

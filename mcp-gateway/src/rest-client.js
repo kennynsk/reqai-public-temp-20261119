@@ -65,7 +65,7 @@ export function createReqAiClient({ config, fetchImpl = globalThis.fetch }) {
   async function authenticate(token) {
     const value = await request({ method: 'GET', path: '/api/v1', token, timeoutMs: config.authTimeoutMs });
     const operations = value?.capabilities?.domainOperations;
-    if (value?.version !== 'v1' || !Array.isArray(operations) || !['decomposition', 'standalone-research', 'requirements-research'].every((operation) => operations.includes(operation))) {
+    if (value?.version !== 'v1' || !Array.isArray(operations) || !['decomposition', 'requirements-research'].every((operation) => operations.includes(operation))) {
       throw new GatewayError({ status: 503, code: 'MCP_BACKEND_INCOMPATIBLE', message: 'ReqAI API does not expose the required v1 domain operations', retryable: false, requestId: value?.requestId || null });
     }
     return value;
@@ -75,7 +75,6 @@ export function createReqAiClient({ config, fetchImpl = globalThis.fetch }) {
     health: () => request({ method: 'GET', path: '/health/ready', token: null, timeoutMs: config.authTimeoutMs }),
     authenticate,
     decompose: (token, input) => { const { idempotencyKey, ...body } = input; return request({ method: 'POST', path: '/api/v1/decompositions', token, body, idempotencyKey }); },
-    startResearch: (token, input) => { const { idempotencyKey, ...body } = input; return request({ method: 'POST', path: '/api/v1/research', token, body, idempotencyKey }); },
     researchRequirements: (token, input) => { const { idempotencyKey, versionId, ...body } = input; return request({ method: 'POST', path: `/api/v1/requirements/versions/${encodeURIComponent(versionId)}/research`, token, body, idempotencyKey }); },
     getStatus: (token, { jobId }) => request({ method: 'GET', path: `/api/v1/jobs/${encodeURIComponent(jobId)}`, token }),
     getResult: (token, { jobId }) => request({ method: 'GET', path: `/api/v1/jobs/${encodeURIComponent(jobId)}/result`, token }),

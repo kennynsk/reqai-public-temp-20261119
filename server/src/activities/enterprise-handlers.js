@@ -1,14 +1,4 @@
 import { buildDecomposePrompt, buildInsightsPrompt } from '../../decomposer-prompts.js';
-import {
-  ASK_SYSTEM_PROMPT,
-  buildAnalyzePrompt,
-  buildAgentAnalyzePrompt,
-  buildAgentImproveRequirementsPrompt,
-  buildAgentResearchPrompt,
-  buildAgentSynthesisPrompt,
-  buildImproveRequirementsPrompt,
-  buildResearchPrompt,
-} from '../../prompts.js';
 import { withExtractedTrace } from '../observability/telemetry.js';
 
 function parseJson(text) {
@@ -26,13 +16,6 @@ function modelPolicy(input, config, execution = {}) {
     retryMaxDelayMs: snapshot.retryMaxDelayMs || config.llm.retryMaxDelayMs,
     maxConcurrency: snapshot.maxConcurrency || config.llm.maxConcurrency,
   };
-}
-
-function researchPrompt(style, kind, category, requirements) {
-  if (style === 'STANDARD') {
-    return buildResearchPrompt(kind, category.name, category.description, category.level, requirements);
-  }
-  return buildAgentResearchPrompt({ ...category, originalRequirements: requirements });
 }
 
 const INSIGHT_CATEGORIES = new Set(['trends', 'patterns', 'risks', 'competitors', 'standards']);
@@ -59,9 +42,9 @@ function normalizeRequirementsInsights(value) {
 }
 
 export function createEnterpriseActivityHandlers({ artifactRepository, modelExecutor, promptCatalog = null, config }) {
-  function renderedPrompt(input, step, variables, legacyBuilder) {
+  function renderedPrompt(input, step, variables, fallbackBuilder) {
     const profile = input.configurationSnapshot.promptProfile;
-    if (!profile) return legacyBuilder();
+    if (!profile) return fallbackBuilder();
     if (!promptCatalog) throw Object.assign(new Error('Snapshotted prompt catalog is unavailable'), { type: 'PROMPT_BUNDLE_UNAVAILABLE' });
     const declaration = promptCatalog.get(profile.id, profile.version).templates[step];
     if (!declaration) throw Object.assign(new Error(`Prompt step ${step} is unavailable`), { type: 'PROMPT_INTEGRITY_ERROR' });
@@ -106,11 +89,6 @@ export function createEnterpriseActivityHandlers({ artifactRepository, modelExec
 
   async function artifactText(input, artifactId) {
     return artifactRepository.readText({ tenantId: input.tenantId, artifactId });
-  }
-
-  function executionFor(input) {
-    if (!input.variant) return {};
-    return input.configurationSnapshot.comparison?.[input.variant] || {};
   }
 
   return {
@@ -163,17 +141,6 @@ export function createEnterpriseActivityHandlers({ artifactRepository, modelExec
       return { ...saved, sectionCount: sections.length, failedSections: input.failedChunks.length };
     },
 
-    async generateDecompositionInsights(input) {
-      const source = await artifactText(input, input.inputArtifactId);
-      const decomposition = parseJson(await artifactText(input, input.decompositionArtifactId));
-      const prompt = renderedPrompt(input, 'insights', { businessContext: source, requirementsSection: requirementsSection(decomposition) }, () => buildInsightsPrompt(source, decomposition));
-      const response = await complete(input, 'decomposition-insights', prompt);
-      let insights;
-      try { insights = parseJson(response.text); } catch { insights = { raw: response.text }; }
-      const result = { schemaVersion: 1, mode: 'DECOMPOSITION_WITH_INSIGHTS', ...decomposition, insights };
-      return store(input, JSON.stringify(result, null, 2), 'RESULT', 'application/json; charset=utf-8');
-    },
-
     async generateRequirementsInsights(input) {
       const envelope = parseJson(await artifactText(input, input.inputArtifactId));
       if (envelope?.kind !== 'REQUIREMENTS_VERSION' || !envelope.requirements) {
@@ -199,149 +166,5 @@ export function createEnterpriseActivityHandlers({ artifactRepository, modelExec
       return { ...saved, insightCount: insights.length, actualModel: response.actualModel, fallbackApplied: response.fallbackApplied };
     },
 
-    async analyzeCategories(input) {
-      if (input.configurationSnapshot.researchCategories?.length && input.analysisStyle !== 'AGENT') {
-        return {
-          style: input.analysisStyle || 'STANDARD',
-          variant: input.variant || null,
-          categories: input.configurationSnapshot.researchCategories.map((name, index) => ({ id: `category-${index + 1}`, name, description: name, level: 'продуктовый' })),
-        };
-      }
-      const source = await artifactText(input, input.inputArtifactId);
-      const style = input.analysisStyle || 'AGENT';
-      const step = style === 'AGENT' ? 'agent-analyze' : 'analyze';
-      const prompt = renderedPrompt(input, step, { requirements: source }, () => (style === 'AGENT' ? buildAgentAnalyzePrompt(source) : buildAnalyzePrompt(source)));
-      const response = await complete(
-        input,
-        `analyze-categories:${input.stepKey || input.variant || style.toLowerCase()}`,
-        prompt,
-        executionFor(input),
-      );
-      const parsed = parseJson(response.text);
-      return {
-        style,
-        variant: input.variant || null,
-        categories: parsed.categories || [],
-        dependencies: parsed.dependencies || {},
-        criticalRisks: parsed.critical_risks || [],
-        actualModel: response.actualModel,
-        fallbackApplied: response.fallbackApplied,
-      };
-    },
-
-    async researchCategory(input) {
-      const source = await artifactText(input, input.inputArtifactId);
-      const style = input.researchStyle || 'AGENT';
-      const kind = input.kind || 'agent';
-      const key = input.stepKey || `${input.variant || style}:${input.category.id}:${kind}`;
-      const step = style === 'STANDARD' ? `research-${kind}` : 'agent-research';
-      const variables = { name: input.category.name, description: input.category.description, level: input.category.level, requirements: source };
-      const prompt = renderedPrompt(input, step, variables, () => researchPrompt(style, kind, input.category, source));
-      const response = await complete(input, `research-category:${key}`, prompt, executionFor(input));
-      const saved = await store(input, response.text);
-      return {
-        ...saved,
-        categoryId: input.category.id,
-        categoryName: input.category.name,
-        style,
-        kind,
-        variant: input.variant || null,
-        success: true,
-        actualModel: response.actualModel,
-        fallbackApplied: response.fallbackApplied,
-      };
-    },
-
-    async synthesizeResearch(input) {
-      const source = await artifactText(input, input.inputArtifactId);
-      const reports = await Promise.all(input.resultArtifactIds.map((id) => artifactText(input, id)));
-      const metadata = {
-        failedCategories: input.failedCategories,
-        sourceArtifactIds: input.resultArtifactIds,
-        mode: input.configurationSnapshot.featureMode,
-      };
-      const prompt = renderedPrompt(input, 'synthesis', { requirements: source, combinedReport: reports.join('\n\n'), metadata: String(metadata) }, () => buildAgentSynthesisPrompt(source, reports.join('\n\n'), metadata));
-      const response = await complete(input, `synthesize-research:${input.stepKey || input.variant || input.researchStyle || 'default'}`, prompt, executionFor(input));
-      const saved = await store(input, response.text);
-      return { ...saved, failedCategories: input.failedCategories, actualModel: response.actualModel, fallbackApplied: response.fallbackApplied };
-    },
-
-    async improveRequirements(input) {
-      const source = await artifactText(input, input.inputArtifactId);
-      const synthesis = await artifactText(input, input.synthesisArtifactId);
-      const style = input.researchStyle || 'AGENT';
-      const step = style === 'STANDARD' ? 'improve' : 'agent-improve';
-      const prompt = renderedPrompt(input, step, { requirements: source, researchReport: synthesis }, () => (style === 'STANDARD'
-        ? buildImproveRequirementsPrompt(source, [synthesis])
-        : buildAgentImproveRequirementsPrompt(source, synthesis)));
-      const response = await complete(input, `improve-requirements:${input.stepKey || input.variant || style.toLowerCase()}`, prompt, executionFor(input));
-      const saved = await store(input, response.text);
-      return { ...saved, actualModel: response.actualModel, fallbackApplied: response.fallbackApplied };
-    },
-
-    async assembleResearchResult(input) {
-      const reports = await Promise.all((input.units || []).map(async (unit) => ({
-        categoryId: unit.categoryId,
-        categoryName: unit.categoryName,
-        kind: unit.kind,
-        style: unit.style,
-        variant: unit.variant,
-        actualModel: unit.actualModel,
-        fallbackApplied: unit.fallbackApplied,
-        content: unit.artifactId ? await artifactText(input, unit.artifactId) : null,
-        reasonCode: unit.reasonCode || null,
-      })));
-      const synthesis = input.synthesisArtifactId ? await artifactText(input, input.synthesisArtifactId) : null;
-      const improvedRaw = input.improvedArtifactId ? await artifactText(input, input.improvedArtifactId) : null;
-      let improvementSuggestions = [];
-      let proposedRequirements = null;
-      let improvedRequirements = improvedRaw;
-      if (improvedRaw) {
-        try {
-          const parsed = parseJson(improvedRaw);
-          improvementSuggestions = Array.isArray(parsed.suggestions) ? parsed.suggestions : [];
-          proposedRequirements = parsed.proposedRequirements || null;
-          improvedRequirements = parsed.summary || null;
-        } catch { /* legacy plain-text result */ }
-      }
-      let baseRequirements = null;
-      try {
-        const inputEnvelope = parseJson(await artifactText(input, input.inputArtifactId));
-        if (inputEnvelope.kind === 'REQUIREMENTS_VERSION') baseRequirements = inputEnvelope.requirements || null;
-      } catch { /* standalone research can still use plain text */ }
-      const comparison = input.comparison ? { ...input.comparison } : null;
-      for (const side of ['baseline', 'agent']) {
-        if (!comparison?.[side]) continue;
-        comparison[side] = {
-          synthesis: comparison[side].synthesisArtifactId ? await artifactText(input, comparison[side].synthesisArtifactId) : null,
-          improvedRequirements: comparison[side].improvedArtifactId ? await artifactText(input, comparison[side].improvedArtifactId) : null,
-        };
-      }
-      const result = {
-        schemaVersion: 1,
-        mode: input.configurationSnapshot.featureMode,
-        analyses: input.analyses || [],
-        reports,
-        synthesis,
-        improvedRequirements,
-        improvementSuggestions,
-        proposedRequirements,
-        baseRequirements,
-        inputRequirementsVersionId: baseRequirements ? input.inputArtifactId : null,
-        failedUnits: input.failedUnits || [],
-        comparison,
-      };
-      return store(input, JSON.stringify(result, null, 2), 'RESULT', 'application/json; charset=utf-8');
-    },
-
-    async promptTest(input) {
-      const raw = await artifactText(input, input.inputArtifactId);
-      let envelope;
-      try { envelope = parseJson(raw); } catch { throw Object.assign(new Error('Prompt test input must be valid JSON'), { type: 'INVALID_PROMPT_TEST_INPUT' }); }
-      if (typeof envelope.userPrompt !== 'string' || !envelope.userPrompt.trim()) throw Object.assign(new Error('userPrompt is required'), { type: 'INVALID_PROMPT_TEST_INPUT' });
-      const response = await complete(input, 'prompt-test', envelope.userPrompt, { systemPrompt: envelope.systemPrompt || ASK_SYSTEM_PROMPT });
-      const result = { schemaVersion: 1, mode: 'PROMPT_TEST', text: response.text, actualModel: response.actualModel, fallbackApplied: response.fallbackApplied };
-      return store(input, JSON.stringify(result, null, 2), 'RESULT', 'application/json; charset=utf-8');
-    },
   };
 }

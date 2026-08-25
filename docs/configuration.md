@@ -16,7 +16,7 @@ An invalid required value, unknown enum, malformed JSON map, non-positive timeou
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error` | ConfigMap |
 | `MAINTENANCE_DEFAULT_MODE` | `NORMAL` | `NORMAL`, `ACCEPT_AND_QUEUE`, `DRAIN`, `REJECT_NEW`, `FAILOVER_IN_PROGRESS` | ConfigMap |
 
-`PORT_RETRY_LIMIT` is legacy development behavior and must be zero or unset in Kubernetes, where container ports are fixed.
+`PORT_RETRY_LIMIT` is a local development convenience and must be zero or unset in Kubernetes, where container ports are fixed.
 
 ## PostgreSQL
 
@@ -59,7 +59,6 @@ Kafka messages are metadata-only and must not exceed the platform message limit.
 | `TEMPORAL_NAMESPACE` | `reqai` | existing namespace | ConfigMap |
 | `TEMPORAL_TASK_QUEUE_DECOMPOSITION` | `requirements-decomposition` | non-empty | ConfigMap |
 | `TEMPORAL_TASK_QUEUE_RESEARCH` | `requirements-research` | non-empty | ConfigMap |
-| `TEMPORAL_TASK_QUEUE_SYNTHESIS` | `requirements-synthesis` | non-empty | ConfigMap |
 | `TEMPORAL_TLS_ENABLED` | `true` in production | boolean | ConfigMap |
 | `TEMPORAL_TLS_CERT_PATH` | none | readable client certificate when mTLS is used | Secret volume |
 | `TEMPORAL_TLS_KEY_PATH` | none | readable client private key when mTLS is used | Secret volume |
@@ -96,15 +95,12 @@ Exact platform values remain in `docs/platform-integration-profile.md` until sup
 | `QUEUE_HARD_BACKLOG_LIMIT` | `5000` | positive and > soft limit | ConfigMap |
 | `DECOMPOSITION_QUEUE_PRIORITY` | `100` | integer 0–1,000 | ConfigMap |
 | `RESEARCH_QUEUE_PRIORITY` | `50` | integer 0–1,000 | ConfigMap |
-| `JOB_MAX_RESEARCH_CATEGORIES` | `10` | 1–10 | ConfigMap |
 | `JOB_DECOMPOSITION_DEADLINE_MS` | `3600000` | 60,000–86,400,000 | ConfigMap |
 | `JOB_RESEARCH_DEADLINE_MS` | `14400000` | 60,000–86,400,000 | ConfigMap |
 | `JOB_INPUT_MAX_BYTES` | `104857600` | 1–104,857,600 | ConfigMap |
 | `JOB_RESULT_MAX_BYTES` | `104857600` | 1–104,857,600 | ConfigMap |
 | `LLM_CHUNK_TARGET_TOKENS` | `60000` | 1,000–120,000 and below model context | ConfigMap |
-| `LLM_CHUNK_OVERLAP_TOKENS` | `1000` | 0–10,000 and below target | ConfigMap |
 | `LLM_CHUNK_CONCURRENCY` | `3` | 1–20 | ConfigMap |
-| `LLM_CATEGORY_CONCURRENCY` | `3` | 1–10 | ConfigMap |
 
 ## LLM model execution
 
@@ -112,7 +108,7 @@ The first async implementation uses one ZAI provider. `ZAI_API_KEY` is a secret;
 
 | Variable | Default | Validation | Owner |
 |---|---:|---|---|
-| `LLM_PROVIDER_MODE` | `zai` | `zai`; `mock` only for local tests (`gigachat` retained for legacy compatibility) | ConfigMap |
+| `LLM_PROVIDER_MODE` | `zai` | `zai`, `gigachat`; `mock` only for local tests | ConfigMap |
 | `ZAI_BASE_URL` | `https://api.z.ai/api/coding/paas/v4` | HTTPS URL | ConfigMap |
 | `ZAI_MODELS` | `glm-5.3,glm-5-turbo,glm-4.7,glm-4.7-flash` | comma-separated distinct provider model identifiers | ConfigMap |
 | `ZAI_API_KEY` | none | required for workflow workers in ZAI mode | Secret |
@@ -191,7 +187,7 @@ The API exposes only a privileged, redacted diagnostic view. It reports source, 
 
 `REQUIREMENTS_INTEGRATION_API_ENABLED` controls the additive domain submission routes; disabling it does not disable canonical jobs. `VERSIONED_PROMPTS_ENABLED` controls prompt-profile resolution for newly accepted production jobs and should remain enabled after worker qualification.
 
-Each workflow family has `PROMPT_<FAMILY>_ACTIVE_VERSION` and `PROMPT_<FAMILY>_RELEASED_VERSIONS` (comma-separated, at most ten immutable semantic versions): `DECOMPOSITION`, `REQUIREMENTS_INSIGHTS`, `STANDARD_RESEARCH`, and `AGENT_RESEARCH`. The compatibility-only generic combined mode uses `PROMPT_LEGACY_DECOMPOSITION_WITH_INSIGHTS_*` and is not selectable through the domain decomposition API. The active version must be included in its released set. Run `npm --workspace server run prompts:qualify` against every API/worker image before activation. See [prompt bundle release and rollback](prompt-bundles.md).
+The two workflow families have independent active/released settings: `PROMPT_DECOMPOSITION_ACTIVE_VERSION`, `PROMPT_DECOMPOSITION_RELEASED_VERSIONS`, `PROMPT_REQUIREMENTS_INSIGHTS_ACTIVE_VERSION`, and `PROMPT_REQUIREMENTS_INSIGHTS_RELEASED_VERSIONS`. Released values are comma-separated immutable semantic versions (at most ten); active must be included in its released set. Run `npm --workspace server run prompts:qualify` against every API/worker image before activation. See [prompt bundle release and rollback](prompt-bundles.md).
 
 ## Requirements MCP gateway
 
@@ -208,7 +204,7 @@ MCP uses a separate runtime and does not read backend prompt/provider/database s
 | `MCP_ALLOWED_HOSTS` | localhost only | comma-separated; required in enabled production | ConfigMap |
 | `MCP_BACKEND_API_URL` | `http://127.0.0.1:5178` | fixed absolute HTTP(S) URL without credentials/query/fragment | ConfigMap |
 | `MCP_IAM_AUDIENCE_MODE` | `forward-same-audience` | only supported first-release policy | ConfigMap |
-| `MCP_TOOL_SCHEMA_VERSION` | `1.0.0` | published schema version | ConfigMap |
+| `MCP_TOOL_SCHEMA_VERSION` | `2.0.0` | published schema version | ConfigMap |
 | `MCP_BUILD_VERSION` | `1.0.0` | immutable image/build identifier | ConfigMap |
 | `MCP_BACKEND_TIMEOUT_MS` | `10000` | 100–120,000 | ConfigMap |
 | `MCP_AUTH_TIMEOUT_MS` | `5000` | 100–30,000 | ConfigMap |

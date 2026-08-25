@@ -12,6 +12,7 @@ const row = {
   progress: '100.00',
   current_step: 'synthesis',
   message: 'One category failed; partial result returned',
+  configuration_snapshot: { featureMode: 'AGENT_RESEARCH' },
   result_artifact_id: '00000000-0000-4000-8000-000000000002',
   created_at: new Date('2026-01-01T00:00:00Z'),
   started_at: new Date('2026-01-01T00:00:05Z'),
@@ -61,6 +62,7 @@ test('REST reconciliation exposes the latest milestone and execution timestamps'
   assert.equal(job.message, 'One category failed; partial result returned');
   assert.equal(job.startedAt, '2026-01-01T00:00:05.000Z');
   assert.equal(job.completedAt, '2026-01-01T01:00:00.000Z');
+  assert.equal(job.mode, 'AGENT_RESEARCH');
 });
 
 test('partial result exposes actual model and fallback reason and audits the read', async () => {

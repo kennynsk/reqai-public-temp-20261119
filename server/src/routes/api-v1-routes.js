@@ -4,44 +4,24 @@ import { requireAnyRole } from '../auth/authorization.js';
 import { createAuthenticationMiddleware, rejectClientTenantMiddleware } from '../middleware/authentication.js';
 import { apiErrorHandler, apiNotFound } from '../middleware/api-error-handler.js';
 import { ApiError, badRequest } from '../errors/api-error.js';
+import { isRetiredMode, SUPPORTED_CREATE_MODES } from '../domain/job-modes.js';
 import { streamJobEvents } from '../services/sse-service.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const DECOMPOSITION_MODES = new Set(['DECOMPOSITION', 'DECOMPOSITION_WITH_INSIGHTS']);
-const RESEARCH_MODES = new Set(['REQUIREMENTS_INSIGHTS', 'STANDARD_RESEARCH', 'AGENT_RESEARCH', 'MODEL_COMPARE', 'AGENT_COMPARE', 'PROMPT_TEST']);
-const RESEARCH_KINDS = new Set(['trends', 'competitors', 'practices']);
-
-function validateVariant(value, field) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) throw badRequest('VALIDATION_ERROR', `${field} must be an object`, { field });
-  const unsupported = Object.keys(value).filter((key) => !['model', 'temperature'].includes(key));
-  if (unsupported.length) throw badRequest('VALIDATION_ERROR', `${field} contains unsupported fields`, { field, fields: unsupported });
-  if (typeof value.model !== 'string' || !value.model.trim()) throw badRequest('VALIDATION_ERROR', `${field}.model is required`, { field: `${field}.model` });
-  if (value.temperature != null && (!Number.isFinite(value.temperature) || value.temperature < 0 || value.temperature > 2)) {
-    throw badRequest('VALIDATION_ERROR', `${field}.temperature must be from 0 to 2`, { field: `${field}.temperature` });
-  }
-}
+const DECOMPOSITION_MODES = new Set(['DECOMPOSITION']);
 
 function validateJobOptions(type, options = {}) {
-  const allowed = new Set(['mode', 'model', 'temperature', 'researchCategories', 'researchKinds', 'allCategories', 'variantA', 'variantB', 'compareTarget', 'researchKind', 'inputFormat', 'promptVersion']);
+  const allowed = new Set(['mode', 'model', 'temperature', 'promptVersion']);
   const unsupported = Object.keys(options).filter((key) => !allowed.has(key));
   if (unsupported.length) throw badRequest('VALIDATION_ERROR', 'options contains unsupported fields', { fields: unsupported });
-  const mode = options.mode || (type === 'DECOMPOSITION' ? 'DECOMPOSITION' : 'AGENT_RESEARCH');
-  const allowedModes = type === 'DECOMPOSITION' ? DECOMPOSITION_MODES : RESEARCH_MODES;
-  if (!allowedModes.has(mode)) throw badRequest('VALIDATION_ERROR', `Unsupported mode ${mode} for ${type}`, { field: 'options.mode' });
+  const mode = options.mode || (type === 'DECOMPOSITION' ? 'DECOMPOSITION' : null);
+  if (type !== 'DECOMPOSITION' || mode !== 'DECOMPOSITION') {
+    throw badRequest('UNSUPPORTED_JOB_MODE', 'Generic job creation supports DECOMPOSITION only; use requirements-version research for AI insights', { mode });
+  }
+  if (!DECOMPOSITION_MODES.has(mode)) throw badRequest('VALIDATION_ERROR', `Unsupported mode ${mode} for ${type}`, { field: 'options.mode' });
   if (options.model != null && (typeof options.model !== 'string' || !options.model.trim())) throw badRequest('VALIDATION_ERROR', 'options.model must be a non-empty string', { field: 'options.model' });
   if (options.temperature != null && (!Number.isFinite(options.temperature) || options.temperature < 0 || options.temperature > 2)) throw badRequest('VALIDATION_ERROR', 'options.temperature must be from 0 to 2', { field: 'options.temperature' });
-  if (options.researchKinds != null && (!Array.isArray(options.researchKinds) || !options.researchKinds.length || options.researchKinds.some((kind) => !RESEARCH_KINDS.has(kind)))) {
-    throw badRequest('VALIDATION_ERROR', 'options.researchKinds contains an unsupported research kind', { field: 'options.researchKinds' });
-  }
-  if (options.compareTarget != null && !['CATEGORIES', 'RESEARCH'].includes(options.compareTarget)) throw badRequest('VALIDATION_ERROR', 'options.compareTarget must be CATEGORIES or RESEARCH', { field: 'options.compareTarget' });
-  if (options.researchKind != null && !RESEARCH_KINDS.has(options.researchKind)) throw badRequest('VALIDATION_ERROR', 'options.researchKind is unsupported', { field: 'options.researchKind' });
-  if (options.inputFormat != null && !['TEXT', 'PROMPT_JSON'].includes(options.inputFormat)) throw badRequest('VALIDATION_ERROR', 'options.inputFormat is unsupported', { field: 'options.inputFormat' });
   if (options.promptVersion != null && !/^[1-9]\d*\.\d+\.\d+$/.test(options.promptVersion)) throw badRequest('VALIDATION_ERROR', 'options.promptVersion must use semantic versioning', { field: 'options.promptVersion' });
-  if (mode === 'MODEL_COMPARE') {
-    validateVariant(options.variantA, 'options.variantA');
-    validateVariant(options.variantB, 'options.variantB');
-  }
-  if (mode === 'PROMPT_TEST' && options.inputFormat !== 'PROMPT_JSON') throw badRequest('VALIDATION_ERROR', 'PROMPT_TEST requires inputFormat PROMPT_JSON', { field: 'options.inputFormat' });
   return { ...options, mode };
 }
 
@@ -132,10 +112,9 @@ export function createApiV1Router({ config, services = {} }) {
       tenantId: req.auth.tenantId,
       capabilities: {
         models: config.llm.availableModels || config.llm.models,
-        decompositionModes: [...DECOMPOSITION_MODES],
-        researchModes: [...RESEARCH_MODES],
-        researchKinds: [...RESEARCH_KINDS],
-        domainOperations: config.features?.requirementsIntegrationApi ? ['decomposition', 'standalone-research', 'requirements-research'] : [],
+        decompositionModes: SUPPORTED_CREATE_MODES.filter((mode) => mode === 'DECOMPOSITION'),
+        researchModes: SUPPORTED_CREATE_MODES.filter((mode) => mode === 'REQUIREMENTS_INSIGHTS'),
+        domainOperations: config.features?.requirementsIntegrationApi ? ['decomposition', 'requirements-research'] : [],
         promptReleases: config.features?.versionedPrompts ? Object.fromEntries(Object.entries(config.prompts.policy).map(([id, release]) => [id, { active: release.active, selectable: release.released }])) : {},
       },
     });
@@ -145,16 +124,6 @@ export function createApiV1Router({ config, services = {} }) {
     router.post('/api/v1/decompositions', requireAnyRole('user', 'tenant-admin', 'system-admin'), asyncRoute(async (req, res) => {
       if (!services.requirementsIntegrationService) throw new ApiError({ status: 503, code: 'ASYNC_PLATFORM_DISABLED', message: 'Requirements integration API is unavailable', retryable: true });
       acceptedResponse(res, await services.requirementsIntegrationService.startDecomposition({
-        auth: req.auth,
-        idempotencyKey: req.get('Idempotency-Key'),
-        requestId: req.context?.requestId,
-        command: req.body,
-      }));
-    }));
-
-    router.post('/api/v1/research', requireAnyRole('user', 'tenant-admin', 'system-admin'), asyncRoute(async (req, res) => {
-      if (!services.requirementsIntegrationService) throw new ApiError({ status: 503, code: 'ASYNC_PLATFORM_DISABLED', message: 'Requirements integration API is unavailable', retryable: true });
-      acceptedResponse(res, await services.requirementsIntegrationService.startStandaloneResearch({
         auth: req.auth,
         idempotencyKey: req.get('Idempotency-Key'),
         requestId: req.context?.requestId,
@@ -308,6 +277,8 @@ export function createApiV1Router({ config, services = {} }) {
   router.post('/api/v1/admin/workflows/:jobId/reset', requireAnyRole('system-admin'), asyncRoute(async (req, res) => {
     const jobId = requireUuid(req.params.jobId); const { runId, workflowTaskFinishEventId, reason } = req.body || {};
     if (!runId || !Number.isInteger(workflowTaskFinishEventId) || !reason) throw badRequest('VALIDATION_ERROR', 'runId, workflowTaskFinishEventId and reason are required');
+    const job = await services.jobQueryService.get({ auth: req.auth, jobId, requestId: req.context?.requestId });
+    if (isRetiredMode(job.mode)) throw new ApiError({ status: 409, code: 'JOB_MODE_RETIRED', message: 'Retired job modes cannot be reset' });
     await services.auditRepository.record({ tenantId: req.auth.tenantId, actorId: req.auth.userId, actorRoles: req.auth.roles, action: 'workflow.reset', targetType: 'job', targetId: jobId, requestId: req.context?.requestId, sourceSite: config.process.siteId, metadata: { runId } });
     res.status(202).json(await services.workflowEngine.reset({ executionId: jobId, runId, workflowTaskFinishEventId, reason }));
   }));

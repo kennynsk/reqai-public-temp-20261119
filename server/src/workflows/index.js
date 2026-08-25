@@ -50,63 +50,6 @@ async function cancellationBoundary(input, run) {
   }
 }
 
-function synthesisActivities(input) {
-  return proxyActivities({
-    ...activityOptions,
-    taskQueue: input.configurationSnapshot.taskQueues?.synthesis || 'requirements-synthesis',
-  });
-}
-
-function categoriesFor(input, analysis) {
-  const categories = (analysis.categories || []).slice(0, input.configurationSnapshot.maxResearchCategories);
-  return input.configurationSnapshot.allCategories === false ? categories.slice(0, 1) : categories;
-}
-
-async function researchUnits(input, categories, { style, variant = null }) {
-  const kinds = style === 'STANDARD' ? input.configurationSnapshot.researchKinds : ['agent'];
-  const units = categories.flatMap((category) => kinds.map((kind) => ({ category, kind })));
-  return recoverable(
-    units,
-    input.configurationSnapshot.categoryConcurrency || 3,
-    ({ category, kind }) => {
-      assertDeadline(input);
-      return activities.researchCategory({
-        ...input,
-        category,
-        kind,
-        variant,
-        researchStyle: style,
-        stepKey: [variant, style, category.id, kind].filter(Boolean).join(':'),
-      });
-    },
-    ({ category, kind }) => ({ categoryId: category.id, categoryName: category.name, kind, style, variant }),
-  );
-}
-
-async function synthesisAndImprovement(input, units, { style, variant = null }) {
-  const synthesis = synthesisActivities(input);
-  const successful = units.filter((unit) => unit.success && unit.artifactId);
-  if (!successful.length) return { successful, synthesis: null, improved: null };
-  assertDeadline(input);
-  const synthesized = await synthesis.synthesizeResearch({
-    ...input,
-    variant,
-    researchStyle: style,
-    stepKey: [variant, style].filter(Boolean).join(':'),
-    resultArtifactIds: successful.map((unit) => unit.artifactId),
-    failedCategories: units.filter((unit) => !unit.success).map((unit) => `${unit.categoryId}:${unit.kind}`),
-  });
-  assertDeadline(input);
-  const improved = await synthesis.improveRequirements({
-    ...input,
-    variant,
-    researchStyle: style,
-    stepKey: [variant, style].filter(Boolean).join(':'),
-    synthesisArtifactId: synthesized.artifactId,
-  });
-  return { successful, synthesis: synthesized, improved };
-}
-
 export async function decompositionWorkflow(input) {
   return cancellationBoundary(input, async () => {
     assertDeadline(input);
@@ -129,89 +72,11 @@ export async function decompositionWorkflow(input) {
 
 export async function researchWorkflow(input) {
   return cancellationBoundary(input, async () => {
-    const mode = input.configurationSnapshot.featureMode || 'AGENT_RESEARCH';
-    const synthesis = synthesisActivities(input);
+    const mode = input.configurationSnapshot.featureMode;
+    if (mode !== 'REQUIREMENTS_INSIGHTS') throw Object.assign(new Error(`Unsupported research workflow mode: ${mode || 'missing'}`), { name: 'UNSUPPORTED_JOB_MODE' });
     assertDeadline(input);
     await activities.validateInput(input);
-
-    if (mode === 'REQUIREMENTS_INSIGHTS') {
-      const result = await activities.generateRequirementsInsights(input);
-      return activities.finalizeSucceeded({ ...input, resultArtifactId: result.artifactId, successfulUnits: 1, failedUnits: 0 });
-    }
-
-    if (mode === 'PROMPT_TEST') {
-      const result = await activities.promptTest(input);
-      return activities.finalizeSucceeded({ ...input, resultArtifactId: result.artifactId, successfulUnits: 1, failedUnits: 0 });
-    }
-
-    if (mode === 'MODEL_COMPARE') {
-      const analysisA = await activities.analyzeCategories({ ...input, analysisStyle: 'STANDARD', variant: 'variantA', stepKey: 'variantA' });
-      const analysisB = await activities.analyzeCategories({ ...input, analysisStyle: 'STANDARD', variant: 'variantB', stepKey: 'variantB' });
-      let units = [];
-      if (input.configurationSnapshot.compareTarget === 'RESEARCH') {
-        const category = categoriesFor(input, analysisA)[0];
-        if (category) {
-          const kind = input.configurationSnapshot.researchKind || 'trends';
-          const [unitA, unitB] = await Promise.all([
-            activities.researchCategory({ ...input, category, kind, researchStyle: 'STANDARD', variant: 'variantA', stepKey: `variantA:${category.id}:${kind}` }),
-            activities.researchCategory({ ...input, category, kind, researchStyle: 'STANDARD', variant: 'variantB', stepKey: `variantB:${category.id}:${kind}` }),
-          ]);
-          units = [unitA, unitB];
-        }
-      }
-      const result = await synthesis.assembleResearchResult({
-        ...input,
-        analyses: [analysisA, analysisB],
-        units,
-        failedUnits: [],
-        comparison: { target: input.configurationSnapshot.compareTarget, variants: input.configurationSnapshot.comparison },
-      });
-      return activities.finalizeSucceeded({ ...input, resultArtifactId: result.artifactId, successfulUnits: 2, failedUnits: 0 });
-    }
-
-    if (mode === 'AGENT_COMPARE') {
-      const [baselineAnalysis, agentAnalysis] = await Promise.all([
-        activities.analyzeCategories({ ...input, analysisStyle: 'STANDARD', stepKey: 'baseline' }),
-        activities.analyzeCategories({ ...input, analysisStyle: 'AGENT', stepKey: 'agent' }),
-      ]);
-      const categories = categoriesFor(input, agentAnalysis.categories?.length ? agentAnalysis : baselineAnalysis);
-      const [baselineUnits, agentUnits] = await Promise.all([
-        researchUnits(input, categories, { style: 'STANDARD' }),
-        researchUnits(input, categories, { style: 'AGENT' }),
-      ]);
-      const [baseline, agent] = await Promise.all([
-        synthesisAndImprovement(input, baselineUnits, { style: 'STANDARD', variant: 'baseline' }),
-        synthesisAndImprovement(input, agentUnits, { style: 'AGENT', variant: 'agent' }),
-      ]);
-      const allUnits = [...baselineUnits, ...agentUnits];
-      const result = await synthesis.assembleResearchResult({
-        ...input,
-        analyses: [baselineAnalysis, agentAnalysis],
-        units: allUnits,
-        failedUnits: allUnits.filter((unit) => !unit.success),
-        comparison: {
-          target: 'AGENT_VS_STANDARD',
-          baseline: { synthesisArtifactId: baseline.synthesis?.artifactId, improvedArtifactId: baseline.improved?.artifactId },
-          agent: { synthesisArtifactId: agent.synthesis?.artifactId, improvedArtifactId: agent.improved?.artifactId },
-        },
-      });
-      const successful = allUnits.filter((unit) => unit.success).length;
-      return activities.finalizeSucceeded({ ...input, resultArtifactId: result.artifactId, successfulUnits: successful, failedUnits: allUnits.length - successful });
-    }
-
-    const style = mode === 'STANDARD_RESEARCH' ? 'STANDARD' : 'AGENT';
-    const analysis = await activities.analyzeCategories({ ...input, analysisStyle: style, stepKey: style.toLowerCase() });
-    const categories = categoriesFor(input, analysis);
-    const units = await researchUnits(input, categories, { style });
-    const completed = await synthesisAndImprovement(input, units, { style });
-    const result = await synthesis.assembleResearchResult({
-      ...input,
-      analyses: [analysis],
-      units,
-      synthesisArtifactId: completed.synthesis?.artifactId,
-      improvedArtifactId: completed.improved?.artifactId,
-      failedUnits: units.filter((unit) => !unit.success),
-    });
-    return activities.finalizeSucceeded({ ...input, resultArtifactId: result.artifactId, successfulUnits: completed.successful.length, failedUnits: units.length - completed.successful.length });
+    const result = await activities.generateRequirementsInsights(input);
+    return activities.finalizeSucceeded({ ...input, resultArtifactId: result.artifactId, successfulUnits: 1, failedUnits: 0 });
   });
 }

@@ -3,6 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { ApiError } from '../errors/api-error.js';
 import { injectTrace } from '../observability/telemetry.js';
 import { logEvent } from '../middleware/safe-logging.js';
+import { isSupportedCreateMode } from '../domain/job-modes.js';
 
 const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9._:-]{16,128}$/;
 
@@ -22,19 +23,6 @@ function prioritizedModels(configured, selected, limit = 3) {
   return [selected, ...configured.filter((model) => model !== selected)].slice(0, limit);
 }
 
-function validateComparison(config, comparison) {
-  const availableModels = config.llm.availableModels || config.llm.models;
-  if (!comparison) return null;
-  return Object.fromEntries(['variantA', 'variantB'].map((key) => {
-    const variant = comparison[key];
-    return [key, {
-      model: variant.model,
-      models: prioritizedModels(availableModels, variant.model, config.llm.maxModelsPerStep),
-      temperature: variant.temperature ?? 0.2,
-    }];
-  }));
-}
-
 export function createJobService({ config, jobRepository, operationalRepository, requirementsVersionService, jobTraceRepository, promptProfileResolver = null, clock = () => new Date(), uuid = randomUUID }) {
   return {
     async create({ auth, idempotencyKey, body, requestId, requestHashOverride = null, inlineArtifact = null }) {
@@ -46,16 +34,15 @@ export function createJobService({ config, jobRepository, operationalRepository,
       if (!IDEMPOTENCY_KEY_PATTERN.test(idempotencyKey || '')) {
         throw new ApiError({ status: 400, code: 'INVALID_IDEMPOTENCY_KEY', message: 'Idempotency-Key must contain 16 to 128 safe characters' });
       }
-      const categories = body.options?.researchCategories;
-      if (categories != null && (!Array.isArray(categories) || categories.length > config.jobs.maxResearchCategories)) {
-        throw new ApiError({
-          status: 400,
-          code: 'RESEARCH_CATEGORY_LIMIT',
-          message: `researchCategories must be an array with at most ${config.jobs.maxResearchCategories} items`,
-        });
+      const featureMode = body.options?.mode || (body.type === 'DECOMPOSITION' ? 'DECOMPOSITION' : null);
+      if (!isSupportedCreateMode(featureMode)) {
+        throw new ApiError({ status: 400, code: 'UNSUPPORTED_JOB_MODE', message: 'Only DECOMPOSITION and requirements-linked REQUIREMENTS_INSIGHTS jobs can be created', details: { mode: featureMode } });
       }
-      if (categories?.some((category) => typeof category !== 'string' || !category.trim())) {
-        throw new ApiError({ status: 400, code: 'VALIDATION_ERROR', message: 'researchCategories must contain non-empty strings' });
+      if (featureMode === 'DECOMPOSITION' && body.type !== 'DECOMPOSITION') {
+        throw new ApiError({ status: 400, code: 'INVALID_JOB_TYPE', message: 'DECOMPOSITION mode requires DECOMPOSITION type' });
+      }
+      if (featureMode === 'REQUIREMENTS_INSIGHTS' && (body.type !== 'RESEARCH' || !body.parentJobId)) {
+        throw new ApiError({ status: 400, code: 'INVALID_REQUIREMENTS_RESEARCH', message: 'REQUIREMENTS_INSIGHTS must be linked to an eligible requirements version' });
       }
       if (body.parentJobId && body.type !== 'RESEARCH') {
         throw new ApiError({ status: 400, code: 'INVALID_PARENT_JOB', message: 'parentJobId is supported only for research jobs' });
@@ -70,14 +57,10 @@ export function createJobService({ config, jobRepository, operationalRepository,
 
       const availableModels = config.llm.availableModels || config.llm.models;
       const selectedModels = prioritizedModels(availableModels, body.options?.model, config.llm.maxModelsPerStep);
-      const comparison = body.options?.mode === 'MODEL_COMPARE'
-        ? validateComparison(config, { variantA: body.options.variantA, variantB: body.options.variantB })
-        : null;
-      const featureMode = body.options?.mode || (body.type === 'DECOMPOSITION' ? 'DECOMPOSITION' : 'AGENT_RESEARCH');
-      const promptProfile = config.features?.versionedPrompts === true && featureMode !== 'PROMPT_TEST'
+      const promptProfile = config.features?.versionedPrompts === true
         ? promptProfileResolver?.resolve({ type: body.type, mode: featureMode, requestedVersion: body.options?.promptVersion })
         : null;
-      if (config.features?.versionedPrompts === true && featureMode !== 'PROMPT_TEST' && !promptProfile) {
+      if (config.features?.versionedPrompts === true && !promptProfile) {
         throw new ApiError({ status: 503, code: 'PROMPT_POLICY_UNAVAILABLE', message: 'Versioned prompt policy is unavailable', retryable: true });
       }
 
@@ -107,12 +90,6 @@ export function createJobService({ config, jobRepository, operationalRepository,
             featureMode,
             ...(promptProfile ? { promptProfile } : {}),
             temperature: body.options?.temperature ?? 0.2,
-            comparison,
-            compareTarget: body.options?.compareTarget || 'CATEGORIES',
-            researchKind: body.options?.researchKind || 'trends',
-            researchKinds: body.options?.researchKinds || ['trends', 'competitors', 'practices'],
-            allCategories: body.options?.allCategories !== false,
-            inputFormat: body.options?.inputFormat || 'TEXT',
             maxModelsPerStep: config.llm.maxModelsPerStep,
             maxAttemptsPerModel: config.llm.maxAttemptsPerModel,
             requestTimeoutMs: config.llm.requestTimeoutMs,
@@ -120,12 +97,7 @@ export function createJobService({ config, jobRepository, operationalRepository,
             retryMaxDelayMs: config.llm.retryMaxDelayMs,
             maxConcurrency: config.llm.maxConcurrency,
             chunkTargetTokens: config.llm.chunkTargetTokens,
-            chunkOverlapTokens: config.llm.chunkOverlapTokens,
             chunkConcurrency: config.llm.chunkConcurrency,
-            categoryConcurrency: config.llm.categoryConcurrency,
-            maxResearchCategories: config.jobs.maxResearchCategories,
-            researchCategories: categories?.map((category) => category.trim()) || null,
-            taskQueues: config.temporal?.taskQueues || { decomposition: 'requirements-decomposition', research: 'requirements-research', synthesis: 'requirements-synthesis' },
           },
         },
         admission: {
@@ -177,6 +149,9 @@ export function createJobService({ config, jobRepository, operationalRepository,
       const original = await jobRepository.findVisibleById({ tenantId: auth.tenantId, ownerUserId: null, jobId });
       if (!original) throw new ApiError({ status: 404, code: 'JOB_NOT_FOUND', message: 'Job not found' });
       if (!['FAILED', 'CANCELLED'].includes(original.status)) throw new ApiError({ status: 409, code: 'JOB_STATE_CONFLICT', message: 'Only failed or cancelled jobs can be retried' });
+      if (!isSupportedCreateMode(original.configuration_snapshot?.featureMode)) {
+        throw new ApiError({ status: 409, code: 'JOB_MODE_RETIRED', message: 'Retired job modes cannot be retried' });
+      }
       const now = clock();
       const newJobId = uuid();
       const retryBody = { retryOf: jobId, type: original.type, inputArtifactId: original.input_artifact_id };

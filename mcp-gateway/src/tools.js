@@ -5,7 +5,6 @@ import { safeLog } from './redaction.js';
 
 const OPERATIONS = Object.freeze({
   decompose_requirements: 'decompose',
-  start_research: 'startResearch',
   research_requirements: 'researchRequirements',
   get_task_status: 'getStatus',
   get_task_result: 'getResult',

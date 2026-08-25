@@ -239,8 +239,9 @@ export class JobRepository {
       );
       await client.query(
         `INSERT INTO ${this.schema}.outbox_events (
-           event_id, tenant_id, aggregate_type, aggregate_id, sequence, event_type, schema_version, payload
-         ) VALUES ($1, $2, 'job', $3, $4, 'job.cancel-requested', '1.0', $5::jsonb)`,
+           event_id, tenant_id, aggregate_type, aggregate_id, sequence, event_type, schema_version, payload,
+           workflow_dispatch_status
+         ) VALUES ($1, $2, 'job', $3, $4, 'job.cancel-requested', '1.0', $5::jsonb, 'PENDING')`,
         [event.id, tenantId, jobId, Number(current.sequence) + 1, JSON.stringify(event.payload)],
       );
       await client.query(

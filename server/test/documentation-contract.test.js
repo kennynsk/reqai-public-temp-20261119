@@ -24,16 +24,16 @@ test('OpenAPI declares every v1 and system router operation', async () => {
   assert.deepEqual(documented, runtime);
 });
 
-test('human documentation describes the current guided workflow and legacy boundary', async () => {
+test('human documentation describes the current guided workflow and retirement boundary', async () => {
   const [readme, parity, integration] = await Promise.all([
     read('README.md'), read('docs/functional-parity.md'), read('docs/requirements-integration-api.md'),
   ]);
-  for (const marker of ['Подготовка требований', 'Контекст', 'Требования', 'AI-исследование', 'Финальная версия', 'Дополнительные инструменты']) {
+  for (const marker of ['Подготовка требований', 'Контекст', 'Требования', 'AI-исследование', 'Финальная версия']) {
     assert.match(`${readme}\n${parity}`, new RegExp(marker));
   }
   assert.doesNotMatch(parity, /разделами «Бизнес-требования» и «Исследование рынка»/);
   assert.match(readme, /Node\.js-22/);
-  assert.match(readme, /OpenRouter-переменные относятся только к `npm run dev:legacy`/);
+  assert.doesNotMatch(`${readme}\n${parity}`, /Дополнительные инструменты/);
   assert.match(integration, /http:\/\/localhost:5178/);
 });
 
@@ -43,11 +43,16 @@ test('prompt documentation covers the shipped catalog and primary workflow separ
     read('docs/prompt-bundles.md'),
     read('docs/qualification.md'),
   ]);
-  const bundleIds = entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
-  assert.equal(bundleIds.length, 5);
+  const bundleIds = [];
+  for (const entry of entries.filter((candidate) => candidate.isDirectory())) {
+    const versions = await readdir(new URL(`server/prompt-bundles/${entry.name}/`, root), { withFileTypes: true });
+    if (versions.some((version) => version.isDirectory())) bundleIds.push(entry.name);
+  }
+  bundleIds.sort();
+  assert.equal(bundleIds.length, 2);
   for (const id of bundleIds) assert.ok(prompts.includes(`\`${id}\``), `missing documented bundle ${id}`);
-  assert.match(prompts, /`requirements-insights`[\s\S]*one `insights` template/);
-  assert.match(qualification, /five active `1\.0\.0` bundles/);
+  assert.match(prompts, /`requirements-insights`[\s\S]*`insights\.md`/);
+  assert.match(qualification, /two active prompt bundles/);
 });
 
 test('configuration documentation uses current runtime environment names', async () => {
@@ -55,7 +60,7 @@ test('configuration documentation uses current runtime environment names', async
   for (const name of ['KAFKA_SSL_ENABLED', 'SSE_POLL_INTERVAL_MS', 'TEMPORAL_TLS_CERT_PATH', 'TEMPORAL_TLS_KEY_PATH', 'TEMPORAL_TLS_SERVER_NAME']) {
     assert.ok(documentation.includes(`\`${name}\``), `missing documented variable ${name}`);
   }
-  for (const stale of ['KAFKA_SECURITY_PROTOCOL', 'KAFKA_CA_CERT_PATH', 'SSE_RECONCILE_INTERVAL_MS', 'TEMPORAL_CA_CERT_PATH', 'TEMPORAL_CLIENT_CERT_PATH', 'TEMPORAL_CLIENT_KEY_PATH', 'ARTIFACT_INLINE_MAX_BYTES', 'WEBHOOK_ALLOWED_EVENTS', 'RETENTION_TECHNICAL_LOGS_DAYS']) {
+  for (const stale of ['KAFKA_SECURITY_PROTOCOL', 'KAFKA_CA_CERT_PATH', 'SSE_RECONCILE_INTERVAL_MS', 'TEMPORAL_CA_CERT_PATH', 'TEMPORAL_CLIENT_CERT_PATH', 'TEMPORAL_CLIENT_KEY_PATH', 'ARTIFACT_INLINE_MAX_BYTES', 'WEBHOOK_ALLOWED_EVENTS', 'RETENTION_TECHNICAL_LOGS_DAYS', 'TEMPORAL_TASK_QUEUE_SYNTHESIS', 'JOB_MAX_RESEARCH_CATEGORIES', 'LLM_CATEGORY_CONCURRENCY']) {
     assert.ok(!documentation.includes(`\`${stale}\``), `stale documented variable ${stale}`);
   }
 });

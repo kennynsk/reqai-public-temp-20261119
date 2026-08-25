@@ -23,7 +23,7 @@ export class WorkflowDispatchRepository {
       const result = await client.query(
         `WITH candidates AS (
            SELECT event_id FROM ${this.schema}.outbox_events
-           WHERE tenant_id = $1 AND event_type = 'job.accepted'
+           WHERE tenant_id = $1 AND event_type IN ('job.accepted', 'job.cancel-requested')
              AND workflow_dispatch_status IN ('PENDING', 'FAILED') AND workflow_available_at <= now()
            ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT $2
          )
@@ -31,7 +31,7 @@ export class WorkflowDispatchRepository {
          SET workflow_dispatch_status = 'DISPATCHING', workflow_attempts = workflow_attempts + 1, updated_at = now()
          FROM candidates c
          WHERE e.tenant_id = $1 AND e.event_id = c.event_id
-         RETURNING e.event_id, e.aggregate_id AS job_id, e.payload, e.workflow_attempts`,
+         RETURNING e.event_id, e.aggregate_id AS job_id, e.event_type, e.payload, e.workflow_attempts`,
         [tenantId, limit],
       );
       if (!result.rows.length) return [];
@@ -59,6 +59,15 @@ export class WorkflowDispatchRepository {
         [tenantId, jobId, executionSite],
       );
     });
+  }
+
+  async markCancellationDispatched({ tenantId, eventId, jobId }) {
+    return withTenantTransaction(this.pool, tenantId, (client) => client.query(
+      `UPDATE ${this.schema}.outbox_events
+       SET workflow_dispatch_status = 'STARTED', workflow_started_at = now(), workflow_last_error_code = NULL, updated_at = now()
+       WHERE tenant_id = $1 AND event_id = $2 AND aggregate_id = $3`,
+      [tenantId, eventId, jobId],
+    ));
   }
 
   async markFailed({ tenantId, eventId, reasonCode, retryAt }) {

@@ -3,7 +3,7 @@ import test from 'node:test';
 
 import { JobRepository } from '../src/repositories/job-repository.js';
 
-function repositoryPool({ checkpointConflict = false } = {}) {
+function repositoryPool({ checkpointConflict = false, cancellationStatus = 'RUNNING' } = {}) {
   const calls = [];
   const client = {
     async query(sql, params) {
@@ -11,7 +11,7 @@ function repositoryPool({ checkpointConflict = false } = {}) {
       if (sql.includes('SELECT status, version, sequence, progress')) return { rowCount: 1, rows: [{ status: 'RUNNING', version: 2, sequence: 4, progress: 20, current_step: 'prepare', message: 'Подготавливаем данные' }] };
       if (sql.includes('SELECT status, version')) return { rowCount: 1, rows: [{ status: 'RUNNING', version: 2 }] };
       if (sql.includes('SELECT * FROM "reqai".jobs') && sql.includes('FOR UPDATE')) {
-        return { rowCount: 1, rows: [{ id: params[1], status: 'RUNNING', sequence: 1, version: 2 }] };
+        return { rowCount: 1, rows: [{ id: params[1], status: cancellationStatus, sequence: 1, version: 2 }] };
       }
       if (sql.includes("SET status = 'CANCEL_REQUESTED'")) return { rowCount: 1, rows: [{ id: params[1], status: 'CANCEL_REQUESTED', version: 3 }] };
       if (sql.includes('UPDATE "reqai".jobs') && sql.includes('GREATEST(progress')) return { rowCount: 1, rows: [{ id: params[1], status: 'RUNNING', progress: params[2], current_step: params[3], message: params[4], sequence: 5, version: 3 }] };
@@ -50,9 +50,21 @@ test('cancellation request updates state and writes outbox and audit atomically'
     audit: { id: '00000000-0000-4000-8000-000000000003', actorId: 'user-a', actorRoles: ['user'], requestId: 'req-1', sourceSite: 'dc-a' },
   });
   assert.equal(result.job.status, 'CANCEL_REQUESTED');
-  assert.ok(pool.calls.some(({ sql }) => sql.includes('job.cancel-requested')));
+  assert.ok(pool.calls.some(({ sql }) => sql.includes('job.cancel-requested') && sql.includes("'PENDING'")));
   assert.ok(pool.calls.some(({ sql }) => sql.includes('audit_events')));
   assert.ok(pool.calls.some(({ sql }) => sql === 'COMMIT'));
+});
+
+test('repeated cancellation is idempotent and does not publish another event', async () => {
+  const pool = repositoryPool({ cancellationStatus: 'CANCEL_REQUESTED' });
+  const repository = new JobRepository(pool);
+  const result = await repository.requestCancellation({
+    tenantId: 'tenant-a', ownerUserId: 'user-a', jobId: '00000000-0000-4000-8000-000000000001',
+    event: { id: '00000000-0000-4000-8000-000000000002', payload: { status: 'CANCEL_REQUESTED' } },
+    audit: { id: '00000000-0000-4000-8000-000000000003', actorId: 'user-a', actorRoles: ['user'], requestId: 'req-1', sourceSite: 'dc-a' },
+  });
+  assert.equal(result.replayed, true);
+  assert.equal(pool.calls.some(({ sql }) => sql.includes('job.cancel-requested')), false);
 });
 
 test('checkpoint rejects a repeated step with a different input hash', async () => {

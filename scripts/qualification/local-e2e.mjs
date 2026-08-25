@@ -33,7 +33,6 @@ const options = {
   mode,
   model: primaryModel,
   temperature: 0.2,
-  allCategories: false,
   ...(mode === 'STANDARD_RESEARCH' || mode === 'AGENT_COMPARE' ? { researchKinds: ['trends', 'competitors', 'practices'] } : {}),
   ...(mode === 'MODEL_COMPARE' ? {
     compareTarget: 'RESEARCH', researchKind: 'trends', researchCategories: ['Надёжное длительное выполнение'],

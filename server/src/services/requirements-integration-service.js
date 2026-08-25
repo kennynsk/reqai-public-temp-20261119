@@ -17,7 +17,7 @@ function strictObject(value, allowed, name = 'request') {
   if (unsupported.length) invalid(`${name} contains unsupported fields`, { fields: unsupported });
 }
 
-function executionOptions(body, allowed = {}) {
+function executionOptions(body) {
   const result = {};
   if (body.model != null) {
     if (typeof body.model !== 'string' || !body.model.trim()) invalid('model must be a non-empty string');
@@ -30,15 +30,6 @@ function executionOptions(body, allowed = {}) {
   if (body.promptVersion != null) {
     if (typeof body.promptVersion !== 'string' || !VERSION.test(body.promptVersion)) invalid('promptVersion must use semantic versioning');
     result.promptVersion = body.promptVersion;
-  }
-  if (allowed.researchCategories && body.researchCategories != null) {
-    if (!Array.isArray(body.researchCategories) || !body.researchCategories.length || body.researchCategories.some((item) => typeof item !== 'string' || !item.trim())) invalid('researchCategories must contain non-empty strings');
-    result.researchCategories = body.researchCategories.map((item) => item.trim());
-  }
-  if (allowed.researchKinds && body.researchKinds != null) {
-    const kinds = new Set(['trends', 'competitors', 'practices']);
-    if (!Array.isArray(body.researchKinds) || !body.researchKinds.length || body.researchKinds.some((item) => !kinds.has(item))) invalid('researchKinds contains an unsupported value');
-    result.researchKinds = [...body.researchKinds];
   }
   return result;
 }
@@ -96,15 +87,6 @@ export function createRequirementsIntegrationService({ config, artifactRepositor
       const input = await resolveInput({ auth, body: command, inlineField: 'businessContext' });
       const options = { mode: 'DECOMPOSITION', ...executionOptions(command) };
       return submit({ auth, idempotencyKey, requestId, operation: 'decomposition', input, type: 'DECOMPOSITION', options });
-    },
-
-    async startStandaloneResearch({ auth, idempotencyKey, requestId, command }) {
-      strictObject(command, ['researchContext', 'inputArtifactId', 'strategy', 'model', 'temperature', 'promptVersion', 'researchCategories', 'researchKinds']);
-      const strategy = command.strategy || 'agent';
-      if (!['standard', 'agent'].includes(strategy)) invalid('strategy must be standard or agent');
-      const input = await resolveInput({ auth, body: command, inlineField: 'researchContext' });
-      const options = { mode: strategy === 'standard' ? 'STANDARD_RESEARCH' : 'AGENT_RESEARCH', ...executionOptions(command, { researchCategories: true, researchKinds: true }) };
-      return submit({ auth, idempotencyKey, requestId, operation: 'standalone-research', input, type: 'RESEARCH', options });
     },
 
     async startRequirementsResearch({ auth, idempotencyKey, requestId, versionId, command }) {

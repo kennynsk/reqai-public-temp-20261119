@@ -1,6 +1,6 @@
 # Локальный enterprise-контур
 
-`compose.yaml` поднимает PostgreSQL, Kafka в KRaft-режиме, Temporal Server и Web UI, миграции, API, отдельные decomposition/research/synthesis workers, event и maintenance workers, frontend, Prometheus и Grafana. Workflow workers по умолчанию используют реальный ZAI provider и получают `ZAI_BASE_URL`, `ZAI_API_KEY` и `ZAI_MODELS` из корневого `.env.dev`; LLM-секреты не передаются API, event и maintenance ролям.
+`compose.yaml` поднимает PostgreSQL, Kafka в KRaft-режиме, Temporal Server и Web UI, миграции, API, отдельные decomposition/research workers, event и maintenance workers, frontend, Prometheus и Grafana. Workflow workers по умолчанию используют реальный ZAI provider и получают `ZAI_BASE_URL`, `ZAI_API_KEY` и `ZAI_MODELS` из корневого `.env.dev`; LLM-секреты не передаются API, event и maintenance ролям.
 
 Для изолированных тестов mock включается явно через override `LLM_PROVIDER_MODE=mock`; основной локальный Compose не использует mock-модели. Каталог ZAI: `glm-5.3,glm-5-turbo,glm-4.7,glm-4.7-flash`. UI показывает весь каталог, а один шаг snapshot-ит не более трёх моделей для bounded fallback.
 
@@ -19,7 +19,7 @@ npm run dev:detached
 docker compose ps -a
 ```
 
-Прямой `docker compose up --build` эквивалентен `npm run dev`. Команда `npm run dev:legacy` намеренно запускает прежнюю standalone-пару Node/Vite на портах `5178`/`5177`; она нужна только для проверки legacy-функционала и не показывает текущий enterprise workflow.
+Прямой `docker compose up --build` эквивалентен `npm run dev`. Отдельного standalone launcher больше нет.
 
 Первый запуск загружает образы и может занять несколько минут. Одноразовые контейнеры `migrate`, `kafka-init` и `temporal-init` должны завершиться с кодом `0`; остальные сервисы должны быть `Up`/`healthy`.
 

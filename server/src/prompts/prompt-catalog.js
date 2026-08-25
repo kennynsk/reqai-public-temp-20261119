@@ -8,7 +8,7 @@ import { getOutputContract, hasOutputContract } from './output-contract-registry
 
 const ID = /^[a-z][a-z0-9-]{1,63}$/;
 const VERSION = /^[1-9]\d*\.[0-9]+\.[0-9]+$/;
-const PURPOSES = new Set(['DECOMPOSITION', 'DECOMPOSITION_WITH_INSIGHTS', 'REQUIREMENTS_INSIGHTS', 'STANDARD_RESEARCH', 'AGENT_RESEARCH', 'MODEL_COMPARE', 'AGENT_COMPARE']);
+const PURPOSES = new Set(['DECOMPOSITION', 'REQUIREMENTS_INSIGHTS']);
 const PLACEHOLDER = /{{([A-Za-z][A-Za-z0-9]*)}}/g;
 
 function fail(message, type = 'PROMPT_CATALOG_INVALID') {

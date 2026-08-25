@@ -27,16 +27,6 @@ export const decomposeRequirementsInput = exactlyOneInput(z.strictObject({
   ...execution,
 }), 'businessContext');
 
-export const startResearchInput = exactlyOneInput(z.strictObject({
-  idempotencyKey,
-  researchContext: z.string().trim().min(1).max(1_048_576).optional(),
-  inputArtifactId: uuid.optional(),
-  strategy: z.enum(['standard', 'agent']).default('agent'),
-  researchCategories: z.array(z.string().trim().min(1).max(128)).min(1).max(50).optional(),
-  researchKinds: z.array(z.enum(['trends', 'competitors', 'practices'])).min(1).max(3).optional(),
-  ...execution,
-}), 'researchContext');
-
 export const researchRequirementsInput = z.strictObject({
   idempotencyKey,
   versionId: uuid,
@@ -113,7 +103,6 @@ function toolOutput(successSchema) {
 
 export const TOOL_DEFINITIONS = Object.freeze({
   decompose_requirements: { inputSchema: decomposeRequirementsInput, outputSchema: toolOutput(acceptedJobOutput), successSchema: acceptedJobOutput, description: 'Start asynchronous requirements decomposition.' },
-  start_research: { inputSchema: startResearchInput, outputSchema: toolOutput(acceptedJobOutput), successSchema: acceptedJobOutput, description: 'Start asynchronous standalone requirements research.' },
   research_requirements: { inputSchema: researchRequirementsInput, outputSchema: toolOutput(acceptedJobOutput), successSchema: acceptedJobOutput, description: 'Start asynchronous research for an immutable requirements version.' },
   get_task_status: { inputSchema: taskInput, outputSchema: toolOutput(taskStatusOutput), successSchema: taskStatusOutput, description: 'Read canonical ReqAI task status.' },
   get_task_result: { inputSchema: taskInput, outputSchema: toolOutput(taskResultOutput), successSchema: taskResultOutput, description: 'Read canonical ReqAI task result metadata.' },

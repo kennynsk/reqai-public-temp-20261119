@@ -1,6 +1,5 @@
 import express from 'express';
 
-import legacyApp from './legacy-app.js';
 import { requestContext } from './middleware/request-context.js';
 import { createApiV1Router } from './routes/api-v1-routes.js';
 import { createSystemRouter } from './routes/system-routes.js';
@@ -20,7 +19,6 @@ export function createApp({ siteId = 'local', readiness = createReadinessService
   app.use(telemetryMiddleware);
   app.use(createSystemRouter({ readiness, siteId }));
   app.use(createApiV1Router({ config, services }));
-  app.use(legacyApp);
 
   return { app, readiness };
 }

@@ -7,6 +7,8 @@
 2. Проверить отсутствие новых activity starts и дождаться configured grace. Второй ЦОД должен оставаться `NORMAL`.
 3. После работ вернуть `NORMAL`; проверить API p95, backlog и stalled jobs.
 
+При удалении execution mode сначала развернуть admission block, сохраняя совместимые workers, и выполнить `npm run qualify:legacy-drain` для каждой затрагиваемой базы/tenant scope. Удалять worker/activity/prompt support можно только при `qualified: true` и `activeCount: 0`.
+
 ## Model outage / circuit
 Проверить circuit и fallback по моделям из `ZAI_MODELS`, reason codes и provider quota. Не увеличивать concurrency сверх подтверждённых TBD RPM/TPM. При полном outage включить `ACCEPT_AND_QUEUE`; после восстановления вернуть `NORMAL` и наблюдать backlog.
 
@@ -23,7 +25,7 @@
 PostgreSQL: API readiness false, не принимать jobs. Kafka: бизнес-состояние остаётся в PostgreSQL/outbox. Temporal: jobs остаются ACCEPTED/QUEUED, reconciler повторит start. Никогда не восстанавливать business state только из Kafka.
 
 ## Rollback
-Вернуть frontend `VITE_ASYNC_PLATFORM_ENABLED=false` и NGAM route на legacy API. Миграции additive и не откатываются destructive SQL. Отключение legacy допускается только после compatibility window и sign-off.
+Обычный rollback возвращает предыдущие frontend/API/worker images и соответствующий им полный ConfigMap/Secret set; смешивать старый worker с новым сокращённым prompt/config catalog нельзя. Миграции additive и не откатываются destructive SQL. Исторические rows и artifacts не переписываются, поэтому возврат image/config восстанавливает старый execution contract без восстановления базы из backup. Перед rollback проверить, что новые jobs не используют несовместимый schema/prompt version.
 
 ## MCP gateway: canary, incident и rollback
 

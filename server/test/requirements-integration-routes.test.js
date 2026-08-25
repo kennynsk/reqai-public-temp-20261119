@@ -8,17 +8,18 @@ import { MockLlmProvider } from '../src/provider/mock-llm-provider.js';
 
 const UUID = '00000000-0000-4000-8000-000000000001';
 
-async function withServer(run) {
+async function withServer(run, serviceOverrides = {}) {
   const config = loadConfig({ LLM_PROVIDER_MODE: 'mock' }, { loadFiles: false });
   const accepted = [];
+  const jobService = { create: async (input) => { accepted.push(input); return { job: { id: UUID, status: 'ACCEPTED' }, replayed: false }; } };
   const requirementsIntegrationService = createRequirementsIntegrationService({
     config,
     artifactRepository: { metadata: async () => ({ id: UUID, sha256: 'a'.repeat(64) }) },
     requirementsVersionService: { resolveResearchSource: async ({ versionId }) => ({ versionId, inputArtifactId: versionId, parentJobId: UUID, inputSha256: 'b'.repeat(64) }) },
-    jobService: { create: async (input) => { accepted.push(input); return { job: { id: UUID, status: 'ACCEPTED' }, replayed: false }; } },
+    jobService,
     uuid: () => UUID,
   });
-  const { app } = createApp({ config, services: { requirementsIntegrationService } });
+  const { app } = createApp({ config, services: { requirementsIntegrationService, jobService, ...serviceOverrides } });
   const server = app.listen(0, '127.0.0.1');
   await new Promise((resolve) => server.once('listening', resolve));
   try { await run(`http://127.0.0.1:${server.address().port}`, accepted); } finally { await new Promise((resolve) => server.close(resolve)); }
@@ -31,7 +32,6 @@ async function post(base, path, body, key = 'route-key-0000001') {
 test('domain routes return canonical asynchronous job references', () => withServer(async (base, accepted) => {
   for (const [path, body] of [
     ['/api/v1/decompositions', { businessContext: 'Задача' }],
-    ['/api/v1/research', { researchContext: 'Контекст', strategy: 'standard' }],
     [`/api/v1/requirements/versions/${UUID}/research`, {}],
   ]) {
     const response = await post(base, path, body, `route-key-${String(accepted.length + 1).padStart(7, '0')}`);
@@ -42,15 +42,59 @@ test('domain routes return canonical asynchronous job references', () => withSer
     assert.equal(value.resultUrl, `/api/v1/jobs/${UUID}/result`);
     assert.equal(value.eventsUrl, `/api/v1/jobs/${UUID}/events`);
   }
-  assert.equal(accepted.length, 3);
+  assert.equal(accepted.length, 2);
 }));
+
+test('removed standalone research route does not accept work', () => withServer(async (base, accepted) => {
+  const response = await post(base, '/api/v1/research', { researchContext: 'Контекст' });
+  assert.equal(response.status, 404);
+  assert.equal(accepted.length, 0);
+}));
+
+test('capability discovery advertises only supported creation paths', () => withServer(async (base) => {
+  const response = await fetch(`${base}/api/v1`);
+  assert.equal(response.status, 200);
+  const value = await response.json();
+  assert.deepEqual(value.capabilities.decompositionModes, ['DECOMPOSITION']);
+  assert.deepEqual(value.capabilities.researchModes, ['REQUIREMENTS_INSIGHTS']);
+  assert.deepEqual(value.capabilities.domainOperations, ['decomposition', 'requirements-research']);
+  assert.equal(value.capabilities.researchKinds, undefined);
+}));
+
+test('generic job creation rejects retired modes before persistence', () => withServer(async (base, accepted) => {
+  const response = await post(base, '/api/v1/jobs', {
+    type: 'RESEARCH',
+    inputArtifactId: UUID,
+    options: { mode: 'AGENT_RESEARCH' },
+  });
+  assert.equal(response.status, 400);
+  assert.equal((await response.json()).error.code, 'UNSUPPORTED_JOB_MODE');
+  assert.equal(accepted.length, 0);
+}));
+
+test('operator reset cannot restart a retained retired-mode job', () => {
+  let resetCalled = false;
+  return withServer(async (base) => {
+    const response = await post(base, `/api/v1/admin/workflows/${UUID}/reset`, {
+      runId: 'run-1',
+      workflowTaskFinishEventId: 42,
+      reason: 'operator recovery',
+    });
+    assert.equal(response.status, 409);
+    assert.equal((await response.json()).error.code, 'JOB_MODE_RETIRED');
+    assert.equal(resetCalled, false);
+  }, {
+    jobQueryService: { get: async () => ({ jobId: UUID, mode: 'PROMPT_TEST' }) },
+    auditRepository: { record: async () => {} },
+    workflowEngine: { reset: async () => { resetCalled = true; } },
+  });
+});
 
 test('domain routes reject ambiguous, technical and unsupported request fields', () => withServer(async (base) => {
   const cases = [
     ['/api/v1/decompositions', {}, 'VALIDATION_ERROR'],
     ['/api/v1/decompositions', { businessContext: 'x', inputArtifactId: UUID }, 'VALIDATION_ERROR'],
     ['/api/v1/decompositions', { businessContext: 'x', withInsights: true }, 'VALIDATION_ERROR'],
-    ['/api/v1/research', { researchContext: 'x', strategy: 'compare' }, 'VALIDATION_ERROR'],
     [`/api/v1/requirements/versions/${UUID}/research`, { parentJobId: UUID }, 'VALIDATION_ERROR'],
     ['/api/v1/decompositions', { businessContext: 'x', tenantId: 'other' }, 'TENANT_CONTEXT_FORBIDDEN'],
   ];
@@ -100,7 +144,6 @@ test('mock-provider domain flow accepts, completes and exposes canonical status 
   try {
     const submissions = [
       ['/api/v1/decompositions', { businessContext: 'Задача' }],
-      ['/api/v1/research', { researchContext: 'Контекст', strategy: 'agent' }],
       [`/api/v1/requirements/versions/${UUID}/research`, {}],
     ];
     for (const [index, [path, body]] of submissions.entries()) {

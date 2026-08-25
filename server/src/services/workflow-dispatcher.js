@@ -17,6 +17,12 @@ export function createWorkflowDispatcher({ repository, workflowEngine, operation
       for (const event of events) {
         try {
           if (!event.job) throw Object.assign(new Error('Accepted job not found'), { code: 'JOB_NOT_FOUND' });
+          if (event.event_type === 'job.cancel-requested') {
+            await workflowEngine.cancel({ executionId: event.job.id });
+            await repository.markCancellationDispatched({ tenantId, eventId: event.event_id, jobId: event.job.id });
+            started += 1;
+            continue;
+          }
           await workflowEngine.start({
             jobId: event.job.id,
             type: event.job.type,

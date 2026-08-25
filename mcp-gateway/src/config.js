@@ -52,7 +52,7 @@ export function loadConfig(env = process.env) {
     bodyLimitBytes: integer(env.MCP_BODY_LIMIT_BYTES, 1_100_000, { min: 1024, max: 2_000_000, name: 'MCP_BODY_LIMIT_BYTES' }),
     responseLimitBytes: integer(env.MCP_RESPONSE_LIMIT_BYTES, 262_144, { min: 4096, max: 1_000_000, name: 'MCP_RESPONSE_LIMIT_BYTES' }),
     maxConcurrency: integer(env.MCP_MAX_CONCURRENCY, 32, { min: 1, max: 512, name: 'MCP_MAX_CONCURRENCY' }),
-    schemaVersion: env.MCP_TOOL_SCHEMA_VERSION || '1.0.0',
+    schemaVersion: env.MCP_TOOL_SCHEMA_VERSION || '2.0.0',
     buildVersion: env.MCP_BUILD_VERSION || '1.0.0',
     allowedHosts,
     audienceMode,
