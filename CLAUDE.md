@@ -1,136 +1,92 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides repository guidance for coding agents.
+
+## Product boundary
+
+ReqAI supports one guided workflow:
+
+1. Business context input or artifact upload.
+2. Asynchronous `DECOMPOSITION` into business, functional, and non-functional requirements.
+3. Human review and immutable requirements-version storage.
+4. Optional requirements-linked `REQUIREMENTS_INSIGHTS` research.
+5. Insight decisions and an immutable final requirements version.
+
+Standalone research, model/agent comparison, arbitrary prompt testing, and combined decomposition/research are retired. Historical jobs from those modes remain read-only through canonical task APIs and permalinks; never add a mutation that retries or recreates them.
 
 ## Commands
 
 ```bash
-# Dev (запускает сервер + фронтенд одновременно, читает .env.dev)
+# Full local stack in the foreground
 npm run dev
 
-# Production (читает .env.prod)
-npm run start
+# Full local stack in the background
+npm run dev:detached
 
-# Сборка фронтенда
-npm run build
-
-# Lint (только клиент)
+# Client checks
+npm -w client test
 npm -w client run lint
+npm -w client run build
 
-# Починить workspace-симлинки (если npm install выполнялся при запущенном dev)
-npm run fix:links
+# Backend and MCP checks
+npm -w server test
+npm -w mcp-gateway test
+npm -w server run prompts:qualify
+npm run qualify:legacy-surface
 ```
 
-Фронтенд: `http://localhost:5177`, сервер API: `http://localhost:5178`.  
-Нет тестов — тест-суита в проекте отсутствует.
+Local endpoints:
+
+- frontend and `/api` proxy: `http://localhost:8080`;
+- direct backend API: `http://localhost:5178`;
+- Temporal UI: `http://localhost:8088`;
+- optional MCP gateway: `http://localhost:5180/mcp`.
 
 ## Architecture
 
-Проект — **npm workspaces** с двумя пакетами: `client/` и `server/`.
+The repository is an npm workspace with `client/`, `server/`, and `mcp-gateway/` packages. Docker Compose runs React/Nginx, the Express API, PostgreSQL, Kafka, Temporal, decomposition/research workflow workers, event/maintenance workers, and optionally MCP.
 
-### Server (`server/index.js`)
+### Client
 
-Express-сервер, который:
-1. Принимает запросы от фронтенда на `/api/*`.
-2. Определяет провайдера по имени модели в запросе и проксирует вызов к нужному LLM API.
-3. В production раздаёт статику собранного фронтенда из `client/dist`.
+`client/src/App.jsx` always renders `AsyncJobWorkspace.jsx`. The browser submits work and reads canonical state; it does not orchestrate LLM calls. Preserve task URLs `/tasks/{jobId}`, SSE reconciliation, cancellation, history, requirements-version lineage, Debug authorization, and archived read-only results.
 
-**Маршрутизация по провайдеру** (в порядке приоритета):
-- `GIGACHAT_CORP_MODEL_SET` → GigaChat Corp через `gigachat-js`
-- `GIGACHAT_MODEL_SET` → GigaChat REST API напрямую (OAuth через `server/certs/`)
-- `ZAI_MODEL_SET` → Z.AI (OpenAI-совместимый)
-- остальные → OpenRouter
+### REST API
 
-**Ключевые API-эндпоинты:**
-- `GET  /api/models` — список всех доступных моделей из настроенных провайдеров
-- `POST /api/decompose` — декомпозиция бизнес-задачи на BT/FT/NFT
-- `POST /api/insights` — AI-инсайты по выделенным требованиям
-- `POST /api/analyze` — анализ категорий для рыночного исследования
-- `POST /api/research` — глубокое исследование по одной категории
-- `POST /api/analyze-ab` — A/B сравнение двух моделей/температур на этапе анализа категорий
-- `POST /api/agent-*` — агентные версии тех же операций (самостоятельное выделение категории + исследование)
-- `POST /api/prompt-test` — ручная проверка промптов
+Supported creation operations:
 
-**Промпты** — в двух отдельных файлах:
-- `server/decomposer-prompts.js` — промпты Модуля 1: `buildDecomposePrompt`, `buildInsightsPrompt`
-- `server/prompts.js` — промпты Модуля 2: `buildAnalyzePrompt`, `buildResearchPrompt`, агентные варианты, `ASK_SYSTEM_PROMPT`
+- `POST /api/v1/decompositions`;
+- `POST /api/v1/requirements/versions/{versionId}/research`.
 
-### Client (`client/src/`)
+Canonical status/result/cancellation resources live under `/api/v1/jobs/{jobId}`. Generic job creation accepts only decomposition; requirements research must derive its immutable input and lineage through the version-scoped route. The machine-readable contract is `docs/api/openapi.v1.json`.
 
-SPA на React 19 + Vite + Tailwind. Два независимых модуля с отдельной логикой:
-- `RequirementsDecomposer.jsx` — **Модуль 1: Бизнес-требования**
-- `BizReqResearcher.jsx` — **Модуль 2: Исследование рынка**
-- `App.jsx` — таб-навигация между модулями
+### MCP
 
-Vite проксирует `/api/*` → `http://localhost:5178`.
+Tool schema `2.0.0` exposes exactly:
 
----
+- `decompose_requirements`;
+- `research_requirements`;
+- `get_task_status`;
+- `get_task_result`.
 
-## Модуль 1 — Бизнес-требования (`RequirementsDecomposer.jsx`)
+MCP is a thin REST adapter. It must not import backend repositories/workflows/providers, execute prompts, or wait for LLM completion.
 
-**Цель:** превратить бизнес-задачу в структурированные требования и обогатить их AI-инсайтами.
+### Workflows and prompts
 
-**Пайплайн (два шага последовательно):**
-1. `POST /api/decompose` — декомпозиция бизнес-задачи на BT / FT / NFT (JSON)
-2. `POST /api/insights` — генерация 8–12 инсайтов по 5 категориям: trends, patterns, risks, competitors, standards
+Temporal uses two workflow task queues: `requirements-decomposition` and `requirements-research`. Prompt releases under `server/prompt-bundles/` are limited to:
 
-**Формат ответа `/api/insights`:**
-```json
-{
-  "insights": [{
-    "id": "insight-1",
-    "category": "trends|patterns|risks|competitors|standards",
-    "title": "...",
-    "applicability": 85,
-    "relatedTo": ["BT-1", "FT-2"],
-    "enhancements": [{ "targetType": "functional", "text": "..." }]
-  }]
-}
-```
+- `requirements-decomposition`;
+- `requirements-insights`.
 
-**Особенности:**
-- Инсайты можно добавить прямо в требования кнопкой «Добавить» — трекинг через `addedKeys` (Set из `id:idx`)
-- `id` инсайтов нормализуется на сервере: если модель не вернула — подставляется `insight-{idx+1}`
-- Промпты: `buildDecomposePrompt` (max_tokens: 8000), `buildInsightsPrompt` (max_tokens: 6000)
-
----
-
-## Модуль 2 — Исследование рынка (`BizReqResearcher.jsx`)
-
-**Цель:** песочница для рыночного исследования и экспериментов с моделями. Пять вкладок (`activeTab`):
-
-### `research` — Стандартное исследование
-Пайплайн:
-1. `POST /api/analyze` — выделяет категории рынка из требований (JSON со списком категорий)
-2. `POST /api/research` (kind: `trends` | `competitors` | `practices`) — три последовательных запроса, свободный текст по каждой теме
-3. `POST /api/improve-requirements` — улучшение требований на основе выбранных пунктов из исследования
-4. `POST /api/ask` — диалог по результатам исследования (с историей)
-
-### `compare` — A/B сравнение
-- `POST /api/analyze-ab` — сравнение двух моделей/температур на этапе выделения категорий
-- `POST /api/research-ab` — сравнение на этапе исследования
-
-### `agent-compare` — Агентное сравнение двух моделей
-Полный агентный пайплайн для каждой модели:
-1. `POST /api/agent-analyze` — агентное выделение категорий
-2. `POST /api/agent-research` — агентное исследование (max_tokens: 13000)
-3. `POST /api/agent-synthesis` — синтез отчёта
-4. `POST /api/agent-improve-requirements` — улучшение требований
-
-### `agent-solo` — Агентное исследование (одна модель)
-Тот же пайплайн, что `agent-compare`, но для одной модели. Показывает trace выполнения.
-
-### `prompt-test` — Тест промптов
-`POST /api/prompt-test` — ручной ввод system + user промпта, сырой ответ модели.
-
-**Ключевое отличие промптов от Модуля 1:**
-- Модуль 1 возвращает структурированный JSON привязанный к конкретным требованиям
-- Модуль 2 возвращает свободный текст (markdown) про рынок без привязки к BT/FT/NFT
+Each published prompt release is immutable and verified by its manifest hashes and output contract. `server/decomposer-prompts.js` remains the supported fallback builder when versioned prompts are explicitly disabled.
 
 ## Environment
 
-Env-файлы ищутся в порядке: `server/.env.{stage}` → `.env.{stage}` → `.env`.  
-`NODE_ENV=development` → читает `.env.dev`, `NODE_ENV=production` → `.env.prod`.  
-Шаблон всех переменных: `server/env.example`.
+Configuration is documented in `docs/configuration.md`; the template is `server/env.example`. The normal local and production paths use the asynchronous platform. Select `LLM_PROVIDER_MODE=zai` or `gigachat` and configure the corresponding credentials; `mock` is test/local-only and rejected in production.
 
-Обязательна хотя бы одна из: `OPENROUTER_API_KEY`, `ZAI_API_KEY`, `GIGACHAT_AUTH_KEY` / `GIGACHAT_CLIENT_ID+SECRET`, `GIGACHAT_CORP_CREDENTIALS`.
+Do not expose credentials, prompts, requirements text, or artifact content in logs, Kafka/Temporal metadata, MCP responses, or ordinary diagnostics.
+
+## Documentation and change workflow
+
+Current product documentation lives in `README.md` and `docs/`. Historical mode names are allowed only in the explicitly labelled retirement inventory/migration documents and compatibility tests. Run `npm run qualify:legacy-surface` after changes to API, MCP, prompts, Compose, deployment, or documentation.
+
+OpenSpec changes live under `openspec/changes/`. Follow the relevant OpenSpec skill and keep proposal, specs, design, tasks, implementation, tests, and documentation coherent.

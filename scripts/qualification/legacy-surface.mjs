@@ -36,6 +36,9 @@ const removedPaths = [
   'client/src/RequirementsDecomposer.jsx',
   'server/src/legacy-app.js',
   'server/prompts.js',
+  'server/prompt-bundles/agent-research',
+  'server/prompt-bundles/legacy-decomposition-with-insights',
+  'server/prompt-bundles/standard-research',
 ];
 
 const failures = [];
