@@ -51,7 +51,9 @@ test('context remains free-form and keeps an accessible attachment control', asy
   const context = screen.getByRole('textbox', { name: 'Бизнес-контекст' });
   fireEvent.change(context, { target: { value: 'Моя бизнес-задача' } });
   expect(context).toHaveValue('Моя бизнес-задача');
+  expect(context).toHaveAttribute('rows', '6');
   expect(screen.queryByRole('button', { name: 'Структура описания' })).not.toBeInTheDocument();
+  expect(screen.getByText('Приложить материалы')).toBeInTheDocument();
   expect(screen.getByLabelText('Файл требований')).toBeInTheDocument();
 });
 
@@ -68,7 +70,7 @@ test('material roles use integration API and retry only failed file uploads', as
   mocks.decomposeRequirements.mockResolvedValue({ jobId: 'material-job' });
   mocks.getJob.mockResolvedValue({ jobId: 'material-job', type: 'DECOMPOSITION', status: 'RUNNING' });
   render(<AsyncJobWorkspace />);
-  fireEvent.click(screen.getByText('Предыдущая версия и справочные материалы (необязательно)'));
+  fireEvent.click(screen.getByText('Приложить материалы'));
   fireEvent.change(await screen.findByLabelText('Предыдущая версия требований'), { target: { files: [baseline] } });
   fireEvent.change(screen.getByLabelText('Файл требований'), { target: { files: [primary] } });
   fireEvent.change(screen.getByLabelText('Справочные материалы'), { target: { files: [reference] } });
