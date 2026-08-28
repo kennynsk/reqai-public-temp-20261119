@@ -30,49 +30,100 @@ function table(headers, rows) {
 }
 
 function list(values) {
-  return values.length ? values.map((value) => `- ${cell(value)}`).join('\n') : 'Не обнаружено';
+  return values.map((value) => `- ${cell(value)}`).join('\n');
 }
 
 function renderSummary(registry) {
-  const counts = Object.entries(registry.summary.counts)
-    .map(([type, count]) => `${type}: ${count}`)
+  const counts = ['BR', 'SR', 'FR', 'NFR', 'TR', 'CON', 'GAP']
+    .map((type) => `${type}: ${registry.summary.counts[type]}`)
     .join(', ');
-  return ['## Краткое резюме', '', `Реестр: ${counts}. Исход: ${registry.outcome}.`, '', list(registry.summary.conclusions)].join('\n');
+  const parts = [`${counts}.`];
+  if (registry.summary.text) parts.push(registry.summary.text);
+  if (registry.summary.conclusions.length) parts.push(list(registry.summary.conclusions));
+  return ['## Краткое резюме', '', parts.join('\n\n')].join('\n');
 }
 
 function renderContext(registry) {
   return ['## 1. Контекст и связанные артефакты', '', table(
-    ['ID', 'Вид', 'Формулировка', 'Источник', 'Происхождение', 'Качество'],
-    registry.context.map((item) => [item.id, item.kind, item.text, source(item.source), item.provenance, item.quality]),
+    ['ID', 'Вид', 'Формулировка', 'Источник'],
+    registry.context.map((item) => [item.id, item.kind, item.text, source(item.source)]),
   )].join('\n');
 }
 
 function renderRequirementSection(type, title, records) {
   const headers = {
     BR: ['ID', 'Формулировка', 'Показатель успеха', 'Источник', 'Происхождение', 'Качество'],
-    SR: ['ID', 'Роль', 'Формулировка', 'Связано с', 'Источник', 'Происхождение', 'Качество'],
+    SR: ['ID', 'Роль', 'Формулировка', 'Связано с БТ', 'Источник', 'Происхождение', 'Качество'],
     FR: ['ID', 'Формулировка', 'Связано с', 'Источник', 'Происхождение', 'Качество'],
-    NFR: ['ID', 'Категория', 'Формулировка', 'Область действия', 'Проверка', 'Связано с', 'Источник', 'Происхождение', 'Качество'],
-    TR: ['ID', 'Формулировка', 'Критерий завершения', 'Связано с', 'Источник', 'Происхождение', 'Качество'],
-    CON: ['ID', 'Обязательство', 'Формулировка', 'Источник', 'Происхождение', 'Область', 'Качество'],
+    NFR: ['ID', 'Категория', 'Формулировка', 'Область действия', 'Источник', 'Происхождение', 'Качество'],
+    TR: ['ID', 'Формулировка', 'Критерий завершения', 'Связано с', 'Источник', 'Качество'],
+    CON: ['ID', 'Обязательство', 'Источник и реквизиты', 'Область', 'Качество'],
   }[type];
   const rows = records.map((item) => {
     if (type === 'BR') return [item.id, item.text, item.successIndicator, source(item.source), item.provenance, item.quality];
     if (type === 'SR') return [item.id, item.role, item.text, item.relatedTo.join(', '), source(item.source), item.provenance, item.quality];
     if (type === 'FR') return [item.id, item.text, item.relatedTo.join(', '), source(item.source), item.provenance, item.quality];
-    if (type === 'NFR') return [item.id, item.category, item.text, item.scope, item.verificationMethod, item.relatedTo.join(', '), source(item.source), item.provenance, item.quality];
-    if (type === 'TR') return [item.id, item.text, item.completionCriterion, item.relatedTo.join(', '), source(item.source), item.provenance, item.quality];
-    return [item.id, item.obligation, item.text, source(item.source), item.provenance, item.scope, item.quality];
+    if (type === 'NFR') return [item.id, item.category, item.text, item.scope, source(item.source), item.provenance, item.quality];
+    if (type === 'TR') return [item.id, item.text, item.completionCriterion, item.relatedTo.join(', '), source(item.source), item.quality];
+    return [item.id, item.obligation, `${source(item.source)}; ${item.text}`, item.scope, item.quality];
   });
   return [`## ${title}`, '', table(headers, rows)].join('\n');
 }
 
-function renderMaterials(registry) {
-  const primary = registry.materials.primary ? [registry.materials.primary] : [];
-  const baseline = registry.materials.baseline.artifacts;
-  const references = registry.materials.references;
-  const rows = [...primary, ...baseline, ...references].map((item) => [item.role, item.artifactId, item.name, item.status, item.sha256]);
-  return ['## Артефакты и область анализа', '', `Статус baseline: ${registry.materials.baseline.status}. Частичный охват: ${registry.scope.partial ? 'да' : 'нет'}.`, '', table(['Роль', 'Artifact ID', 'Название', 'Статус', 'SHA-256'], rows), '', table(['Единица', 'Artifact ID', 'Статус', 'Раздел', 'Примечание'], registry.scope.units.map((unit) => [unit.id, unit.artifactId, unit.status, unit.section, unit.note]))].join('\n');
+function renderDelta(registry) {
+  if (registry.materials.baseline.status !== 'AVAILABLE') {
+    return ['## 8. Сравнение с существующим набором', '', 'Сравнение невозможно: существующий набор требований не предоставлен.'].join('\n');
+  }
+  return ['## 8. Сравнение с существующим набором', '', table(
+    ['ID в базовом наборе', 'Новый ID', 'Вид изменения', 'Комментарий'],
+    registry.analysis.delta.map((item) => [item.baselineId, item.newId, item.kind, item.comment]),
+  )].join('\n');
+}
+
+function shortLabel(record) {
+  const text = cell(record.text);
+  const label = text.length > 96 ? `${text.slice(0, 95)}…` : text;
+  return `${record.id} ${label}`;
+}
+
+function renderTraceability(registry) {
+  const records = [
+    ...registry.groups.BR,
+    ...registry.groups.SR,
+    ...registry.groups.FR,
+    ...registry.groups.NFR,
+    ...registry.groups.TR,
+    ...registry.groups.CON,
+  ];
+  const byId = new Map(records.map((record) => [record.id, record]));
+  const children = new Map(records.map((record) => [record.id, []]));
+  for (const record of records) {
+    if (record.id.startsWith('BR-')) {
+      for (const child of record.relatedIds || []) if (children.has(child)) children.get(record.id).push(child);
+      continue;
+    }
+    for (const parent of record.relatedTo || []) if (children.has(parent)) children.get(parent).push(record.id);
+  }
+  const lines = [];
+  const renderedIds = new Set();
+  const renderNode = (id, prefix = '', branch = '', tail = true, ancestors = new Set()) => {
+    if (ancestors.has(id) || renderedIds.has(id) || !byId.has(id)) return;
+    renderedIds.add(id);
+    lines.push(`${prefix}${branch}${shortLabel(byId.get(id))}`);
+    const next = [...new Set(children.get(id) || [])];
+    const childPrefix = `${prefix}${branch ? (tail ? '    ' : '│   ') : ''}`;
+    next.forEach((child, index) => renderNode(child, childPrefix, index === next.length - 1 ? '└── ' : '├── ', index === next.length - 1, new Set([...ancestors, id])));
+  };
+  const roots = registry.groups.BR.length ? registry.groups.BR.map((item) => item.id) : records.filter((record) => !(record.relatedTo || []).length).map((item) => item.id);
+  roots.forEach((id) => renderNode(id));
+  for (const record of records) if (!renderedIds.has(record.id)) renderNode(record.id);
+  const supplemental = registry.analysis.traceability.filter((link) => link.status === 'Предполагается');
+  return [
+    '## 9. Трассировка',
+    '',
+    lines.length ? `\`\`\`text\n${lines.join('\n')}\n\`\`\`` : 'Не обнаружено',
+    ...(supplemental.length ? ['', table(['От', 'К', 'Тип связи', 'Статус'], supplemental.map((link) => [link.from, link.to, link.relation, link.status]))] : []),
+  ].join('\n');
 }
 
 function renderAnalysis(registry) {
@@ -85,19 +136,6 @@ function renderAnalysis(registry) {
   return ['## 10. Пробелы, гипотезы и термины', '', table(['ID', 'Вид', 'Суть', 'Затронутые ID', 'Следующий шаг', 'Источник'], records)].join('\n');
 }
 
-function renderTraceability(registry) {
-  const links = registry.analysis.traceability;
-  const lines = links.length ? links.map((link) => `- ${cell(link.from)} — ${cell(link.relation)} → ${cell(link.to)} (${cell(link.status)})`) : ['Не обнаружено'];
-  return ['## 9. Трассировка', '', lines.join('\n')].join('\n');
-}
-
-function renderDelta(registry) {
-  return ['## 8. Сравнение с существующим набором', '', table(
-    ['ID в базовом наборе', 'Новый ID', 'Вид изменения', 'Комментарий', 'Источник'],
-    registry.analysis.delta.map((item) => [item.baselineId, item.newId, item.kind, item.comment, source(item.source)]),
-  )].join('\n');
-}
-
 function renderQuestions(registry) {
   return ['## 11. Вопросы для уточнения', '', table(
     ['Приоритет / GAP', 'Адресат', 'Вопрос'],
@@ -108,14 +146,10 @@ function renderQuestions(registry) {
 export function renderBabokReport(registry) {
   const value = validateBabokRegistry(registry);
   return [
-    '# Декомпозиция требований по BABOK',
-    '',
-    `Версия контракта: ${value.schemaVersion}`,
-    '',
+    '# Отчёт о декомпозиции требований (BABOK v3)',
     renderSummary(value),
     renderContext(value),
     ...REQUIREMENT_SECTIONS.map(([type, title]) => renderRequirementSection(type, title, value.groups[type])),
-    renderMaterials(value),
     renderDelta(value),
     renderTraceability(value),
     renderAnalysis(value),

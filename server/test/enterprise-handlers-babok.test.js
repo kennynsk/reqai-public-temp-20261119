@@ -14,7 +14,7 @@ test('BABOK extraction adapter includes source, baseline and references and pers
   const catalog = createPromptCatalog({ rootDir: defaultPromptBundleRoot() });
   const profile = createPromptProfileResolver({
     catalog,
-    policy: { 'requirements-decomposition': { active: '2.0.0', released: ['2.0.0'] } },
+    policy: { 'requirements-decomposition': { active: '2.2.0', released: ['2.2.0'] } },
   }).resolve({ type: 'DECOMPOSITION', mode: 'DECOMPOSITION' });
   const primaryId = '00000000-0000-4000-8000-000000000099';
   const baselineId = '00000000-0000-4000-8000-000000000098';
@@ -39,6 +39,8 @@ test('BABOK extraction adapter includes source, baseline and references and pers
         assert.match(messages.at(-1).content, /Baseline: текущий процесс/);
         assert.match(messages.at(-1).content, /Справочник терминов/);
         assert.match(messages.at(-1).content, /сократить срок обработки/);
+        assert.match(messages.at(-1).content, /Не\s+объединяй альтернативные результаты/);
+        assert.match(messages.at(-1).content, /Будущее временное действие перехода/);
         return { text: JSON.stringify(registry), actualModel: 'test-model', fallbackApplied: false };
       },
     },
@@ -186,7 +188,7 @@ test('BABOK extraction applies a safe default for an empty context kind without 
   registry.groups.BR = [{ id: 'BR-001', text: 'Сократить срок обработки.', successIndicator: null, source: { artifactId: chunkId, locator: 'section:1', quote: 'Сократить срок обработки.' }, provenance: null, quality: null, relatedIds: null }];
   registry.groups.SR = [{ id: 'SR-001', role: '', text: 'Сотрудник создаёт заявку.', relatedTo: null, source: { artifactId: chunkId, locator: 'section:1', quote: 'Сотрудник создаёт заявку.' }, provenance: null, quality: null }];
   registry.groups.CON = [{ id: 'CON-001', obligation: '', text: 'Ограничение процесса.', source: { artifactId: chunkId, locator: 'section:1', quote: 'Ограничение процесса.' }, provenance: null, scope: '', relatedTo: null, quality: null }];
-  registry.analysis.GAP = [{ id: 'GAP-001', kind: 'scope', text: 'Нужна проверка области действия.', affectedIds: [], nextStep: 'Уточнить область действия', source: null }];
+  registry.analysis.GAP = [{ id: 'GAP-001', kind: 'scope', text: 'Нужна проверка области действия.', affectedIds: ['CON-001'], nextStep: 'Уточнить область действия', source: null }];
   registry.analysis.TERM = [{ id: '', term: 'SLA', meaning: 'Срок обработки заявки', affectedIds: ['BR-001'], nextStep: null, source: null }];
   registry.analysis.questions = [{ id: 'Q-1', gapId: 'GAP-001', priority: 'P1', addressee: 'Владелец', text: 'Какова область действия?' }];
   registry.analysis.traceability = [{ from: 'BR-001', to: 'SR-001', relation: '', status: null, source: null }];
@@ -235,6 +237,7 @@ test('BABOK extraction applies a safe default for an empty context kind without 
   assert.equal(persisted.analysis.TERM[0].id, 'TERM-001');
   assert.deepEqual(persisted.analysis.TERM[0].affectedIds, ['BR-001']);
   assert.equal(persisted.groups.CON.length, 0);
+  assert.deepEqual(persisted.analysis.GAP[0].affectedIds, []);
   assert.equal(persisted.analysis.traceability.length, 0);
   assert.equal(persisted.analysis.GAP.length, 2);
 });

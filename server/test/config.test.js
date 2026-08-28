@@ -14,8 +14,8 @@ test('enterprise config parses documented defaults when async processing is disa
   assert.equal(config.llm.decompositionThinking, 'disabled');
   assert.equal(config.llm.decompositionOutputTokens['glm-5.3-flash'], 16000);
   assert.equal(config.jobs.inputMaxBytes, 104857600);
-  assert.equal(config.prompts.policy['requirements-decomposition'].active, '2.0.0');
-  assert.deepEqual(config.prompts.policy['requirements-decomposition'].released, ['1.0.0', '2.0.0']);
+  assert.equal(config.prompts.policy['requirements-decomposition'].active, '2.2.0');
+  assert.deepEqual(config.prompts.policy['requirements-decomposition'].released, ['1.0.0', '2.0.0', '2.1.0', '2.2.0']);
   assert.equal(config.prompts.policy['requirements-insights'].active, '2.0.0');
   assert.equal(config.diagnostics.captureProtected, false);
   assert.equal(config.diagnostics.maxPageSize, 100);

@@ -229,6 +229,30 @@ function normalizeBabokIdentifiers(registry) {
   return { ...registry, context, groups, analysis };
 }
 
+function normalizeBabokReferences(registry) {
+  if (!hasBabokRegistryCollections(registry)) return registry;
+  const knownIds = new Set([
+    ...registry.context.map((record) => record.id),
+    ...BABOK_REQUIREMENT_TYPES.flatMap((type) => registry.groups[type].map((record) => record.id)),
+    ...['GAP', 'HYP', 'TERM'].flatMap((type) => registry.analysis[type].map((record) => record.id)),
+  ]);
+  const known = (ids) => [...new Set((Array.isArray(ids) ? ids : []).filter((id) => knownIds.has(id)))];
+  const groups = Object.fromEntries(BABOK_REQUIREMENT_TYPES.map((type) => [type, registry.groups[type].map((record) => (
+    type === 'BR' ? { ...record, relatedIds: known(record.relatedIds) } : { ...record, relatedTo: known(record.relatedTo) }
+  ))]));
+  const context = registry.context.map((record) => ({ ...record, relatedIds: known(record.relatedIds) }));
+  const analysis = {
+    ...registry.analysis,
+    GAP: registry.analysis.GAP.map((record) => ({ ...record, affectedIds: known(record.affectedIds) })),
+    HYP: registry.analysis.HYP.map((record) => ({ ...record, affectedIds: known(record.affectedIds) })),
+    TERM: registry.analysis.TERM.map((record) => ({ ...record, affectedIds: known(record.affectedIds) })),
+    traceability: registry.analysis.traceability.filter((link) => knownIds.has(link.from) && knownIds.has(link.to)),
+    delta: registry.analysis.delta.filter((item) => (item.baselineId === null || knownIds.has(item.baselineId)) && (item.newId === null || knownIds.has(item.newId))),
+    questions: registry.analysis.questions.filter((item) => registry.analysis.GAP.some((gap) => gap.id === item.gapId)),
+  };
+  return { ...registry, context, groups, analysis };
+}
+
 function normalizeBabokSafeDefaults(registry) {
   if (!registry || typeof registry !== 'object' || Array.isArray(registry) || !Array.isArray(registry.context)) return registry;
   const nullableString = (value) => typeof value === 'string' && value.trim() ? value : null;
@@ -360,7 +384,7 @@ function normalizeGlobalBabok(raw, input, sectionValues, resolvedMaterials) {
   if (!hasBabokRegistryCollections(safeRaw)) {
     throw Object.assign(new Error('BABOK consolidation response is missing one or more registry arrays'), { type: 'OUTPUT_CONTRACT_VIOLATION' });
   }
-  const { groups, context, analysis } = normalizeBabokIdentifiers(safeRaw);
+  const { groups, context, analysis } = normalizeBabokReferences(normalizeBabokIdentifiers(safeRaw));
   const sectionUnits = sectionValues.flatMap((section) => Array.isArray(section.scope?.units) ? section.scope.units : []);
   const failedChunks = input.failedChunks || [];
   const failedChunkIds = failedChunks.map((chunk) => typeof chunk === 'string' ? chunk : chunk.chunkId);
@@ -551,6 +575,7 @@ export function createEnterpriseActivityHandlers({ artifactRepository, modelExec
   function normalizeBabokChunk(registry, input) {
     registry = normalizeBabokSafeDefaults(registry);
     registry = normalizeBabokIdentifiers(registry);
+    registry = normalizeBabokReferences(registry);
     const materials = babokMaterialSnapshot(input, input.chunk.artifactId);
     const normalized = {
       ...registry,

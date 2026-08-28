@@ -58,12 +58,12 @@ test('profile policy rejects unreleased versions and contracts are explicit', ()
 test('BABOK prompt releases qualify and stay within the rendered artifact budget', () => {
   const catalog = createPromptCatalog({ rootDir: defaultPromptBundleRoot(), maxRenderedBytes: 2_097_152 });
   const babokPolicy = {
-    'requirements-decomposition': { active: '2.0.0', released: ['1.0.0', '2.0.0'] },
+    'requirements-decomposition': { active: '2.2.0', released: ['1.0.0', '2.0.0', '2.1.0', '2.2.0'] },
     'requirements-insights': { active: '2.0.0', released: ['1.0.0', '2.0.0'] },
   };
   const qualified = qualifyPromptCatalog({ catalog, policy: babokPolicy });
   assert.equal(qualified.filter((item) => item.active).length, 2);
-  assert.equal(qualified.find((item) => item.id === 'requirements-decomposition' && item.version === '2.0.0').outputSchemaVersion, 'babok-requirements.v1');
+  assert.equal(qualified.find((item) => item.id === 'requirements-decomposition' && item.version === '2.2.0').outputSchemaVersion, 'babok-requirements.v1');
   assert.equal(qualified.find((item) => item.id === 'requirements-insights' && item.version === '2.0.0').outputSchemaVersion, 'requirements-insights.v1');
 
   const resolver = createPromptProfileResolver({ catalog, policy: babokPolicy });
@@ -102,5 +102,8 @@ test('BABOK prompt releases qualify and stay within the rendered artifact budget
     (error) => error.type === 'PROMPT_RENDER_TOO_LARGE',
   );
   assert.match(renderedDecompose, /babok-requirements\.v1/);
+  assert.match(renderedDecompose, /Закон, договор,\s+стандарт, политика/);
+  assert.match(renderedDecompose, /Не\s+объединяй альтернативные результаты/);
+  assert.match(renderedDecompose, /миграция,\s+перенос, обучение/);
   assert.match(renderedInsights, /targetType/);
 });

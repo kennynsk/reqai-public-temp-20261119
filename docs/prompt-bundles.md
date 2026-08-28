@@ -24,9 +24,9 @@ BABOK application adapter поставляется отдельным immutable 
 4. Сначала развернуть квалифицированные workers, затем API.
 5. Добавить версию в released allowlist и только после canary сделать её active.
 
-## BABOK 2.0.0 canary
+## BABOK 2.2.0 canary
 
-В репозитории установлены `requirements-decomposition@2.0.0` и
+В репозитории установлены `requirements-decomposition@2.2.0` и
 `requirements-insights@2.0.0`. Для текущего single-user режима они уже являются
 default active profile. В многопользовательской среде ту же конфигурацию можно
 включать постепенно как canary:
@@ -34,8 +34,8 @@ default active profile. В многопользовательской среде
 ```dotenv
 SKILL_BABOK_REQUIREMENTS_ACTIVE_VERSION=1.0.0
 SKILL_BABOK_REQUIREMENTS_RELEASED_VERSIONS=1.0.0
-PROMPT_DECOMPOSITION_ACTIVE_VERSION=2.0.0
-PROMPT_DECOMPOSITION_RELEASED_VERSIONS=1.0.0,2.0.0
+PROMPT_DECOMPOSITION_ACTIVE_VERSION=2.2.0
+PROMPT_DECOMPOSITION_RELEASED_VERSIONS=1.0.0,2.0.0,2.1.0,2.2.0
 PROMPT_REQUIREMENTS_INSIGHTS_ACTIVE_VERSION=2.0.0
 PROMPT_REQUIREMENTS_INSIGHTS_RELEASED_VERSIONS=1.0.0,2.0.0
 ```
@@ -44,8 +44,8 @@ PROMPT_REQUIREMENTS_INSIGHTS_RELEASED_VERSIONS=1.0.0,2.0.0
 вывод qualification вместе с manifest hashes:
 
 ```bash
-PROMPT_DECOMPOSITION_ACTIVE_VERSION=2.0.0 \
-PROMPT_DECOMPOSITION_RELEASED_VERSIONS=1.0.0,2.0.0 \
+PROMPT_DECOMPOSITION_ACTIVE_VERSION=2.2.0 \
+PROMPT_DECOMPOSITION_RELEASED_VERSIONS=1.0.0,2.0.0,2.1.0,2.2.0 \
 PROMPT_REQUIREMENTS_INSIGHTS_ACTIVE_VERSION=2.0.0 \
 PROMPT_REQUIREMENTS_INSIGHTS_RELEASED_VERSIONS=1.0.0,2.0.0 \
 npm --workspace server run prompts:qualify
