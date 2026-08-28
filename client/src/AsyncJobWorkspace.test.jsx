@@ -46,14 +46,13 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
-test('context structure preserves text until explicit insertion', async () => {
+test('context remains free-form and keeps an accessible attachment control', async () => {
   render(<AsyncJobWorkspace />);
   const context = screen.getByRole('textbox', { name: 'Бизнес-контекст' });
   fireEvent.change(context, { target: { value: 'Моя бизнес-задача' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Структура описания' }));
   expect(context).toHaveValue('Моя бизнес-задача');
-  fireEvent.click(screen.getByRole('button', { name: 'Добавить в конец' }));
-  expect(context.value).toMatch(/^Моя бизнес-задача\n\nЦель:/);
+  expect(screen.queryByRole('button', { name: 'Структура описания' })).not.toBeInTheDocument();
+  expect(screen.getByLabelText('Файл требований')).toBeInTheDocument();
 });
 
 test('material roles use integration API and retry only failed file uploads', async () => {

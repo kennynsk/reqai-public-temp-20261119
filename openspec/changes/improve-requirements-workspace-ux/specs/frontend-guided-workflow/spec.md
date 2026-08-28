@@ -213,11 +213,11 @@ The system SHALL publish ordered durable lifecycle, linked-research and version 
 ## ADDED Requirements
 
 ### Requirement: Guided context and material input
-The context form SHALL offer an expanding text field and a non-mandatory structure for goals, roles, behavior and constraints. The structure helper MUST NOT replace existing text without confirmation. Primary input, previous requirements and reference materials SHALL have distinct labels, limits and upload error states and retain their roles in submitted input.
+The context form SHALL offer an expanding free-form text field without prescribing the format of a business context. Primary input, previous requirements and reference materials SHALL have distinct labels, limits and upload error states and retain their roles in submitted input. File attachment controls SHALL use the established application visual pattern with an icon and an accessible native file input.
 
-#### Scenario: User has already entered a brief
-- **WHEN** the user opens the structure helper
-- **THEN** existing text is preserved until an explicit insertion or replacement decision
+#### Scenario: User enters a free-form brief
+- **WHEN** the user writes a business context in their own format
+- **THEN** the form does not insert, replace or require a template
 
 #### Scenario: Baseline and reference are attached
 - **WHEN** the user supplies previous requirements and a reference document
