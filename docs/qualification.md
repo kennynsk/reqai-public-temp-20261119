@@ -17,7 +17,7 @@ npm run qualify:legacy-surface
 npm run qualify:legacy-drain
 ```
 
-The prompt catalog must contain two active prompt bundles: `requirements-decomposition` and `requirements-insights`. OpenAPI must match every runtime route. MCP schema `2.0.0` must expose four tools. Client qualification covers the guided workflow, linked insight review, cancellation, permanent task URLs, SSE reconciliation, Debug and archived read-only results.
+The prompt catalog must contain two active prompt bundles: `requirements-decomposition` and `requirements-insights`. OpenAPI must match every runtime route. MCP schema `2.1.0` must expose five tools, including bounded result-content retrieval. Client qualification covers the guided workflow, linked insight review, cancellation, permanent task URLs, SSE reconciliation, Debug and archived read-only results.
 
 `qualify:legacy-drain` requires `DATABASE_URL` and must report `activeCount: 0` before removal of compatible execution workers. `qualify:legacy-surface` prevents removed launch surfaces and configuration from returning. Evidence contains counts, versions and digests, never credentials, prompts or artifact content.
 

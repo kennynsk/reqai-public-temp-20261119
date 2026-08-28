@@ -30,6 +30,7 @@ import { ZaiProvider } from '../provider/zai-provider.js';
 import { MockLlmProvider } from '../provider/mock-llm-provider.js';
 import { startWorkerHealthServer } from './worker-health.js';
 import { createPromptCatalog, defaultPromptBundleRoot } from '../prompts/prompt-catalog.js';
+import { createBabokSkillBundleLoader, defaultBabokSkillBundleRoot, qualifyBabokSkillBundle } from '../skills/babok-skill-bundle.js';
 
 function lifecycleShell(config) {
   const keepAlive = setInterval(() => {}, 60_000);
@@ -127,7 +128,17 @@ export async function startWorkerRuntime(config, { ConnectionClass = NativeConne
     const modelExecutor = createModelExecutor({ provider, coordination, attempts, jobTraceRepository, diagnosticCapture });
     const promptCatalog = config.features?.versionedPrompts === false ? null : createPromptCatalog({ rootDir: defaultPromptBundleRoot(), maxRenderedBytes: config.prompts.maxRenderedBytes });
     if (promptCatalog) logEvent('info', 'prompt.catalog.ready', { bundles: promptCatalog.inventory() });
-    const handlers = createEnterpriseActivityHandlers({ artifactRepository, modelExecutor, promptCatalog, config });
+    const babokSkillLoader = promptCatalog
+      ? createBabokSkillBundleLoader({ rootDir: defaultBabokSkillBundleRoot() })
+      : null;
+    const babokSkillProfile = babokSkillLoader
+      ? qualifyBabokSkillBundle({
+        loader: babokSkillLoader,
+        policy: config.skills?.babokRequirements || { active: '1.0.0', released: ['1.0.0'] },
+      })
+      : null;
+    if (babokSkillProfile) logEvent('info', 'babok.skill.ready', babokSkillProfile);
+    const handlers = createEnterpriseActivityHandlers({ artifactRepository, modelExecutor, promptCatalog, babokSkillLoader, config });
     activities = createCheckpointedActivities({ jobRepository, jobTraceRepository, diagnosticCapture, handlers, siteId: config.process.siteId });
   }
   const worker = await WorkerClass.create({

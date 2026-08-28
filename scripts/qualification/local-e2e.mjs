@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { collectRequirements, json, readResult, summarizeJob, verifyModel, waitForJob } from './requirements-e2e-helpers.mjs';
 
 const baseUrl = process.env.REQAI_BASE_URL || 'http://localhost:5178';
-const model = process.env.REQAI_E2E_MODEL || 'glm-5.3';
+const model = process.env.REQAI_E2E_MODEL || 'glm-5.3-flash';
 const scenario = String(process.argv[2] || 'FULL').toUpperCase();
 if (!new Set(['DECOMPOSITION', 'RESEARCH', 'FULL']).has(scenario)) throw new Error(`Unsupported local E2E scenario: ${scenario}`);
 

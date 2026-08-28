@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import { RequirementsVersionRepository } from '../src/repositories/requirements-version-repository.js';
 import { createRequirementsVersionService } from '../src/services/requirements-version-service.js';
+import { createEmptyBabokRegistry } from '../src/services/babok-requirements-contract.js';
 
 const auth = { tenantId: 'tenant-a', userId: 'user-a', roles: ['user'] };
 const config = { process: { siteId: 'dc-a' }, retention: { finalResultsDays: 180 }, jobs: { resultMaxBytes: 104857600 } };
@@ -36,6 +37,68 @@ test('reviewed decomposition is persisted as an immutable requirements version',
     occurredAt: '2026-01-01T00:00:00.000Z',
   });
   assert.equal(auditInput.action, 'requirements.version.create');
+});
+
+test('reviewed BABOK registry persists complete analysis, material lineage and legacy projection', async () => {
+  let storedEnvelope; let createdVersion;
+  const registry = createEmptyBabokRegistry();
+  const service = createRequirementsVersionService({
+    config,
+    clock: () => new Date('2026-01-03T00:00:00Z'),
+    jobRepository: {
+      async findVisibleById() {
+        return {
+          id: 'job-babok', type: 'DECOMPOSITION', status: 'SUCCEEDED', input_artifact_id: 'primary-artifact',
+          configuration_snapshot: {
+            materials: { primary: { artifactId: 'primary-artifact' }, baseline: { status: 'NOT_PROVIDED', artifacts: [] }, references: [] },
+            promptProfile: { id: 'requirements-decomposition', version: '2.0.0' },
+            babokSkillProfile: { id: 'babok-requirements-v3', version: '1.0.0', release: 'babok-requirements.v1', manifestHash: 'a'.repeat(64) },
+          },
+        };
+      },
+    },
+    artifactRepository: { async createText(value) { storedEnvelope = JSON.parse(value.text); return { artifactId: 'version-babok' }; } },
+    versionRepository: { async create(value) { createdVersion = value; return { ...value, id: 'version-babok', source_job_id: value.sourceJobId, base_version_id: null, research_job_id: null, created_at: new Date('2026-01-03T00:00:00Z') }; } },
+    auditRepository: { async record(value) { assert.equal(value.metadata.sourceJobId, 'job-babok'); } },
+  });
+  const result = await service.create({ auth, requestId: 'request-babok', body: { sourceJobId: 'job-babok', registry } });
+  assert.equal(storedEnvelope.schemaVersion, 2);
+  assert.equal(storedEnvelope.contentSchemaVersion, 'babok-requirements.v1');
+  assert.deepEqual(storedEnvelope.registry, registry);
+  assert.deepEqual(storedEnvelope.analysisContext.analysis, registry.analysis);
+  assert.equal(storedEnvelope.materialLineage.primaryArtifactId, 'primary-artifact');
+  assert.deepEqual(result.registry, registry);
+  assert.equal(result.contentSchemaVersion, 'babok-requirements.v1');
+  assert.equal(createdVersion.baseVersionId, null);
+});
+
+test('BABOK revisions retain immutable base links and manual decision metadata', async () => {
+  let storedEnvelope;
+  const registry = createEmptyBabokRegistry();
+  const baseRegistry = createEmptyBabokRegistry();
+  const service = createRequirementsVersionService({
+    config,
+    clock: () => new Date('2026-01-04T00:00:00Z'),
+    jobRepository: { async findVisibleById() { return { id: 'job-revision', type: 'DECOMPOSITION', status: 'SUCCEEDED', input_artifact_id: 'primary' }; } },
+    versionRepository: {
+      async findVisibleById() { return { id: 'base-version', source_job_id: 'job-revision', base_version_id: null, research_job_id: null, created_at: new Date() }; },
+      async create(value) { return { ...value, id: 'new-version', source_job_id: value.sourceJobId, base_version_id: value.baseVersionId, research_job_id: null, created_at: new Date('2026-01-04T00:00:00Z') }; },
+    },
+    artifactRepository: {
+      async metadata() { return { id: 'base-version', sha256: 'a'.repeat(64) }; },
+      async readText() { return JSON.stringify({ kind: 'REQUIREMENTS_VERSION', schemaVersion: 2, sourceJobType: 'DECOMPOSITION', registry: baseRegistry, requirements: { business: [], functional: [], nonfunctional: [] } }); },
+      async createText(value) { storedEnvelope = JSON.parse(value.text); return { artifactId: 'new-version' }; },
+    },
+  });
+  const result = await service.create({
+    auth, requestId: 'revision-request',
+    body: { sourceJobId: 'job-revision', baseVersionId: 'base-version', registry, decisions: { accepted: ['GAP-001'] }, editedRecordIds: ['BR-001', 'BR-001'] },
+  });
+  assert.equal(result.baseVersionId, 'base-version');
+  assert.equal(storedEnvelope.revision.kind, 'MANUAL_REVIEW');
+  assert.equal(storedEnvelope.revision.baseVersionId, 'base-version');
+  assert.deepEqual(storedEnvelope.revision.manualDecisionMetadata.editedRecordIds, ['BR-001']);
+  assert.deepEqual(storedEnvelope.revision.manualDecisionMetadata.decisionKeys, ['accepted']);
 });
 
 test('requirements version and its realtime event are committed with one ordered job sequence', async () => {

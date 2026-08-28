@@ -5,7 +5,8 @@ import test from 'node:test';
 test('local durable workers use the real ZAI provider from env.dev without exposing secrets to non-LLM roles', async () => {
   const compose = await readFile(new URL('../../compose.yaml', import.meta.url), 'utf8');
   assert.match(compose, /LLM_PROVIDER_MODE:\s+"\$\{LLM_PROVIDER_MODE:-zai\}"/);
-  assert.match(compose, /ZAI_MODELS:\s+"\$\{ZAI_MODELS:-glm-5\.3,glm-5-turbo,glm-4\.7,glm-4\.7-flash\}"/);
+  assert.match(compose, /ZAI_MODELS:\s+"\$\{ZAI_MODELS:-glm-5\.3-flash,glm-5\.3,glm-5\.2,glm-5-turbo,glm-4\.7,glm-4\.7-flash\}"/);
+  assert.match(compose, /LLM_MODEL_PRIORITY:\s+"\$\{LLM_MODEL_PRIORITY:-glm-5\.3-flash,glm-5\.3,glm-5\.2\}"/);
   assert.equal((compose.match(/env_file:\n\s+- \.env\.dev/g) || []).length, 2);
   assert.doesNotMatch(compose, /synthesis-worker|requirements-synthesis/);
 

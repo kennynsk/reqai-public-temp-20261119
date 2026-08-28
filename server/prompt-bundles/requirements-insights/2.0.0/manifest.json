@@ -1,0 +1,18 @@
+{
+  "id": "requirements-insights",
+  "version": "2.0.0",
+  "displayName": "BABOK requirements research insights",
+  "workflowPurposes": ["REQUIREMENTS_INSIGHTS"],
+  "outputSchemaVersion": "requirements-insights.v1",
+  "templates": {
+    "insights": {
+      "path": "insights.md",
+      "requiredVariables": [
+        "babokIdentifierSet",
+        "businessContext",
+        "requirementsSection"
+      ],
+      "sha256": "70303cffc8ff6c0da72572eb8844a3ee35e79763d308a6aef0aaaedf47976db2"
+    }
+  }
+}

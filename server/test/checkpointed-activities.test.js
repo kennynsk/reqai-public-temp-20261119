@@ -68,3 +68,24 @@ test('replayed checkpoint restores its completed milestone without executing the
   assert.equal(result.checkpointReplayed, true);
   assert.deepEqual(progress.map(({ progress: value, currentStep }) => [value, currentStep]), [[95, 'persistence']]);
 });
+
+test('contract failures are checkpointed with a safe reason and marked non-retryable', async () => {
+  const checkpoints = [];
+  const diagnostics = [];
+  const activities = createCheckpointedActivities({
+    siteId: 'dc-a', heartbeatFn() {},
+    diagnosticCapture: { async capture(value) { diagnostics.push(value); } },
+    handlers: { async decomposeChunk() { throw Object.assign(new Error('invalid output at $.context[0].provenance'), { type: 'OUTPUT_CONTRACT_VIOLATION', code: 'BABOK_OUTPUT_INVALID', details: { path: '$.context[0].provenance', reason: 'expected an enum value' } }); } },
+    jobRepository: {
+      async findCheckpoint() { return null; },
+      async saveCheckpoint(value) { checkpoints.push(value); },
+    },
+  });
+
+  await assert.rejects(
+    () => activities.decomposeChunk({ tenantId: 't', ownerUserId: 'u', jobId: 'j', chunk: { chunkId: 'c1', artifactId: 'a1' } }),
+    (error) => error.type === 'OUTPUT_CONTRACT_VIOLATION' && error.nonRetryable === true,
+  );
+  assert.deepEqual(checkpoints.at(-1).summary, { reasonCode: 'OUTPUT_CONTRACT_VIOLATION', details: { path: '$.context[0].provenance', reason: 'expected an enum value' } });
+  assert.equal(diagnostics.at(-1).content.reasonCode, 'OUTPUT_CONTRACT_VIOLATION');
+});

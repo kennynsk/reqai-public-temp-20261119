@@ -6,12 +6,14 @@ import { apiErrorHandler, apiNotFound } from '../middleware/api-error-handler.js
 import { ApiError, badRequest } from '../errors/api-error.js';
 import { isRetiredMode, SUPPORTED_CREATE_MODES } from '../domain/job-modes.js';
 import { streamJobEvents } from '../services/sse-service.js';
+import { renderBabokReport } from '../services/babok-report-renderer.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const DECOMPOSITION_MODES = new Set(['DECOMPOSITION']);
+const REASONING_LEVELS = new Set(['disabled', 'low', 'high', 'max']);
 
 function validateJobOptions(type, options = {}) {
-  const allowed = new Set(['mode', 'model', 'temperature', 'promptVersion']);
+  const allowed = new Set(['mode', 'model', 'temperature', 'reasoning', 'promptVersion']);
   const unsupported = Object.keys(options).filter((key) => !allowed.has(key));
   if (unsupported.length) throw badRequest('VALIDATION_ERROR', 'options contains unsupported fields', { fields: unsupported });
   const mode = options.mode || (type === 'DECOMPOSITION' ? 'DECOMPOSITION' : null);
@@ -21,6 +23,7 @@ function validateJobOptions(type, options = {}) {
   if (!DECOMPOSITION_MODES.has(mode)) throw badRequest('VALIDATION_ERROR', `Unsupported mode ${mode} for ${type}`, { field: 'options.mode' });
   if (options.model != null && (typeof options.model !== 'string' || !options.model.trim())) throw badRequest('VALIDATION_ERROR', 'options.model must be a non-empty string', { field: 'options.model' });
   if (options.temperature != null && (!Number.isFinite(options.temperature) || options.temperature < 0 || options.temperature > 2)) throw badRequest('VALIDATION_ERROR', 'options.temperature must be from 0 to 2', { field: 'options.temperature' });
+  if (options.reasoning != null && !REASONING_LEVELS.has(options.reasoning)) throw badRequest('VALIDATION_ERROR', 'options.reasoning must be disabled, low, high or max', { field: 'options.reasoning' });
   if (options.promptVersion != null && !/^[1-9]\d*\.\d+\.\d+$/.test(options.promptVersion)) throw badRequest('VALIDATION_ERROR', 'options.promptVersion must use semantic versioning', { field: 'options.promptVersion' });
   return { ...options, mode };
 }
@@ -73,6 +76,7 @@ function jobResponse(row) {
     mode: row.configuration_snapshot?.featureMode ?? null,
     status: row.status,
     outcome: row.outcome ?? null,
+    reasonCode: row.reason_code ?? null,
     progress: Number(row.progress ?? 0),
     currentStep: row.current_step ?? null,
     message: row.message ?? null,
@@ -258,6 +262,17 @@ export function createApiV1Router({ config, services = {} }) {
     if (!result.resultArtifactId) throw new ApiError({ status: 404, code: 'ARTIFACT_NOT_FOUND', message: 'Result has no content artifact' });
     const row = await services.artifactRepository.metadata({ tenantId: req.auth.tenantId, ownerUserId: ownerScope(req.auth), artifactId: result.resultArtifactId });
     if (!row) throw new ApiError({ status: 404, code: 'ARTIFACT_NOT_FOUND', message: 'Result artifact not found' });
+    const format = String(req.query.format || 'raw').toLowerCase();
+    if (!['raw', 'markdown'].includes(format)) throw badRequest('VALIDATION_ERROR', 'format must be raw or markdown', { field: 'format' });
+    if (format === 'markdown') {
+      const text = await services.artifactRepository.readText({ tenantId: req.auth.tenantId, artifactId: row.id, maxBytes: config.jobs.resultMaxBytes });
+      let value;
+      try { value = JSON.parse(text); } catch { throw new ApiError({ status: 409, code: 'REPORT_FORMAT_UNAVAILABLE', message: 'Result is not a JSON report' }); }
+      if (value?.schemaVersion !== 'babok-requirements.v1') throw new ApiError({ status: 409, code: 'REPORT_FORMAT_UNAVAILABLE', message: 'Markdown rendering is available for BABOK results only' });
+      res.type('text/markdown; charset=utf-8');
+      res.set('Content-Disposition', `attachment; filename="babok-requirements-${req.params.jobId}.md"`);
+      return res.send(renderBabokReport(value));
+    }
     res.set('Content-Type', row.content_type); res.set('Content-Length', String(row.size_bytes));
     await services.artifactRepository.streamTo({ tenantId: req.auth.tenantId, artifactId: row.id, writable: res });
   }));

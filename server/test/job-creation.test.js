@@ -148,8 +148,36 @@ test('job service snapshots GC model priority and returns repository replay stat
 
   assert.equal(result.job.status, 'ACCEPTED');
   assert.deepEqual(input.job.configurationSnapshot.models, ['GC-Max', 'GC-M', 'GC-Lite']);
+  assert.equal(input.job.configurationSnapshot.reasoning, 'disabled');
   assert.equal(input.event.type, 'job.accepted');
   assert.equal(input.audit.requestId, 'req-1');
+});
+
+test('decomposition job snapshots dedicated latency experiment settings', async () => {
+  let accepted;
+  const service = createJobService({
+    config: {
+      asyncEnabled: true,
+      process: { siteId: 'dc-a' },
+      jobs: { decompositionDeadlineMs: 3_600_000, researchDeadlineMs: 14_400_000 },
+      llm: {
+        models: ['glm-5.3'], maxModelsPerStep: 1, maxAttemptsPerModel: 1, requestTimeoutMs: 300_000,
+        outputTokens: { 'glm-5.3': 32000 }, decompositionOutputTokens: { 'glm-5.3': 16000 }, decompositionThinking: 'disabled',
+      },
+    },
+    jobRepository: { async createAccepted(value) { accepted = value; return { job: value.job, replayed: false }; } },
+    uuid: () => '00000000-0000-4000-8000-000000000001',
+  });
+
+  await service.create({
+    auth: { tenantId: 'tenant-a', userId: 'user-a', roles: ['user'] },
+    idempotencyKey: 'latency-settings-001',
+    body: { type: 'DECOMPOSITION', inputArtifactId: '00000000-0000-4000-8000-000000000099' },
+  });
+
+  assert.equal(accepted.job.configurationSnapshot.outputTokens['glm-5.3'], 16000);
+  assert.equal(accepted.job.configurationSnapshot.thinking, 'disabled');
+  assert.equal(accepted.job.configurationSnapshot.reasoning, 'disabled');
 });
 
 test('new production jobs snapshot the resolved immutable prompt profile', async () => {
@@ -172,6 +200,38 @@ test('new production jobs snapshot the resolved immutable prompt profile', async
   assert.equal(accepted.job.configurationSnapshot.promptProfile, promptProfile);
   assert.equal(accepted.audit.metadata.promptProfile.manifestHash, promptProfile.manifestHash);
   assert.equal(JSON.stringify(accepted.event.payload).includes('prompt'), false);
+});
+
+test('decomposition jobs snapshot authorized materials and the selected BABOK skill profile', async () => {
+  let accepted;
+  const babokSkillProfile = { id: 'babok-requirements-v3', version: '1.0.0', release: 'babok-requirements.v1', manifestHash: 'c'.repeat(64) };
+  const materials = {
+    primary: { artifactId: '00000000-0000-4000-8000-000000000099', role: 'primary', name: 'primary', sha256: 'a'.repeat(64), status: 'AVAILABLE' },
+    baseline: [{ artifactId: '00000000-0000-4000-8000-000000000098', role: 'baseline', name: 'baseline', sha256: 'b'.repeat(64), status: 'AVAILABLE' }],
+    references: [{ artifactId: '00000000-0000-4000-8000-000000000097', role: 'reference', name: 'reference', sha256: 'd'.repeat(64), status: 'AVAILABLE' }],
+  };
+  const service = createJobService({
+    config: {
+      asyncEnabled: true, features: { versionedPrompts: false }, process: { siteId: 'dc-a' },
+      jobs: { decompositionDeadlineMs: 3_600_000, researchDeadlineMs: 14_400_000 },
+      llm: { models: ['GC-Max'], maxModelsPerStep: 1, maxAttemptsPerModel: 1, requestTimeoutMs: 300_000 },
+    },
+    babokSkillProfile,
+    jobRepository: { async createAccepted(value) { accepted = value; return { job: value.job, replayed: false }; } },
+    uuid: () => '00000000-0000-4000-8000-000000000001',
+  });
+  await service.create({
+    auth: { tenantId: 'tenant-a', userId: 'user-a', roles: ['user'] }, idempotencyKey: 'materials-profile-001',
+    body: { type: 'DECOMPOSITION', inputArtifactId: materials.primary.artifactId, materials },
+  });
+  assert.deepEqual(accepted.job.configurationSnapshot.materials, {
+    primary: materials.primary,
+    baseline: { status: 'AVAILABLE', artifacts: materials.baseline },
+    references: materials.references,
+  });
+  assert.deepEqual(accepted.job.configurationSnapshot.babokSkillProfile, babokSkillProfile);
+  assert.deepEqual(accepted.audit.metadata.babokSkillProfile, babokSkillProfile);
+  assert.deepEqual(accepted.audit.metadata.materials.referenceArtifactIds, [materials.references[0].artifactId]);
 });
 
 test('job service rejects every retired mode before persistence', async () => {
@@ -200,7 +260,7 @@ test('job service rejects every retired mode before persistence', async () => {
   assert.equal(persisted, false);
 });
 
-test('ZAI catalog exposes four models but a selected model snapshots at most three fallbacks', async () => {
+test('configured ZAI catalog snapshots a selected model with at most three fallbacks', async () => {
   let accepted;
   const availableModels = ['glm-5.3', 'glm-5-turbo', 'glm-4.7', 'glm-4.7-flash'];
   const service = createJobService({
@@ -216,10 +276,11 @@ test('ZAI catalog exposes four models but a selected model snapshots at most thr
   await service.create({
     auth: { tenantId: 'tenant-a', userId: 'user-a', roles: ['user'] },
     idempotencyKey: 'zai-fourth-model-001',
-    body: { type: 'DECOMPOSITION', inputArtifactId: '00000000-0000-4000-8000-000000000099', options: { model: 'glm-4.7-flash' } },
+    body: { type: 'DECOMPOSITION', inputArtifactId: '00000000-0000-4000-8000-000000000099', options: { model: 'glm-4.7-flash', reasoning: 'high' } },
   });
   assert.deepEqual(accepted.job.configurationSnapshot.configuredModels, availableModels);
   assert.deepEqual(accepted.job.configurationSnapshot.models, ['glm-4.7-flash', 'glm-5.3', 'glm-5-turbo']);
+  assert.equal(accepted.job.configurationSnapshot.reasoning, 'high');
 });
 
 test('job service rejects a model outside the configured single provider policy', async () => {

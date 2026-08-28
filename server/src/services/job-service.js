@@ -15,6 +15,26 @@ function canonicalJson(value) {
   return JSON.stringify(value);
 }
 
+function materialSnapshot(materials, inputArtifactId) {
+  const primary = materials?.primary || {
+    artifactId: inputArtifactId,
+    role: 'primary',
+    name: null,
+    sha256: null,
+    status: 'AVAILABLE',
+  };
+  const baselineArtifacts = Array.isArray(materials?.baseline) ? materials.baseline : materials?.baseline?.artifacts || [];
+  const references = Array.isArray(materials?.references) ? materials.references : [];
+  return {
+    primary,
+    baseline: {
+      status: baselineArtifacts.length ? 'AVAILABLE' : 'NOT_PROVIDED',
+      artifacts: baselineArtifacts,
+    },
+    references,
+  };
+}
+
 function prioritizedModels(configured, selected, limit = 3) {
   if (!selected) return configured.slice(0, limit);
   if (!configured.includes(selected)) {
@@ -23,7 +43,7 @@ function prioritizedModels(configured, selected, limit = 3) {
   return [selected, ...configured.filter((model) => model !== selected)].slice(0, limit);
 }
 
-export function createJobService({ config, jobRepository, operationalRepository, requirementsVersionService, jobTraceRepository, promptProfileResolver = null, clock = () => new Date(), uuid = randomUUID }) {
+export function createJobService({ config, jobRepository, operationalRepository, requirementsVersionService, jobTraceRepository, promptProfileResolver = null, babokSkillProfile = null, clock = () => new Date(), uuid = randomUUID }) {
   return {
     async create({ auth, idempotencyKey, body, requestId, requestHashOverride = null, inlineArtifact = null }) {
       if (!config.asyncEnabled || !jobRepository) {
@@ -68,6 +88,10 @@ export function createJobService({ config, jobRepository, operationalRepository,
       const deadlineMs = body.type === 'RESEARCH' ? config.jobs.researchDeadlineMs : config.jobs.decompositionDeadlineMs;
       const requestHash = requestHashOverride || createHash('sha256').update(canonicalJson(body)).digest('hex');
       const jobId = uuid();
+      const decompositionMode = featureMode === 'DECOMPOSITION';
+      const reasoning = body.options?.reasoning
+        ?? (decompositionMode && config.llm.decompositionThinking === 'enabled' ? 'enabled' : 'disabled');
+      const materials = materialSnapshot(body.materials, body.inputArtifactId);
       const persist = inlineArtifact ? jobRepository.createAcceptedWithInlineArtifact.bind(jobRepository) : jobRepository.createAccepted.bind(jobRepository);
       const result = await persist({
         tenantId: auth.tenantId,
@@ -95,9 +119,17 @@ export function createJobService({ config, jobRepository, operationalRepository,
             requestTimeoutMs: config.llm.requestTimeoutMs,
             retryInitialDelayMs: config.llm.retryInitialDelayMs,
             retryMaxDelayMs: config.llm.retryMaxDelayMs,
+            outputTokens: decompositionMode
+              ? (config.llm.decompositionOutputTokens || config.llm.outputTokens)
+              : config.llm.outputTokens,
             maxConcurrency: config.llm.maxConcurrency,
             chunkTargetTokens: config.llm.chunkTargetTokens,
             chunkConcurrency: config.llm.chunkConcurrency,
+            materials,
+            reasoning,
+            ...(decompositionMode && config.llm.decompositionThinking ? { thinking: config.llm.decompositionThinking } : {}),
+            ...(decompositionMode && babokSkillProfile ? { babokSkillProfile } : {}),
+            ...(Array.isArray(body.babokIdentifierSet) ? { babokIdentifierSet: [...new Set(body.babokIdentifierSet)] } : {}),
           },
         },
         admission: {
@@ -116,7 +148,18 @@ export function createJobService({ config, jobRepository, operationalRepository,
           action: 'job.create',
           actorRoles: auth.roles,
           requestId,
-          metadata: { type: body.type, parentJobId: body.parentJobId || null, inputArtifactId: body.inputArtifactId, ...(promptProfile ? { promptProfile: { id: promptProfile.id, version: promptProfile.version, manifestHash: promptProfile.manifestHash, outputSchemaVersion: promptProfile.outputSchemaVersion } } : {}) },
+          metadata: {
+            type: body.type,
+            parentJobId: body.parentJobId || null,
+            inputArtifactId: body.inputArtifactId,
+            materials: {
+              primary: { artifactId: materials.primary.artifactId, sha256: materials.primary.sha256 },
+              baselineArtifactIds: materials.baseline.artifacts.map((item) => item.artifactId),
+              referenceArtifactIds: materials.references.map((item) => item.artifactId),
+            },
+            ...(featureMode === 'DECOMPOSITION' && babokSkillProfile ? { babokSkillProfile } : {}),
+            ...(promptProfile ? { promptProfile: { id: promptProfile.id, version: promptProfile.version, manifestHash: promptProfile.manifestHash, outputSchemaVersion: promptProfile.outputSchemaVersion } } : {}),
+          },
         },
       });
       if (!result.replayed && jobTraceRepository) {

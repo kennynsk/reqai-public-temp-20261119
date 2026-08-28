@@ -60,6 +60,27 @@ function expectBusinessStage(stage) {
   expect(region).not.toHaveTextContent(`${stage * 25}%`);
 }
 
+function makeBabokRegistry() {
+  const source = { artifactId: 'primary-artifact', locator: 'section:1', quote: null };
+  const common = (id, text) => ({ id, text, source, provenance: 'Извлечено', quality: 'Готово' });
+  const groups = {
+    BR: [{ ...common('BR-001', 'Сократить время согласования'), successIndicator: 'Срок согласования подтверждён владельцем процесса', relatedIds: [] }],
+    SR: [{ ...common('SR-001', 'Руководитель процесса видит статус заявки'), role: 'Руководитель процесса', relatedTo: [] }],
+    FR: [{ ...common('FR-001', 'Система показывает статус заявки'), relatedTo: [] }],
+    NFR: [{ ...common('NFR-001', 'Статус отображается без неоправданной задержки'), category: 'Производительность', scope: 'Рабочее место оператора', relatedTo: [], verificationMethod: 'Нагрузочное испытание' }],
+    TR: [{ ...common('TR-001', 'Команда завершает обучение до запуска'), completionCriterion: 'Обучение подтверждено', relatedTo: [] }],
+    CON: [{ ...common('CON-001', 'Обработка выполняется в рамках утверждённого регламента'), obligation: 'Соблюдать утверждённый регламент', scope: 'Процесс согласования', relatedTo: [] }],
+  };
+  return {
+    schemaVersion: 'babok-requirements.v1', mode: 'DECOMPOSITION', outcome: 'COMPLETE',
+    summary: { text: 'Полный реестр для проверки', counts: { BR: 1, SR: 1, FR: 1, NFR: 1, TR: 1, CON: 1, CTX: 0, GAP: 0, HYP: 0, TERM: 0, DELTA: 0 }, conclusions: [] },
+    context: [], groups,
+    analysis: { GAP: [], HYP: [], TERM: [], traceability: [], delta: [], questions: [] },
+    materials: { primary: { artifactId: 'primary-artifact', role: 'primary', name: null, sha256: null, status: 'AVAILABLE' }, baseline: { status: 'NOT_PROVIDED', artifacts: [] }, references: [] },
+    scope: { partial: false, units: [{ id: 'unit-1', artifactId: 'primary-artifact', status: 'COMPLETE', section: 'all', note: null }] },
+  };
+}
+
 test('shows the guided workflow and hides expert settings by default', async () => {
   render(<AsyncJobWorkspace />);
   expect(screen.getByRole('button', { name: 'Debug' })).toBeDisabled();
@@ -73,7 +94,21 @@ test('shows the guided workflow and hides expert settings by default', async () 
   expectBusinessStage(1);
   expect(screen.getByText('Настройки AI')).toBeInTheDocument();
   expect(screen.getByRole('combobox', { name: 'Модель', hidden: true })).not.toBeVisible();
+  expect(screen.getByRole('combobox', { name: 'Reasoning', hidden: true })).not.toBeVisible();
   expect(screen.queryByText('Декомпозиция ещё не выполнена')).not.toBeInTheDocument();
+});
+
+test('allows choosing a reasoning level and sends it with a new task', async () => {
+  mocks.uploadArtifact.mockResolvedValue({ artifactId: 'artifact-1' });
+  mocks.createJob.mockResolvedValue({ jobId: 'job-1' });
+  render(<AsyncJobWorkspace />);
+  fireEvent.click(screen.getByText('Настройки AI').closest('summary'));
+  const reasoning = screen.getByRole('combobox', { name: 'Reasoning' });
+  expect(reasoning).toHaveValue('disabled');
+  fireEvent.change(reasoning, { target: { value: 'high' } });
+  fireEvent.change(screen.getByPlaceholderText('Опишите бизнес-задачу...'), { target: { value: 'Сократить время обработки' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Декомпозировать требования' }));
+  await waitFor(() => expect(mocks.createJob).toHaveBeenCalledWith(expect.objectContaining({ options: expect.objectContaining({ reasoning: 'high' }) })));
 });
 
 test('restores abandoned active session with clear activity feedback', async () => {
@@ -122,7 +157,7 @@ test('shows honest backend milestones separately from business workflow progress
   expect(await screen.findByText('Сопоставляем требования с отраслевыми практиками')).toBeInTheDocument();
 });
 
-test('lets an authoritative milestone replace the visual estimate and advance the mini-timeline', async () => {
+test('continues the overall percentage through an authoritative assembly milestone', async () => {
   const running = {
     jobId: 'estimate-1', type: 'DECOMPOSITION', mode: 'DECOMPOSITION', status: 'RUNNING', progress: 20,
     currentStep: 'model', message: 'AI формирует структуру требований', startedAt: new Date(Date.now() - 60_000).toISOString(),
@@ -137,10 +172,49 @@ test('lets an authoritative milestone replace the visual estimate and advance th
   expect(Number(progress.getAttribute('aria-valuenow'))).toBeGreaterThan(20);
   expect(screen.getByRole('listitem', { name: 'AI-анализ: выполняется' })).toBeInTheDocument();
 
-  await act(() => onEvent({ jobId: running.jobId, eventType: 'job.progress', job: { ...running, progress: 90, currentStep: 'assembly', message: 'Собираем требования по категориям' } }));
-  expect(progress).toHaveAttribute('aria-valuenow', '90');
+  const assembly = { ...running, progress: 90, currentStep: 'assembly', message: 'Собираем требования по категориям', updatedAt: new Date(Date.now() - 30_000).toISOString() };
+  await act(() => onEvent({ jobId: running.jobId, eventType: 'job.progress', job: assembly }));
+  expect(Number(progress.getAttribute('aria-valuenow'))).toBeGreaterThan(90);
+  expect(Number(progress.getAttribute('aria-valuenow'))).toBeLessThan(95);
+  expect(progress).toHaveAttribute('aria-valuetext', expect.stringMatching(/Оценка \d+ процентов, этап Сборка/));
+  expect(screen.getByText(/\d+% · Сборка/)).toBeInTheDocument();
   expect(screen.getByRole('listitem', { name: 'AI-анализ: завершено' })).toBeInTheDocument();
   expect(screen.getByRole('listitem', { name: 'Сборка: выполняется' })).toHaveAttribute('aria-current', 'step');
+
+  mocks.getJob.mockResolvedValue(assembly);
+  fireEvent.click(screen.getByRole('button', { name: 'Продолжить в фоне' }));
+  const indicator = await screen.findByRole('button', { name: 'Фоновая задача: Собираем требования по категориям. Этап: Сборка' });
+  expect(indicator.textContent).toMatch(/9[1-4]%/);
+});
+
+test('shows a realistic decomposition duration without warning before the expected window ends', async () => {
+  const running = {
+    jobId: 'duration-1', type: 'DECOMPOSITION', mode: 'DECOMPOSITION', status: 'RUNNING', progress: 20,
+    currentStep: 'model', message: 'AI формирует структуру требований', startedAt: new Date(Date.now() - 239_000).toISOString(),
+  };
+  localStorage.setItem('reqai.activeJob', running.jobId);
+  mocks.getJob.mockResolvedValue(running);
+  render(<AsyncJobWorkspace />);
+
+  expect(await screen.findByText(/обычно 2–4 минуты/)).toBeInTheDocument();
+  expect(screen.queryByText('Обработка занимает больше обычного, но задача продолжает выполняться.')).not.toBeInTheDocument();
+});
+
+test('explains a decomposition run that exceeds the four-minute estimate', async () => {
+  const running = {
+    jobId: 'duration-2', type: 'DECOMPOSITION', mode: 'DECOMPOSITION', status: 'RUNNING', progress: 95,
+    currentStep: 'persistence', message: 'Сохраняем требования', startedAt: new Date(Date.now() - 241_000).toISOString(), updatedAt: new Date(Date.now() - 30_000).toISOString(),
+  };
+  localStorage.setItem('reqai.activeJob', running.jobId);
+  mocks.getJob.mockResolvedValue(running);
+  render(<AsyncJobWorkspace />);
+
+  expect(await screen.findByText('Обработка занимает больше обычного, но задача продолжает выполняться.')).toBeInTheDocument();
+  const progress = screen.getByRole('progressbar', { name: 'Прогресс выполнения задачи' });
+  expect(Number(progress.getAttribute('aria-valuenow'))).toBeGreaterThan(95);
+  expect(Number(progress.getAttribute('aria-valuenow'))).toBeLessThan(100);
+  expect(progress).toHaveAttribute('aria-valuetext', expect.stringMatching(/Оценка \d+ процентов, этап Сохранение/));
+  expect(screen.getByText(/\d+% · Сохранение/)).toBeInTheDocument();
 });
 
 test('reconciles a background job, notifies on completion and opens its result', async () => {
@@ -193,6 +267,15 @@ test('shows a dedicated state card only for an exceptional retry state', async (
   render(<AsyncJobWorkspace />);
   expect(await screen.findByText('Повторяем проблемный этап…')).toBeInTheDocument();
   expect(screen.getByText('Результат появится на странице автоматически.')).toBeInTheDocument();
+});
+
+test('shows a safe contract-specific message for a failed decomposition', async () => {
+  localStorage.setItem('reqai.activeJob', 'failed-contract-1');
+  mocks.getJob.mockResolvedValue({ jobId: 'failed-contract-1', type: 'DECOMPOSITION', mode: 'DECOMPOSITION', status: 'FAILED', reasonCode: 'OUTPUT_CONTRACT_VIOLATION', progress: 20 });
+  render(<AsyncJobWorkspace />);
+  expect(await screen.findByText('Не удалось завершить задачу')).toBeInTheDocument();
+  expect(screen.getByText('Ответ AI не соответствует формату требований. Попробуйте запустить задачу ещё раз.')).toBeInTheDocument();
+  expect(screen.queryByText(/provenance|invalid output/i)).not.toBeInTheDocument();
 });
 
 test('does not expose retired standalone launchers', async () => {
@@ -252,7 +335,7 @@ test('saves reviewed decomposition and starts linked research inside requirement
   await waitFor(() => expect(screen.getByRole('button', { name: 'Улучшить требования с помощью AI' })).toBeEnabled());
   expect(screen.getByText(/Сохранено ·/)).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Улучшить требования с помощью AI' }));
-  await waitFor(() => expect(mocks.researchRequirements).toHaveBeenCalledWith('version-1', { model: 'GC-Max', temperature: 0.2 }));
+  await waitFor(() => expect(mocks.researchRequirements).toHaveBeenCalledWith('version-1', { model: 'GC-Max', temperature: 0.2, reasoning: 'disabled' }));
   expect(await screen.findByRole('heading', { name: 'AI-исследование требований' })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Отменить' })).toBeInTheDocument();
   expect(mocks.researchRequirements).toHaveBeenCalledTimes(1);
@@ -629,6 +712,82 @@ test('restores persisted requirements revision from history drawer', async () =>
   await selectHistoryEntry('Подготовка требований');
   expect(await screen.findByText('Сохранённая редакция')).toBeInTheDocument();
   expect(screen.queryByText('Исходная версия')).not.toBeInTheDocument();
+});
+
+test('reviews a BABOK registry by type, preserves evidence and saves a complete edited registry', async () => {
+  const registry = makeBabokRegistry();
+  const job = { jobId: 'babok-job', type: 'DECOMPOSITION', mode: 'DECOMPOSITION', status: 'SUCCEEDED', outcome: 'COMPLETE', createdAt: new Date().toISOString() };
+  mocks.listJobs.mockResolvedValue({ items: [job], nextCursor: null });
+  mocks.getJob.mockResolvedValue(job);
+  mocks.getResult.mockResolvedValue({ ...job, resultArtifactId: 'babok-artifact', modelAttempts: [] });
+  mocks.getResultContent.mockResolvedValue(JSON.stringify(registry));
+  let revision = 0;
+  mocks.saveRequirementsVersion.mockImplementation(async ({ registry: savedRegistry, baseVersionId, decisions, editedRecordIds }) => ({ versionId: `babok-v${++revision}`, sourceJobId: 'babok-job', baseVersionId, registry: savedRegistry, contentSchemaVersion: savedRegistry.schemaVersion, decisions, editedRecordIds, createdAt: new Date().toISOString() }));
+
+  render(<AsyncJobWorkspace />);
+  await selectHistoryEntry('Подготовка требований');
+  expect(await screen.findByRole('heading', { name: 'Проверка реестра требований' })).toBeInTheDocument();
+  expect(screen.getByRole('tablist', { name: 'Типы требований' })).toBeInTheDocument();
+  expect(screen.getByRole('tab', { name: /BR · Бизнес-требования/ })).toHaveTextContent('1');
+  expect(screen.getByRole('region', { name: 'Функциональные требования' })).toBeInTheDocument();
+  const business = screen.getByRole('region', { name: 'Бизнес-требования' });
+  fireEvent.click(within(business).getByText('Источник, качество и связи'));
+  expect(within(business).getByText('Извлечено из источника')).toBeInTheDocument();
+  expect(within(business).getByText('Готово')).toBeInTheDocument();
+
+  fireEvent.click(within(business).getByRole('button', { name: 'Действия для BR-001' }));
+  fireEvent.click(within(business).getByRole('button', { name: 'Редактировать' }));
+  fireEvent.change(screen.getByLabelText('Текст требования BR-001'), { target: { value: 'Сократить время согласования заявки' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
+
+  const functional = screen.getByRole('region', { name: 'Функциональные требования' });
+  fireEvent.click(within(functional).getByRole('button', { name: 'Добавить требование' }));
+  fireEvent.change(within(functional).getByRole('textbox', { name: 'Новое требование: FR' }), { target: { value: 'Система сохраняет историю статусов' } });
+  fireEvent.click(within(functional).getByRole('button', { name: 'Добавить' }));
+  expect(within(functional).getByText('FR-002')).toBeInTheDocument();
+  expect(within(functional).getByText('Система сохраняет историю статусов')).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole('button', { name: 'Сохранить проверенную версию' }));
+  await waitFor(() => expect(mocks.saveRequirementsVersion).toHaveBeenCalledWith(expect.objectContaining({ sourceJobId: 'babok-job', baseVersionId: null, registry: expect.objectContaining({ schemaVersion: 'babok-requirements.v1' }), editedRecordIds: expect.arrayContaining(['BR-001', 'FR-002']) })));
+  const savedPayload = mocks.saveRequirementsVersion.mock.calls[0][0];
+  expect(savedPayload.registry.groups.BR[0].text).toBe('Сократить время согласования заявки');
+  expect(savedPayload.registry.groups.FR.some((item) => item.id === 'FR-002')).toBe(true);
+  expect(await screen.findByRole('button', { name: 'Перейти к финальной версии' })).toBeEnabled();
+  fireEvent.click(screen.getByRole('button', { name: 'Перейти к финальной версии' }));
+  await waitFor(() => expect(mocks.saveRequirementsVersion).toHaveBeenNthCalledWith(2, expect.objectContaining({ baseVersionId: 'babok-v1', decisions: { skippedResearch: true }, registry: expect.any(Object) })));
+  expect(await screen.findByRole('heading', { name: 'Финальная версия требований' })).toBeInTheDocument();
+  expect(screen.getByText('Система сохраняет историю статусов')).toBeInTheDocument();
+});
+
+test('keeps BABOK target types and decision lineage in linked research', async () => {
+  const baseRegistry = makeBabokRegistry();
+  const content = JSON.stringify({
+    mode: 'REQUIREMENTS_INSIGHTS', baseRegistry, baseRequirements: { business: [], functional: [], nonfunctional: [] }, inputRequirementsVersionId: 'babok-base',
+    babokIdentifierSet: ['BR-001', 'SR-001', 'FR-001', 'NFR-001', 'TR-001', 'CON-001'],
+    insights: [{ id: 'babok-insight', category: 'patterns', title: 'История статусов', summary: 'Прозрачность состояния снижает число повторных обращений.', detail: 'Практика полезна для процесса согласования.', applicability: 85, source_types: ['industry_report'], relatedTo: ['FR-001'], enhancements: [{ targetType: 'FR', targetIds: ['FR-001'], text: 'Система хранит историю статусов заявки' }] }],
+  });
+  const job = { jobId: 'babok-research', type: 'RESEARCH', mode: 'REQUIREMENTS_INSIGHTS', status: 'SUCCEEDED', outcome: 'COMPLETE', createdAt: new Date().toISOString() };
+  mocks.listJobs.mockResolvedValue({ items: [job], nextCursor: null });
+  mocks.getJob.mockResolvedValue(job);
+  mocks.getResult.mockResolvedValue({ ...job, resultArtifactId: 'babok-research-artifact', modelAttempts: [] });
+  mocks.getResultContent.mockResolvedValue(content);
+  mocks.saveRequirementsVersion.mockImplementation(async ({ registry, baseVersionId, decisions }) => ({ versionId: 'babok-final', sourceJobId: 'babok-research', baseVersionId, registry, decisions, createdAt: new Date().toISOString() }));
+
+  render(<AsyncJobWorkspace />);
+  await selectHistoryEntry('AI-исследование требований');
+  expect(await screen.findByText('Результаты AI-исследования')).toBeInTheDocument();
+  const card = screen.getByRole('article');
+  fireEvent.click(within(card).getByText('Подробнее · 1 предложение'));
+  expect(within(card).getByText('FR-001')).toBeInTheDocument();
+  fireEvent.click(within(card).getByRole('button', { name: 'Показать предложение: В FR · функциональные требования' }));
+  expect(within(card).getByText('Система хранит историю статусов заявки')).toBeVisible();
+  fireEvent.click(within(card).getByRole('button', { name: 'Принять улучшение: Система хранит историю статусов заявки' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Сохранить финальную версию' }));
+  await waitFor(() => expect(mocks.saveRequirementsVersion).toHaveBeenCalledWith(expect.objectContaining({ baseVersionId: 'babok-base', decisions: { acceptedEnhancementKeys: ['babok-insight:0'], rejectedEnhancementKeys: [] }, registry: expect.any(Object) })));
+  const saved = mocks.saveRequirementsVersion.mock.calls[0][0];
+  expect(saved.registry.groups.FR).toEqual(expect.arrayContaining([expect.objectContaining({ researchEnhancementKey: 'babok-insight:0', fromResearch: true, relatedTo: ['FR-001'] })]));
+  expect(await screen.findByRole('heading', { name: 'Финальная версия требований' })).toBeInTheDocument();
+  expect(screen.getByText('Система хранит историю статусов заявки')).toBeInTheDocument();
 });
 
 test('opens retained legacy results as read-only archives without retry controls', async () => {

@@ -1,3 +1,5 @@
+import { parseBabokOutput } from '../services/babok-requirements-contract.js';
+
 const CONTRACTS = new Map();
 
 function parseJson(text) {
@@ -20,6 +22,7 @@ export function registerOutputContract(id, parse) {
 }
 
 registerOutputContract('decomposition.v1', (text) => requireObject(parseJson(text), 'decomposition.v1'));
+registerOutputContract('babok-requirements.v1', parseBabokOutput);
 registerOutputContract('requirements-insights.v1', (text) => {
   const value = requireObject(parseJson(text), 'requirements-insights.v1');
   if (!Array.isArray(value.insights)) throw Object.assign(new Error('insights must be an array'), { type: 'OUTPUT_CONTRACT_VIOLATION' });

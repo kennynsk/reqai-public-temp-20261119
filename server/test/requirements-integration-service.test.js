@@ -23,9 +23,10 @@ function harness(overrides = {}) {
 
 test('decomposition operation maps product DTO to a canonical job without Express objects', async () => {
   const { service, calls } = harness();
-  await service.startDecomposition({ auth, idempotencyKey: 'key-0000000000001', command: { businessContext: '  Новая задача  ', promptVersion: '1.0.0' } });
+  await service.startDecomposition({ auth, idempotencyKey: 'key-0000000000001', command: { businessContext: '  Новая задача  ', reasoning: 'high', promptVersion: '1.0.0' } });
   assert.equal(calls[0].body.type, 'DECOMPOSITION');
   assert.equal(calls[0].body.options.mode, 'DECOMPOSITION');
+  assert.equal(calls[0].body.options.reasoning, 'high');
   assert.equal(calls[0].inlineArtifact.content.toString(), 'Новая задача');
 });
 
@@ -40,6 +41,19 @@ test('inline idempotency hash is stable before random artifact allocation and ch
   assert.notEqual(calls[1].requestHashOverride, calls[2].requestHashOverride);
 });
 
+test('decomposition accepts optional baseline and reference artifacts and fingerprints their content', async () => {
+  const { service, calls } = harness();
+  const primary = '00000000-0000-4000-8000-000000000001';
+  const baseline = '00000000-0000-4000-8000-000000000011';
+  const reference = '00000000-0000-4000-8000-000000000021';
+  const command = { inputArtifactId: primary, baselineArtifactId: baseline, referenceArtifactIds: [reference] };
+  await service.startDecomposition({ auth, idempotencyKey: 'materials-key-00001', command });
+  assert.deepEqual(calls[0].body.materials.baseline, [{ artifactId: baseline, role: 'baseline', name: 'baseline artifact', sha256: 'a'.repeat(64), status: 'AVAILABLE' }]);
+  assert.deepEqual(calls[0].body.materials.references, [{ artifactId: reference, role: 'reference', name: 'reference artifact', sha256: 'a'.repeat(64), status: 'AVAILABLE' }]);
+  await service.startDecomposition({ auth, idempotencyKey: 'materials-key-00002', command: { ...command, referenceArtifactIds: [] } });
+  assert.notEqual(calls[0].requestHashOverride, calls[1].requestHashOverride);
+});
+
 test('requirements research derives immutable version and parent lineage server-side', async () => {
   const { service, calls } = harness();
   const versionId = '00000000-0000-4000-8000-000000000011';
@@ -47,6 +61,7 @@ test('requirements research derives immutable version and parent lineage server-
   assert.equal(calls[0].body.inputArtifactId, versionId);
   assert.equal(calls[0].body.parentJobId, '00000000-0000-4000-8000-000000000099');
   assert.equal(calls[0].body.options.mode, 'REQUIREMENTS_INSIGHTS');
+  assert.equal(calls[0].body.options.reasoning, undefined);
   await assert.rejects(() => service.startRequirementsResearch({ auth, idempotencyKey: 'lineage-key-000002', versionId, command: { parentJobId: 'evil' } }), (error) => error.code === 'VALIDATION_ERROR');
 });
 
@@ -56,5 +71,8 @@ test('domain DTOs reject ambiguous inputs, unknown fields and unavailable artifa
   await assert.rejects(() => service.startDecomposition({ auth, idempotencyKey: 'invalid-key-000002', command: { businessContext: 'x', inputArtifactId: '00000000-0000-4000-8000-000000000001' } }), /Exactly one/);
   await assert.rejects(() => service.startDecomposition({ auth, idempotencyKey: 'invalid-key-000004', command: { inputArtifactId: '00000000-0000-4000-8000-000000000002' } }), (error) => error.code === 'ARTIFACT_NOT_FOUND');
   await assert.rejects(() => service.startDecomposition({ auth, idempotencyKey: 'invalid-key-000005', command: { businessContext: 'x', tenantId: 'tenant-b' } }), /unsupported fields/);
+  await assert.rejects(() => service.startDecomposition({ auth, idempotencyKey: 'invalid-key-000009', command: { businessContext: 'x', reasoning: 'medium' } }), /reasoning must be disabled, low, high or max/);
   await assert.rejects(() => service.startDecomposition({ auth, idempotencyKey: 'invalid-key-000006', command: { businessContext: 'x', withInsights: true } }), /unsupported fields/);
+  await assert.rejects(() => service.startDecomposition({ auth, idempotencyKey: 'invalid-key-000007', command: { businessContext: 'x', referenceArtifactIds: ['not-a-uuid'] } }), /only UUIDs/);
+  await assert.rejects(() => service.startDecomposition({ auth, idempotencyKey: 'invalid-key-000008', command: { businessContext: 'x', referenceArtifactIds: ['00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000001'] } }), /not contain duplicates/);
 });

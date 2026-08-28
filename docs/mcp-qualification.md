@@ -1,11 +1,11 @@
 # MCP gateway release qualification
 
-Текущий tool schema: `2.0.0`. Gateway обязан рекламировать ровно четыре инструмента: `decompose_requirements`, `research_requirements`, `get_task_status`, `get_task_result`.
+Текущий tool schema: `2.1.0`. Gateway обязан рекламировать ровно пять инструментов: `decompose_requirements`, `research_requirements`, `get_task_status`, `get_task_result`, `get_task_result_content`.
 
 ## Автоматические gates
 
 - protocol/schema conformance официального SDK и strict input/output schemas;
-- one-to-one mapping двух POST и двух GET к ReqAI REST;
+- one-to-one mapping двух POST и трёх GET к ReqAI REST;
 - idempotency, canonical statuses/results и read compatibility исторических mode values;
 - auth/tenant isolation, redaction, Host/body/concurrency/timeout limits;
 - readiness требует capabilities `decomposition` и `requirements-research`;

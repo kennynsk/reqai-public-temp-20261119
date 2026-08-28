@@ -2,15 +2,13 @@ import { withTenantTransaction } from '../db/transaction.js';
 
 export class AttemptRepository {
   constructor(pool, { schema = 'reqai' } = {}) { this.pool = pool; this.schema = `"${schema}"`; }
-  async start({ id, tenantId, jobId, stepId, attempt, requestedModel, actualModel, executionSite }) {
+  async start({ id, tenantId, jobId, stepId, attempt, requestedModel, actualModel, executionId = id, executionSite }) {
     return withTenantTransaction(this.pool, tenantId, async (client) => {
       const result = await client.query(
-      `INSERT INTO ${this.schema}.job_attempts(id,job_id,step_id,tenant_id,attempt,requested_model,actual_model,status,execution_site)
-       VALUES($1,$2,$3,$4,$5,$6,$7,'RUNNING',$8)
-       ON CONFLICT(job_id,step_id,actual_model,attempt) DO UPDATE SET
-         status='RUNNING', reason_code=NULL, completed_at=NULL, execution_site=EXCLUDED.execution_site
-       RETURNING id`,
-      [id, jobId, stepId, tenantId, attempt, requestedModel, actualModel, executionSite],
+      `INSERT INTO ${this.schema}.job_attempts(id,job_id,step_id,tenant_id,execution_id,attempt,requested_model,actual_model,status,execution_site)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,'RUNNING',$9)
+       RETURNING id, execution_id`,
+      [id, jobId, stepId, tenantId, executionId, attempt, requestedModel, actualModel, executionSite],
       );
       return result.rows[0] || { id };
     });

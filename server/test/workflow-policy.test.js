@@ -16,9 +16,11 @@ test('complete, partial and failed outcomes require usable units', () => {
 test('workflow bundle contains durable decomposition/research graphs and version marker', async () => {
   const workflowsPath = fileURLToPath(new URL('../src/workflows/index.js', import.meta.url));
   const source = await readFile(workflowsPath, 'utf8');
-  assert.match(source, /nonRetryableErrorTypes: \['ProviderError'/);
+  assert.match(source, /nonRetryableErrorTypes:\s*\[\s*'ProviderError'/);
   assert.match(source, /mode !== 'REQUIREMENTS_INSIGHTS'/);
   assert.match(source, /generateRequirementsInsights/);
+  assert.match(source, /sourceArtifactId: chunk\.artifactId/);
+  assert.match(source, /artifactId: section\.sourceArtifactId/);
   assert.doesNotMatch(source, /PROMPT_TEST|MODEL_COMPARE|AGENT_COMPARE|STANDARD_RESEARCH|AGENT_RESEARCH/);
   const bundle = await bundleWorkflowCode({ workflowsPath });
   assert.match(bundle.code, /decompositionWorkflow/); assert.match(bundle.code, /researchWorkflow/); assert.match(bundle.code, /reqai-workflow-v1/); assert.doesNotMatch(bundle.code, /requirements-synthesis/);

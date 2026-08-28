@@ -57,6 +57,24 @@ test('response size allowlist keeps large artifacts out of MCP payloads', async 
   await assert.rejects(client.getResult('human-token', { jobId: UUID }), (error) => error.code === 'MCP_RESPONSE_TOO_LARGE');
 });
 
+test('result content mapping requests markdown, preserves bearer and returns content metadata', async () => {
+  let captured;
+  const client = createReqAiClient({ config, fetchImpl: async (url, options) => {
+    captured = { url, options };
+    return new Response('# Requirements\n\n- Email notification', { status: 200, headers: { 'content-type': 'text/markdown; charset=utf-8' } });
+  } });
+  const result = await client.getResultContent('secret', { jobId: UUID, format: 'markdown' });
+  assert.equal(captured.url, `https://reqai.internal/api/v1/jobs/${UUID}/result/content?format=markdown`);
+  assert.equal(captured.options.headers.authorization, 'Bearer secret');
+  assert.match(captured.options.headers.accept, /text\/markdown/);
+  assert.deepEqual(result, { jobId: UUID, format: 'markdown', content: '# Requirements\n\n- Email notification', contentType: 'text/markdown; charset=utf-8' });
+});
+
+test('result content respects the MCP payload limit without buffering an oversized stream', async () => {
+  const client = createReqAiClient({ config: { ...config, responseLimitBytes: 32 }, fetchImpl: async () => new Response('x'.repeat(100), { status: 200 }) });
+  await assert.rejects(client.getResultContent('human-token', { jobId: UUID, format: 'raw' }), (error) => error.code === 'MCP_RESPONSE_TOO_LARGE' && error.details.limit === 32);
+});
+
 test('result-not-ready stays canonical and retryable without a gateway wait loop', async () => {
   let calls = 0;
   const client = createReqAiClient({ config, fetchImpl: async () => { calls += 1; return new Response(JSON.stringify({ error: { code: 'RESULT_NOT_READY', message: 'Job result is not available yet', retryable: true, requestId: 'req-ready' } }), { status: 409 }); } });

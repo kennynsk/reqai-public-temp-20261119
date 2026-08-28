@@ -9,6 +9,7 @@ const jobs = await readFile(path.join(directory, '002_jobs.sql'), 'utf8');
 const operations = await readFile(path.join(directory, '003_artifacts_events_operations.sql'), 'utf8');
 const requirementsVersions = await readFile(path.join(directory, '007_requirements_versions.sql'), 'utf8');
 const jobTrace = await readFile(path.join(directory, '008_job_trace.sql'), 'utf8');
+const attemptLineage = await readFile(path.join(directory, '009_attempt_lineage.sql'), 'utf8');
 
 test('job migration defines tenant-aware lifecycle and idempotency constraints', () => {
   for (const table of ['jobs', 'idempotency_keys', 'job_steps', 'job_dependencies', 'job_attempts']) {
@@ -47,4 +48,13 @@ test('job trace migration is append-only, ordered, retained and tenant isolated'
   assert.match(jobTrace, /FORCE ROW LEVEL SECURITY/);
   assert.match(jobTrace, /REVOKE UPDATE, DELETE/);
   assert.doesNotMatch(jobTrace, /task_id/);
+});
+
+test('attempt lineage migration keeps activity executions and repair passes distinct', () => {
+  assert.match(attemptLineage, /ADD COLUMN execution_id uuid/);
+  assert.match(attemptLineage, /DISABLE ROW LEVEL SECURITY/);
+  assert.match(attemptLineage, /SET execution_id = id/);
+  assert.match(attemptLineage, /FORCE ROW LEVEL SECURITY/);
+  assert.match(attemptLineage, /ALTER COLUMN execution_id SET NOT NULL/);
+  assert.match(attemptLineage, /UNIQUE \(job_id, step_id, actual_model, execution_id, attempt\)/);
 });

@@ -67,7 +67,7 @@ export class JobRepository {
           [tenantId, jobId],
         );
       const attempts = await client.query(
-          `SELECT step_id, requested_model, actual_model, attempt, status, reason_code,
+          `SELECT step_id, requested_model, actual_model, execution_id, attempt, status, reason_code,
                   input_tokens, output_tokens, duration_ms
            FROM ${this.schema}.job_attempts WHERE tenant_id = $1 AND job_id = $2 ORDER BY started_at, id`,
           [tenantId, jobId],

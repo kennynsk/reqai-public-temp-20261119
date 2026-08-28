@@ -18,11 +18,19 @@ import { createRequirementsIntegrationService } from '../services/requirements-i
 import { createJobTraceService } from '../services/job-trace-service.js';
 import { createPromptCatalog, defaultPromptBundleRoot } from '../prompts/prompt-catalog.js';
 import { createPromptProfileResolver } from '../prompts/prompt-profile-resolver.js';
+import { createBabokSkillBundleLoader, defaultBabokSkillBundleRoot, qualifyBabokSkillBundle } from '../skills/babok-skill-bundle.js';
 
 export async function startApiRuntime(config, { createAppFn = createApp } = {}) {
   const promptCatalog = config.features?.versionedPrompts === false ? null : createPromptCatalog({ rootDir: defaultPromptBundleRoot(), maxRenderedBytes: config.prompts.maxRenderedBytes });
   const promptProfileResolver = promptCatalog ? createPromptProfileResolver({ catalog: promptCatalog, policy: config.prompts.policy }) : null;
   if (promptCatalog) logEvent('info', 'prompt.catalog.ready', { bundles: promptCatalog.inventory() });
+  const babokSkillProfile = promptCatalog
+    ? qualifyBabokSkillBundle({
+      loader: createBabokSkillBundleLoader({ rootDir: defaultBabokSkillBundleRoot() }),
+      policy: config.skills?.babokRequirements || { active: '1.0.0', released: ['1.0.0'] },
+    })
+    : null;
+  if (babokSkillProfile) logEvent('info', 'babok.skill.ready', babokSkillProfile);
   const databasePool = config.asyncEnabled ? createDatabasePool(config) : null;
   const operationalRepository = databasePool ? new OperationalRepository(databasePool, { schema: config.database.schema, siteId: config.process.siteId }) : null;
   const readiness = createReadinessService({
@@ -43,7 +51,7 @@ export async function startApiRuntime(config, { createAppFn = createApp } = {}) 
     versionRepository: requirementsVersionRepository,
     auditRepository,
   }) : null;
-  const jobService = createJobService({ config, jobRepository, operationalRepository, requirementsVersionService, jobTraceRepository, promptProfileResolver });
+  const jobService = createJobService({ config, jobRepository, operationalRepository, requirementsVersionService, jobTraceRepository, promptProfileResolver, babokSkillProfile });
   const requirementsIntegrationService = databasePool ? createRequirementsIntegrationService({ config, artifactRepository, jobService, requirementsVersionService }) : null;
   const services = {
     jobService,
@@ -58,6 +66,7 @@ export async function startApiRuntime(config, { createAppFn = createApp } = {}) 
     requirementsVersionService,
     jobTraceRepository,
     promptCatalog,
+    babokSkillProfile,
     requirementsIntegrationService,
   };
   const created = createAppFn({ siteId: config.process.siteId, readiness, config, services });

@@ -8,6 +8,7 @@ import { buildDecomposePrompt, buildInsightsPrompt } from '../decomposer-prompts
 import { createPromptCatalog, defaultPromptBundleRoot } from '../src/prompts/prompt-catalog.js';
 import { createPromptProfileResolver } from '../src/prompts/prompt-profile-resolver.js';
 import { getOutputContract, outputContractIds } from '../src/prompts/output-contract-registry.js';
+import { qualifyPromptCatalog } from '../src/prompts/prompt-qualification.js';
 
 const policy = {
   'requirements-decomposition': { active: '1.0.0', released: ['1.0.0'] },
@@ -49,7 +50,57 @@ test('profile policy rejects unreleased versions and contracts are explicit', ()
   const catalog = createPromptCatalog({ rootDir: defaultPromptBundleRoot() });
   const resolver = createPromptProfileResolver({ catalog, policy });
   assert.throws(() => resolver.resolve({ type: 'DECOMPOSITION', mode: 'DECOMPOSITION', requestedVersion: '2.0.0' }), (error) => error.code === 'PROMPT_VERSION_NOT_RELEASED');
-  assert.deepEqual(outputContractIds(), ['decomposition.v1', 'requirements-insights.v1']);
+  assert.deepEqual(outputContractIds(), ['babok-requirements.v1', 'decomposition.v1', 'requirements-insights.v1']);
   assert.deepEqual(getOutputContract('decomposition.v1').parse('{"business":[]}'), { business: [] });
   assert.throws(() => catalog.render({ ...resolver.resolve({ type: 'DECOMPOSITION', mode: 'DECOMPOSITION' }), version: '9.9.9' }, 'decompose', { businessContext: 'x' }), (error) => error.code === 'PROMPT_BUNDLE_UNAVAILABLE');
+});
+
+test('BABOK prompt releases qualify and stay within the rendered artifact budget', () => {
+  const catalog = createPromptCatalog({ rootDir: defaultPromptBundleRoot(), maxRenderedBytes: 2_097_152 });
+  const babokPolicy = {
+    'requirements-decomposition': { active: '2.0.0', released: ['1.0.0', '2.0.0'] },
+    'requirements-insights': { active: '2.0.0', released: ['1.0.0', '2.0.0'] },
+  };
+  const qualified = qualifyPromptCatalog({ catalog, policy: babokPolicy });
+  assert.equal(qualified.filter((item) => item.active).length, 2);
+  assert.equal(qualified.find((item) => item.id === 'requirements-decomposition' && item.version === '2.0.0').outputSchemaVersion, 'babok-requirements.v1');
+  assert.equal(qualified.find((item) => item.id === 'requirements-insights' && item.version === '2.0.0').outputSchemaVersion, 'requirements-insights.v1');
+
+  const resolver = createPromptProfileResolver({ catalog, policy: babokPolicy });
+  const decomposition = resolver.resolve({ type: 'DECOMPOSITION', mode: 'DECOMPOSITION' });
+  const decompositionVariables = {
+    baselineMaterial: 'NOT_PROVIDED',
+    businessContext: 'Сократить срок обработки заявок.',
+    chunkContext: '{"chunkId":"chunk-001","section":"§1"}',
+    materialDescriptors: '{"primary":{"artifactId":"primary-001"}}',
+    referenceMaterials: '[]',
+    sourceMaterial: 'Сократить срок обработки заявок.',
+  };
+  const renderedDecompose = catalog.render(decomposition, 'decompose', decompositionVariables).text;
+  const renderedConsolidate = catalog.render(decomposition, 'consolidate', {
+    baselineMaterial: 'NOT_PROVIDED',
+    businessContext: decompositionVariables.businessContext,
+    consolidationContext: '{"failedChunks":[]}',
+    materialDescriptors: decompositionVariables.materialDescriptors,
+    referenceMaterials: '[]',
+    sectionArtifacts: '[{"artifactId":"section-001"}]',
+  }).text;
+  const insights = resolver.resolve({ type: 'RESEARCH', mode: 'REQUIREMENTS_INSIGHTS' });
+  const renderedInsights = catalog.render(insights, 'insights', {
+    babokIdentifierSet: '["BR-001","FR-001"]',
+    businessContext: decompositionVariables.businessContext,
+    requirementsSection: '{"schemaVersion":"babok-requirements.v1","groups":{"BR":[],"SR":[],"FR":[]}}',
+  }).text;
+  for (const rendered of [renderedDecompose, renderedConsolidate, renderedInsights]) {
+    assert.ok(Buffer.byteLength(rendered, 'utf8') < 2_097_152);
+  }
+  const largeSource = 'Большой входной материал. '.repeat(18_000);
+  const largeRendered = catalog.render(decomposition, 'decompose', { ...decompositionVariables, sourceMaterial: largeSource }).text;
+  assert.ok(Buffer.byteLength(largeRendered, 'utf8') < 2_097_152);
+  assert.throws(
+    () => catalog.render(decomposition, 'decompose', { ...decompositionVariables, sourceMaterial: 'x'.repeat(2_100_000) }),
+    (error) => error.type === 'PROMPT_RENDER_TOO_LARGE',
+  );
+  assert.match(renderedDecompose, /babok-requirements\.v1/);
+  assert.match(renderedInsights, /targetType/);
 });

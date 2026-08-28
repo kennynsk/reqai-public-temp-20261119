@@ -49,7 +49,7 @@ function compose(snapshot) {
     id: `attempt:${row.id}`, source: 'MODEL_ATTEMPT', category: row.status === 'FAILED' ? 'ERROR' : 'MODEL', name: `LLM: ${row.actual_model}`,
     status: row.status === 'SUCCEEDED' ? 'COMPLETED' : row.status, stepId: row.step_id, startedAt: iso(row.started_at), completedAt: iso(row.completed_at),
     durationMs: duration(row.started_at, row.completed_at, row.duration_ms),
-    metadata: redactSensitive({ requestedModel: row.requested_model, actualModel: row.actual_model, attempt: row.attempt, reasonCode: row.reason_code, providerRequestId: row.provider_request_id, executionSite: row.execution_site, tokenUsage: row.input_tokens == null && row.output_tokens == null ? null : { input: Number(row.input_tokens || 0), output: Number(row.output_tokens || 0) } }),
+    metadata: redactSensitive({ requestedModel: row.requested_model, actualModel: row.actual_model, executionId: row.execution_id, attempt: row.attempt, reasonCode: row.reason_code, providerRequestId: row.provider_request_id, executionSite: row.execution_site, tokenUsage: row.input_tokens == null && row.output_tokens == null ? null : { input: Number(row.input_tokens || 0), output: Number(row.output_tokens || 0) } }),
     detail: { state: 'NOT_RECORDED', kind: null, visibility: 'METADATA' }, inputArtifactId: null, outputArtifactId: null,
   }));
   const events = snapshot.events.map((row) => ({
@@ -85,7 +85,7 @@ export function createJobTraceService({ config, jobTraceRepository, artifactRepo
       const job = snapshot.job;
       await auditRepository?.record({ tenantId: auth.tenantId, actorId: auth.userId, actorRoles: auth.roles, action: 'job.trace.view', targetType: 'job', targetId: jobId, requestId, sourceSite: config.process.siteId, metadata: { cursor: index, limit: parsedLimit } });
       return {
-        jobId, type: job.type, mode: job.configuration_snapshot?.featureMode || null, status: job.status, outcome: job.outcome || null,
+        jobId, type: job.type, mode: job.configuration_snapshot?.featureMode || null, status: job.status, outcome: job.outcome || null, reasonCode: job.reason_code || null,
         currentStep: job.current_step || null, createdAt: iso(job.created_at), startedAt: iso(job.started_at), completedAt: iso(job.completed_at),
         durationMs: duration(job.started_at || job.created_at, job.completed_at), skillUsage: 'NOT_APPLICABLE',
         timeline, nextCursor: index + parsedLimit < all.length ? Buffer.from(JSON.stringify({ index: index + parsedLimit })).toString('base64url') : null,

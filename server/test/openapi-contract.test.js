@@ -74,5 +74,7 @@ test('domain contracts expose product options and strict mutually exclusive inpu
   assert.equal(spec.components.schemas.Job.properties.mode.type.includes('string'), true);
   assert.equal(spec.components.schemas.RequirementsResearchRequest.additionalProperties, false);
   assert.ok(spec.components.schemas.JobOptions.properties.promptVersion);
+  assert.deepEqual(spec.components.schemas.ReasoningLevel.enum, ['disabled', 'low', 'high', 'max']);
+  assert.equal(spec.components.schemas.JobOptions.properties.reasoning.$ref, '#/components/schemas/ReasoningLevel');
   for (const field of ['statusUrl', 'eventsUrl', 'resultUrl', 'cancelUrl']) assert.ok(spec.components.schemas.JobAccepted.properties[field]);
 });

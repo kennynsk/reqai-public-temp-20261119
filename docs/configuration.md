@@ -110,12 +110,15 @@ The first async implementation uses one ZAI provider. `ZAI_API_KEY` is a secret;
 |---|---:|---|---|
 | `LLM_PROVIDER_MODE` | `zai` | `zai`, `gigachat`; `mock` only for local tests | ConfigMap |
 | `ZAI_BASE_URL` | `https://api.z.ai/api/coding/paas/v4` | HTTPS URL | ConfigMap |
-| `ZAI_MODELS` | `glm-5.3,glm-5-turbo,glm-4.7,glm-4.7-flash` | comma-separated distinct provider model identifiers | ConfigMap |
+| `ZAI_MODELS` | `glm-5.3-flash,glm-5.3,glm-5.2,glm-5-turbo,glm-4.7,glm-4.7-flash` | comma-separated distinct provider model identifiers | ConfigMap |
 | `ZAI_API_KEY` | none | required for workflow workers in ZAI mode | Secret |
 | `LLM_MODEL_PRIORITY` | first 3 entries of `ZAI_MODELS` | optional comma-separated 1–3 models contained in `ZAI_MODELS` | ConfigMap |
 | `LLM_MAX_MODELS_PER_STEP` | `3` | 1–3 | ConfigMap |
 | `LLM_MAX_ATTEMPTS_PER_MODEL` | `2` | 1–2 | ConfigMap |
 | `LLM_REQUEST_TIMEOUT_MS` | `600000` | 1,000–1,800,000 | ConfigMap |
+| `LLM_MODEL_OUTPUT_TOKENS_JSON` | `32000` for each configured model | JSON object with a positive output-token budget per model; used by research and non-decomposition calls | ConfigMap |
+| `LLM_DECOMPOSITION_THINKING` | `disabled` | `enabled` or `disabled`; fallback ZAI thinking mode when a job does not provide a reasoning level | ConfigMap |
+| `LLM_DECOMPOSITION_OUTPUT_TOKENS_JSON` | `16000` for each configured model | JSON object with a positive output-token budget per model for new decomposition jobs | ConfigMap |
 | `LLM_RETRY_INITIAL_DELAY_MS` | `2000` | 100–60,000 | ConfigMap |
 | `LLM_RETRY_MAX_DELAY_MS` | `30000` | ≥ initial and ≤600,000 | ConfigMap |
 | `LLM_RETRY_JITTER_PERCENT` | `20` | 0–100 | ConfigMap |
@@ -125,7 +128,22 @@ The first async implementation uses one ZAI provider. `ZAI_API_KEY` is a secret;
 | `LLM_CIRCUIT_OPEN_MS` | `120000` | 1,000–3,600,000 | ConfigMap |
 | `LLM_CIRCUIT_HALF_OPEN_MAX_REQUESTS` | `1` | 1–100 | ConfigMap |
 
+The UI and API expose `options.reasoning` / `reasoning` with `disabled`, `low`,
+`high` and `max`; the default is `disabled`, and the selected value is snapshotted
+with the job and reused for research, retries and contract-repair calls. Z.AI's
+GLM-5.3 family does not support disabling thinking, so `disabled` is translated to
+`thinking.type=enabled` plus `reasoning_effort=low` for `glm-5.3` and
+`glm-5.3-flash`. Other models receive the requested thinking mode directly.
+
 Retryable classes are timeout, network, HTTP `429` and `5xx`. HTTP `400`, `401`, `403`, content-policy and unknown errors are non-retryable; unknown errors are logged at `ERROR` with redaction.
+
+Each accepted job snapshots the effective model output budgets and reasoning
+level. BABOK decomposition defaults to the app-level `disabled` setting and
+16,000 output tokens per provider request; for GLM-5.3 family models this means
+the provider's minimum `low` effort because thinking cannot be disabled. An invalid
+BABOK response gets at most one separately traced repair request before the
+workflow records a contract failure. Research keeps the generic 32,000-token
+budget.
 
 ## SSE and webhook
 
@@ -187,7 +205,7 @@ The API exposes only a privileged, redacted diagnostic view. It reports source, 
 
 `REQUIREMENTS_INTEGRATION_API_ENABLED` controls the additive domain submission routes; disabling it does not disable canonical jobs. `VERSIONED_PROMPTS_ENABLED` controls prompt-profile resolution for newly accepted production jobs and should remain enabled after worker qualification.
 
-The two workflow families have independent active/released settings: `PROMPT_DECOMPOSITION_ACTIVE_VERSION`, `PROMPT_DECOMPOSITION_RELEASED_VERSIONS`, `PROMPT_REQUIREMENTS_INSIGHTS_ACTIVE_VERSION`, and `PROMPT_REQUIREMENTS_INSIGHTS_RELEASED_VERSIONS`. Released values are comma-separated immutable semantic versions (at most ten); active must be included in its released set. Run `npm --workspace server run prompts:qualify` against every API/worker image before activation. See [prompt bundle release and rollback](prompt-bundles.md).
+The two workflow families have independent active/released settings: `PROMPT_DECOMPOSITION_ACTIVE_VERSION`, `PROMPT_DECOMPOSITION_RELEASED_VERSIONS`, `PROMPT_REQUIREMENTS_INSIGHTS_ACTIVE_VERSION`, and `PROMPT_REQUIREMENTS_INSIGHTS_RELEASED_VERSIONS`. The BABOK application adapter has the corresponding `SKILL_BABOK_REQUIREMENTS_ACTIVE_VERSION` and `SKILL_BABOK_REQUIREMENTS_RELEASED_VERSIONS` settings. Released values are comma-separated immutable semantic versions (at most ten); active must be included in its released set. Run `npm --workspace server run prompts:qualify` against every API/worker image before activation. See [prompt bundle release and rollback](prompt-bundles.md).
 
 ## Requirements MCP gateway
 
@@ -204,7 +222,7 @@ MCP uses a separate runtime and does not read backend prompt/provider/database s
 | `MCP_ALLOWED_HOSTS` | localhost only | comma-separated; required in enabled production | ConfigMap |
 | `MCP_BACKEND_API_URL` | `http://127.0.0.1:5178` | fixed absolute HTTP(S) URL without credentials/query/fragment | ConfigMap |
 | `MCP_IAM_AUDIENCE_MODE` | `forward-same-audience` | only supported first-release policy | ConfigMap |
-| `MCP_TOOL_SCHEMA_VERSION` | `2.0.0` | published schema version | ConfigMap |
+| `MCP_TOOL_SCHEMA_VERSION` | `2.1.0` | published schema version | ConfigMap |
 | `MCP_BUILD_VERSION` | `1.0.0` | immutable image/build identifier | ConfigMap |
 | `MCP_BACKEND_TIMEOUT_MS` | `10000` | 100–120,000 | ConfigMap |
 | `MCP_AUTH_TIMEOUT_MS` | `5000` | 100–30,000 | ConfigMap |

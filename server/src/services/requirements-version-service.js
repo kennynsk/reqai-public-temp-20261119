@@ -1,4 +1,5 @@
 import { ApiError } from '../errors/api-error.js';
+import { babokIdentifierSet, validateBabokRegistry } from './babok-requirements-contract.js';
 
 const PRIVILEGED = new Set(['tenant-admin', 'operator', 'auditor', 'system-admin']);
 const REQUIREMENT_GROUPS = ['business', 'functional', 'nonfunctional'];
@@ -34,10 +35,35 @@ function normalizeRequirements(value) {
   }));
 }
 
+function legacyProjection(registry) {
+  return {
+    business: registry.groups.BR.map((item) => ({ id: item.id, text: item.text, fromResearch: false })),
+    functional: registry.groups.FR.map((item) => ({ id: item.id, text: item.text, fromResearch: false })),
+    nonfunctional: registry.groups.NFR.map((item) => ({ id: item.id, text: item.text, fromResearch: false })),
+  };
+}
+
+function normalizeRegistry(value) {
+  try {
+    return validateBabokRegistry(value);
+  } catch (error) {
+    throw new ApiError({ status: 400, code: 'INVALID_BABOK_REGISTRY', message: error.message, details: error.details });
+  }
+}
+
+function normalizeEditedRecordIds(value) {
+  if (value == null) return [];
+  if (!Array.isArray(value) || value.length > 200 || value.some((id) => typeof id !== 'string' || !id.trim() || id.length > 100)) {
+    throw new ApiError({ status: 400, code: 'VALIDATION_ERROR', message: 'editedRecordIds must be an array of at most 200 identifiers' });
+  }
+  return [...new Set(value.map((id) => id.trim()))];
+}
+
 function parseVersionContent(text) {
   try {
     const value = JSON.parse(text);
-    if (value?.kind !== 'REQUIREMENTS_VERSION' || !value.requirements) throw new Error('invalid');
+    if (value?.kind !== 'REQUIREMENTS_VERSION' || (!value.requirements && !value.registry)) throw new Error('invalid');
+    if (value.registry?.schemaVersion === 'babok-requirements.v1') validateBabokRegistry(value.registry);
     return value;
   } catch {
     throw new ApiError({ status: 409, code: 'INVALID_REQUIREMENTS_VERSION', message: 'Artifact is not a requirements version' });
@@ -78,10 +104,18 @@ export function createRequirementsVersionService({ config, jobRepository, artifa
         }
       }
 
-      const requirements = normalizeRequirements(body.requirements);
+      const registry = body.registry || body.babokRegistry ? normalizeRegistry(body.registry || body.babokRegistry) : null;
+      const requirements = registry ? legacyProjection(registry) : normalizeRequirements(body.requirements);
       const now = clock();
+      const decisions = body.decisions && typeof body.decisions === 'object' && !Array.isArray(body.decisions) ? body.decisions : {};
+      const manualDecisionMetadata = {
+        actorUserId: auth.userId,
+        recordedAt: now.toISOString(),
+        decisionKeys: Object.keys(decisions).sort(),
+        editedRecordIds: normalizeEditedRecordIds(body.editedRecordIds),
+      };
       const envelope = {
-        schemaVersion: 1,
+        schemaVersion: registry ? 2 : 1,
         kind: 'REQUIREMENTS_VERSION',
         sourceJobId: sourceJob.id,
         sourceJobType: sourceJob.type,
@@ -89,7 +123,30 @@ export function createRequirementsVersionService({ config, jobRepository, artifa
         baseVersionId: base?.row.id || null,
         researchJobId: sourceJob.type === 'RESEARCH' ? sourceJob.id : null,
         requirements,
-        decisions: body.decisions && typeof body.decisions === 'object' && !Array.isArray(body.decisions) ? body.decisions : {},
+        ...(registry ? {
+          contentSchemaVersion: registry.schemaVersion,
+          registry,
+          analysisContext: {
+            summary: registry.summary,
+            context: registry.context,
+            analysis: registry.analysis,
+            scope: registry.scope,
+          },
+          materialLineage: {
+            sourceJobMaterials: sourceJob.configuration_snapshot?.materials || null,
+            resultMaterials: registry.materials,
+            primaryArtifactId: sourceJob.input_artifact_id,
+          },
+          promptProfile: sourceJob.configuration_snapshot?.promptProfile || null,
+          babokSkillProfile: sourceJob.configuration_snapshot?.babokSkillProfile || null,
+        } : {}),
+        decisions,
+        revision: {
+          kind: 'MANUAL_REVIEW',
+          baseVersionId: base?.row.id || null,
+          sourceJobId: sourceJob.id,
+          manualDecisionMetadata,
+        },
         createdAt: now.toISOString(),
       };
       const artifact = await artifactRepository.createText({
@@ -120,13 +177,13 @@ export function createRequirementsVersionService({ config, jobRepository, artifa
           },
         },
       });
-      await auditRepository?.record({ tenantId: auth.tenantId, actorId: auth.userId, actorRoles: auth.roles, action: 'requirements.version.create', targetType: 'requirements-version', targetId: row.id, requestId, sourceSite: config.process.siteId, metadata: { sourceJobId: sourceJob.id, baseVersionId: row.base_version_id } });
-      return { versionId: row.id, sourceJobId: row.source_job_id, baseVersionId: row.base_version_id, researchJobId: row.research_job_id, requirements, decisions: envelope.decisions, createdAt: new Date(row.created_at).toISOString() };
+      await auditRepository?.record({ tenantId: auth.tenantId, actorId: auth.userId, actorRoles: auth.roles, action: 'requirements.version.create', targetType: 'requirements-version', targetId: row.id, requestId, sourceSite: config.process.siteId, metadata: { sourceJobId: sourceJob.id, baseVersionId: row.base_version_id, manualDecisionMetadata } });
+      return { versionId: row.id, sourceJobId: row.source_job_id, baseVersionId: row.base_version_id, researchJobId: row.research_job_id, requirements, ...(registry ? { registry, analysisContext: envelope.analysisContext, materialLineage: envelope.materialLineage, contentSchemaVersion: envelope.contentSchemaVersion } : {}), decisions: envelope.decisions, revision: envelope.revision, createdAt: new Date(row.created_at).toISOString() };
     },
 
     async get({ auth, versionId }) {
       const value = await visibleVersion(auth, versionId);
-      return { versionId: value.row.id, sourceJobId: value.row.source_job_id, baseVersionId: value.row.base_version_id, researchJobId: value.row.research_job_id, requirements: value.content.requirements, decisions: value.content.decisions || {}, createdAt: new Date(value.row.created_at).toISOString() };
+      return { versionId: value.row.id, sourceJobId: value.row.source_job_id, baseVersionId: value.row.base_version_id, researchJobId: value.row.research_job_id, requirements: value.content.requirements, ...(value.content.registry ? { registry: value.content.registry, analysisContext: value.content.analysisContext || null, materialLineage: value.content.materialLineage || null, contentSchemaVersion: value.content.contentSchemaVersion || value.content.registry.schemaVersion } : {}), decisions: value.content.decisions || {}, revision: value.content.revision || null, createdAt: new Date(value.row.created_at).toISOString() };
     },
 
     async list({ auth, jobId }) {
@@ -134,7 +191,7 @@ export function createRequirementsVersionService({ config, jobRepository, artifa
       const rows = await versionRepository.listVisibleByJob({ tenantId: auth.tenantId, ownerUserId: ownerScope(auth), jobId });
       const items = await Promise.all(rows.map(async (row) => {
         const content = parseVersionContent(await artifactRepository.readText({ tenantId: auth.tenantId, artifactId: row.id }));
-        return { versionId: row.id, sourceJobId: row.source_job_id, baseVersionId: row.base_version_id, researchJobId: row.research_job_id, requirements: content.requirements, decisions: content.decisions || row.decisions || {}, createdAt: new Date(row.created_at).toISOString() };
+        return { versionId: row.id, sourceJobId: row.source_job_id, baseVersionId: row.base_version_id, researchJobId: row.research_job_id, requirements: content.requirements, ...(content.registry ? { registry: content.registry, analysisContext: content.analysisContext || null, materialLineage: content.materialLineage || null, contentSchemaVersion: content.contentSchemaVersion || content.registry.schemaVersion } : {}), decisions: content.decisions || row.decisions || {}, revision: content.revision || null, createdAt: new Date(row.created_at).toISOString() };
       }));
       return { items };
     },
@@ -160,7 +217,13 @@ export function createRequirementsVersionService({ config, jobRepository, artifa
       if (parent.type !== 'DECOMPOSITION' || parent.status !== 'SUCCEEDED') {
         throw new ApiError({ status: 409, code: 'INVALID_RESEARCH_PARENT', message: 'Requirements research requires a completed decomposition parent' });
       }
-      return Object.freeze({ versionId: version.row.id, inputArtifactId: version.row.id, parentJobId: parent.id, inputSha256: version.metadata.sha256 });
+      return Object.freeze({
+        versionId: version.row.id,
+        inputArtifactId: version.row.id,
+        parentJobId: parent.id,
+        inputSha256: version.metadata.sha256,
+        ...(version.content.registry ? { babokIdentifierSet: babokIdentifierSet(version.content.registry) } : {}),
+      });
     },
   };
 }

@@ -12,7 +12,20 @@ const activityOptions = {
     maximumInterval: '1 minute',
     // ModelExecutor already owns bounded retry/fallback. Re-running the whole
     // activity would bypass that budget and can duplicate paid provider calls.
-    nonRetryableErrorTypes: ['ProviderError', 'NON_RETRYABLE_PROVIDER_ERROR', 'JOB_DEADLINE_EXPIRED'],
+    nonRetryableErrorTypes: [
+      'ProviderError',
+      'NON_RETRYABLE_PROVIDER_ERROR',
+      'JOB_DEADLINE_EXPIRED',
+      'OUTPUT_CONTRACT_VIOLATION',
+      'BABOK_OUTPUT_INVALID',
+      'INVALID_DECOMPOSITION_RESULT',
+      'UNSUPPORTED_DECOMPOSITION_RESULT',
+      'INVALID_REQUIREMENTS_INSIGHTS',
+      'NO_USABLE_OUTPUT',
+      'PROMPT_BUNDLE_UNAVAILABLE',
+      'PROMPT_INTEGRITY_ERROR',
+      'PROMPT_RENDER_TOO_LARGE',
+    ],
   },
 };
 const activities = proxyActivities(activityOptions);
@@ -29,7 +42,10 @@ async function bounded(items, concurrency, fn) {
 
 async function recoverable(items, concurrency, fn, identity) {
   return bounded(items, concurrency, async (item) => {
-    try { return await fn(item); } catch (error) { return { success: false, ...identity(item), reasonCode: error?.type || error?.name || 'ACTIVITY_FAILED' }; }
+    try { return await fn(item); } catch (error) {
+      const cause = error?.cause;
+      return { success: false, ...identity(item), reasonCode: cause?.reasonCode || cause?.type || error?.reasonCode || error?.type || error?.name || 'ACTIVITY_FAILED' };
+    }
   });
 }
 
@@ -45,7 +61,8 @@ async function cancellationBoundary(input, run) {
       await CancellationScope.nonCancellable(() => activities.finalizeCancelled({ ...input, reasonCode: 'CANCELLED_BY_REQUEST' }));
       return { status: 'CANCELLED' };
     }
-    await CancellationScope.nonCancellable(() => activities.finalizeFailed({ ...input, reasonCode: error?.type || error?.name || 'WORKFLOW_FAILED' }));
+    const cause = error?.cause;
+    await CancellationScope.nonCancellable(() => activities.finalizeFailed({ ...input, reasonCode: cause?.reasonCode || cause?.type || error?.reasonCode || error?.type || error?.name || 'WORKFLOW_FAILED' }));
     throw error;
   }
 }
@@ -58,9 +75,9 @@ export async function decompositionWorkflow(input) {
     const sections = await recoverable(plan.chunks, input.configurationSnapshot.chunkConcurrency || 3, async (chunk) => {
       assertDeadline(input);
       return activities.decomposeChunk({ ...input, chunk });
-    }, (chunk) => ({ chunkId: chunk.chunkId }));
+    }, (chunk) => ({ chunkId: chunk.chunkId, sourceArtifactId: chunk.artifactId }));
     const successful = sections.filter((section) => section.success && section.artifactId);
-    const failedChunks = sections.filter((section) => !section.success).map((section) => section.chunkId);
+    const failedChunks = sections.filter((section) => !section.success).map((section) => ({ chunkId: section.chunkId, artifactId: section.sourceArtifactId }));
     if (!successful.length) {
       return activities.finalizeSucceeded({ ...input, resultArtifactId: null, successfulUnits: 0, failedUnits: sections.length });
     }

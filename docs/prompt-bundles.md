@@ -9,6 +9,13 @@ Production-инструкции находятся в `server/prompt-bundles/<bu
 
 Активные и retained releases задаются через `PROMPT_DECOMPOSITION_ACTIVE_VERSION` / `PROMPT_DECOMPOSITION_RELEASED_VERSIONS` и `PROMPT_REQUIREMENTS_INSIGHTS_ACTIVE_VERSION` / `PROMPT_REQUIREMENTS_INSIGHTS_RELEASED_VERSIONS`. Active version должна входить в released allowlist; `promptVersion` может выбрать только разрешённый релиз.
 
+BABOK application adapter поставляется отдельным immutable skill bundle в
+`server/skill-bundles/babok-requirements-v3/<version>/`. Его release policy
+задают `SKILL_BABOK_REQUIREMENTS_ACTIVE_VERSION` и
+`SKILL_BABOK_REQUIREMENTS_RELEASED_VERSIONS`; manifest должен выпускать
+`babok-requirements.v1`. Worker не читает внешнюю CLI-директорию
+`/Users/am/MyAI/treb/babok-requirements-v3-z` во время выполнения.
+
 ## Release procedure
 
 1. Создать новый semantic-version directory, не изменяя опубликованный.
@@ -17,4 +24,42 @@ Production-инструкции находятся в `server/prompt-bundles/<bu
 4. Сначала развернуть квалифицированные workers, затем API.
 5. Добавить версию в released allowlist и только после canary сделать её active.
 
-Rollback меняет active version только для новых jobs. Уже принятые jobs используют `promptProfile` из `configuration_snapshot`. Удалять retained release можно лишь после окончания job/retry/retention window.
+## BABOK 2.0.0 canary
+
+В репозитории установлены `requirements-decomposition@2.0.0` и
+`requirements-insights@2.0.0`. Для текущего single-user режима они уже являются
+default active profile. В многопользовательской среде ту же конфигурацию можно
+включать постепенно как canary:
+
+```dotenv
+SKILL_BABOK_REQUIREMENTS_ACTIVE_VERSION=1.0.0
+SKILL_BABOK_REQUIREMENTS_RELEASED_VERSIONS=1.0.0
+PROMPT_DECOMPOSITION_ACTIVE_VERSION=2.0.0
+PROMPT_DECOMPOSITION_RELEASED_VERSIONS=1.0.0,2.0.0
+PROMPT_REQUIREMENTS_INSIGHTS_ACTIVE_VERSION=2.0.0
+PROMPT_REQUIREMENTS_INSIGHTS_RELEASED_VERSIONS=1.0.0,2.0.0
+```
+
+Проверяйте именно тот API/worker image, который будет развернут, и сохраняйте
+вывод qualification вместе с manifest hashes:
+
+```bash
+PROMPT_DECOMPOSITION_ACTIVE_VERSION=2.0.0 \
+PROMPT_DECOMPOSITION_RELEASED_VERSIONS=1.0.0,2.0.0 \
+PROMPT_REQUIREMENTS_INSIGHTS_ACTIVE_VERSION=2.0.0 \
+PROMPT_REQUIREMENTS_INSIGHTS_RELEASED_VERSIONS=1.0.0,2.0.0 \
+npm --workspace server run prompts:qualify
+```
+
+Canary gate дополнительно фиксирует provider input/output tokens, latency
+activities, размер result artifacts, долю invalid outputs, GAP и partial jobs
+на малом, multi-chunk и большом материале. Лимит rendered prompt продолжает
+контролироваться `PROMPT_MAX_RENDERED_BYTES`; qualification должна включать
+большой artifact ниже лимита и fail-closed проверку выше лимита.
+
+Rollback меняет active prompt version обратно на `1.0.0` только для новых
+jobs. BABOK reader, skill bundle и renderer остаются установленными, поэтому
+уже принятые BABOK jobs продолжают выполняться и отображаться. Уже принятые
+jobs используют `promptProfile`, материалы и `babokSkillProfile` из
+`configuration_snapshot`. Удалять legacy release или skill bundle можно лишь
+после окончания job/retry/retention window.

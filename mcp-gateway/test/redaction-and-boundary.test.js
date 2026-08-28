@@ -34,7 +34,7 @@ test('deployment is independent, restricted and disabled by default', () => {
   assert.match(manifest, /secretKeyRef: \{ name: reqai-mcp-readiness/);
   assert.match(manifest, /readOnlyRootFilesystem: true/);
   assert.match(compose, /profiles: \["mcp"\]/);
-  assert.match(compose, /MCP_TOOL_SCHEMA_VERSION: 2\.0\.0/);
+  assert.match(compose, /MCP_TOOL_SCHEMA_VERSION: 2\.1\.0/);
 });
 
 test('operations documentation records client, IAM, polling, large artifacts and rollback', () => {

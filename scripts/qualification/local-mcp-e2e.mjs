@@ -6,7 +6,7 @@ import { collectRequirements, json, readResult, summarizeJob, verifyModel, waitF
 
 const baseUrl = process.env.REQAI_BASE_URL || 'http://localhost:5178';
 const mcpUrl = process.env.REQAI_MCP_URL || 'http://localhost:5180/mcp';
-const model = process.env.REQAI_E2E_MODEL || 'glm-5.3';
+const model = process.env.REQAI_E2E_MODEL || 'glm-5.3-flash';
 const token = process.env.REQAI_MCP_TOKEN || 'local-e2e-token';
 const businessContext = process.env.REQAI_E2E_TASK || `
 Разработать внутренний сервис согласования командировок. Сотрудник создаёт заявку с целью,

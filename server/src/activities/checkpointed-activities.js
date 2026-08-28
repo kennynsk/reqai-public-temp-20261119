@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-import { heartbeat } from '@temporalio/activity';
+import { ApplicationFailure, heartbeat } from '@temporalio/activity';
 
 import { evaluateOutcome } from '../domain/outcome.js';
 import { logEvent } from '../middleware/safe-logging.js';
@@ -14,6 +14,37 @@ const USER_PROGRESS = Object.freeze({
   'merge-decomposition': { start: [90, 'assembly', 'Собираем требования по категориям'], complete: [95, 'persistence', 'Сохраняем результат декомпозиции'] },
   'requirements-insights': { start: [20, 'model', 'AI анализирует требования и формирует рекомендации'], complete: [90, 'assembly', 'Собираем карточки рекомендаций'] },
 });
+
+const NON_RETRYABLE_FAILURE_TYPES = new Set([
+  'OUTPUT_CONTRACT_VIOLATION',
+  'BABOK_OUTPUT_INVALID',
+  'INVALID_DECOMPOSITION_RESULT',
+  'UNSUPPORTED_DECOMPOSITION_RESULT',
+  'INVALID_REQUIREMENTS_INSIGHTS',
+  'NO_USABLE_OUTPUT',
+  'PROMPT_BUNDLE_UNAVAILABLE',
+  'PROMPT_INTEGRITY_ERROR',
+  'PROMPT_RENDER_TOO_LARGE',
+]);
+
+export function failureReason(error) {
+  return error?.reasonCode || error?.type || error?.code || error?.name || 'ACTIVITY_FAILED';
+}
+
+function safeFailureDetails(error) {
+  const details = error?.details;
+  if (!details || typeof details !== 'object' || Array.isArray(details)) return null;
+  const path = typeof details.path === 'string' ? details.path.slice(0, 256) : null;
+  const reason = typeof details.reason === 'string' ? details.reason.slice(0, 512) : null;
+  return path || reason ? { ...(path ? { path } : {}), ...(reason ? { reason } : {}) } : null;
+}
+
+export function toNonRetryableActivityFailure(error) {
+  if (error?.nonRetryable === true) return error;
+  const reasonCode = failureReason(error);
+  if (!NON_RETRYABLE_FAILURE_TYPES.has(reasonCode)) return error;
+  return ApplicationFailure.nonRetryable(error?.message || reasonCode, reasonCode, safeFailureDetails(error));
+}
 
 export function createCheckpointedActivities({ jobRepository, jobTraceRepository, diagnosticCapture, handlers, siteId, heartbeatFn = heartbeat }) {
   const trace = (input, entry) => jobTraceRepository?.append({ tenantId: input.tenantId, jobId: input.jobId, ...entry }).catch((error) => {
@@ -47,9 +78,12 @@ export function createCheckpointedActivities({ jobRepository, jobTraceRepository
       await diagnosticCapture?.capture({ tenantId: input.tenantId, ownerUserId: input.ownerUserId, jobId: input.jobId, stepId, category: 'PERSISTENCE', name: `${name} output captured`, kind: 'INTERMEDIATE', content: result });
       return result;
     } catch (error) {
-      await jobRepository.saveCheckpoint({ tenantId: input.tenantId, jobId: input.jobId, stepId, stepType: name, inputHash, status: 'FAILED', summary: { reasonCode: error?.reasonCode || error?.type || error?.name || 'ACTIVITY_FAILED' } });
-      await trace(input, { category: 'ERROR', name, status: 'FAILED', stepId, completedAt: new Date(), metadata: { reasonCode: error?.reasonCode || error?.type || error?.name || 'ACTIVITY_FAILED' } });
-      throw error;
+      const reasonCode = failureReason(error);
+      const details = safeFailureDetails(error);
+      await jobRepository.saveCheckpoint({ tenantId: input.tenantId, jobId: input.jobId, stepId, stepType: name, inputHash, status: 'FAILED', summary: { reasonCode, ...(details ? { details } : {}) } });
+      await trace(input, { category: 'ERROR', name, status: 'FAILED', stepId, completedAt: new Date(), metadata: { reasonCode, ...(details ? { details } : {}) } });
+      await diagnosticCapture?.capture({ tenantId: input.tenantId, ownerUserId: input.ownerUserId, jobId: input.jobId, stepId, category: 'ERROR', name: `${name} error detail captured`, kind: 'ERROR_STACK', visibility: 'SYSTEM_ADMIN', content: { errorType: error?.name || 'Error', reasonCode, ...(details ? { details } : {}), stack: error?.stack } });
+      throw toNonRetryableActivityFailure(error);
     } finally {
       clearInterval(heartbeatTimer);
     }

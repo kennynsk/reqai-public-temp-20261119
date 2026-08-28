@@ -62,9 +62,9 @@ function csv(env, name, fallback = []) {
   return raw.split(',').map((item) => item.trim()).filter(Boolean);
 }
 
-function promptRelease(env, prefix) {
-  const active = optionalString(env, `${prefix}_ACTIVE_VERSION`, '1.0.0');
-  const released = csv(env, `${prefix}_RELEASED_VERSIONS`, ['1.0.0']);
+function promptRelease(env, prefix, defaultActive = '1.0.0', defaultReleased = ['1.0.0']) {
+  const active = optionalString(env, `${prefix}_ACTIVE_VERSION`, defaultActive);
+  const released = csv(env, `${prefix}_RELEASED_VERSIONS`, defaultReleased);
   if (!/^[1-9]\d*\.\d+\.\d+$/.test(active) || released.some((version) => !/^[1-9]\d*\.\d+\.\d+$/.test(version))) {
     throw new Error(`${prefix} versions must use semantic versioning`);
   }
@@ -140,7 +140,7 @@ export function loadConfig(env = process.env, { loadFiles = env === process.env 
   const providerMode = choice(env, 'LLM_PROVIDER_MODE', 'zai', ['zai', 'gigachat', 'mock']);
   const defaultProviderModels = providerMode === 'gigachat'
     ? ['GC-Max', 'GC-M', 'GC-Lite']
-    : ['glm-5.3', 'glm-5-turbo', 'glm-4.7', 'glm-4.7-flash'];
+    : ['glm-5.3-flash', 'glm-5.3', 'glm-5.2', 'glm-5-turbo', 'glm-4.7', 'glm-4.7-flash'];
   const availableModels = providerMode === 'gigachat'
     ? csv(env, 'LLM_MODEL_PRIORITY', defaultProviderModels)
     : csv(env, 'ZAI_MODELS', defaultProviderModels);
@@ -193,9 +193,12 @@ export function loadConfig(env = process.env, { loadFiles = env === process.env 
     prompts: {
       maxRenderedBytes: integer(env, 'PROMPT_MAX_RENDERED_BYTES', 2_097_152, { min: 1024, max: 10_485_760 }),
       policy: {
-        'requirements-decomposition': promptRelease(env, 'PROMPT_DECOMPOSITION'),
-        'requirements-insights': promptRelease(env, 'PROMPT_REQUIREMENTS_INSIGHTS'),
+        'requirements-decomposition': promptRelease(env, 'PROMPT_DECOMPOSITION', '2.0.0', ['1.0.0', '2.0.0']),
+        'requirements-insights': promptRelease(env, 'PROMPT_REQUIREMENTS_INSIGHTS', '2.0.0', ['1.0.0', '2.0.0']),
       },
+    },
+    skills: {
+      babokRequirements: promptRelease(env, 'SKILL_BABOK_REQUIREMENTS'),
     },
     process: {
       role: choice(env, 'APP_ROLE', 'api', ['api', 'workflow-worker', 'event-worker', 'maintenance-worker']),
@@ -307,7 +310,9 @@ export function loadConfig(env = process.env, { loadFiles = env === process.env 
       rpm: intMap(env, 'LLM_MODEL_RPM_JSON', uniformIntMap(availableModels, 30)),
       tpm: intMap(env, 'LLM_MODEL_TPM_JSON', uniformIntMap(availableModels, 1_000_000)),
       contextTokens: intMap(env, 'LLM_MODEL_CONTEXT_TOKENS_JSON', uniformIntMap(availableModels, 128_000)),
-      outputTokens: intMap(env, 'LLM_MODEL_OUTPUT_TOKENS_JSON', uniformIntMap(availableModels, 8_000)),
+      outputTokens: Object.freeze({ ...uniformIntMap(availableModels, 32_000), ...intMap(env, 'LLM_MODEL_OUTPUT_TOKENS_JSON') }),
+      decompositionOutputTokens: Object.freeze({ ...uniformIntMap(availableModels, 16_000), ...intMap(env, 'LLM_DECOMPOSITION_OUTPUT_TOKENS_JSON') }),
+      decompositionThinking: choice(env, 'LLM_DECOMPOSITION_THINKING', 'disabled', ['enabled', 'disabled']),
       maxConcurrency: intMap(env, 'LLM_MODEL_MAX_CONCURRENCY_JSON', uniformIntMap(availableModels, 5)),
       circuitFailureThreshold: integer(env, 'LLM_CIRCUIT_FAILURE_THRESHOLD', 5, { min: 1, max: 1000 }),
       circuitWindowMs: integer(env, 'LLM_CIRCUIT_WINDOW_MS', 60000, { min: 1000, max: 3_600_000 }),
@@ -391,6 +396,7 @@ export function loadConfig(env = process.env, { loadFiles = env === process.env 
       LLM_MODEL_TPM_JSON: config.llm.tpm,
       LLM_MODEL_CONTEXT_TOKENS_JSON: config.llm.contextTokens,
       LLM_MODEL_OUTPUT_TOKENS_JSON: config.llm.outputTokens,
+      LLM_DECOMPOSITION_OUTPUT_TOKENS_JSON: config.llm.decompositionOutputTokens,
       LLM_MODEL_MAX_CONCURRENCY_JSON: config.llm.maxConcurrency,
     })) {
       if (!map[model]) throw new Error(`${name} must define configured model ${model}`);

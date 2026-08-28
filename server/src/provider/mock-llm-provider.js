@@ -1,6 +1,33 @@
 import { randomUUID } from 'node:crypto';
 
 function responseFor(prompt) {
+  if (prompt.includes('requirements-insights.v1') || prompt.includes('исслед') || prompt.includes('Research')) {
+    return JSON.stringify({ insights: [] });
+  }
+  if (prompt.includes('babok-requirements.v1')) {
+    return JSON.stringify({
+      schemaVersion: 'babok-requirements.v1',
+      mode: 'DECOMPOSITION',
+      outcome: 'COMPLETE',
+      summary: {
+        text: 'Локальный mock-результат без добавления неподтверждённых требований.',
+        counts: { BR: 0, SR: 0, FR: 0, NFR: 0, TR: 0, CON: 0, CTX: 0, GAP: 0, HYP: 0, TERM: 0, DELTA: 0 },
+        conclusions: [],
+      },
+      context: [],
+      groups: { BR: [], SR: [], FR: [], NFR: [], TR: [], CON: [] },
+      analysis: { GAP: [], HYP: [], TERM: [], traceability: [], delta: [], questions: [] },
+      materials: {
+        primary: { artifactId: 'mock-primary', role: 'primary', name: null, sha256: null, status: 'AVAILABLE' },
+        baseline: { status: 'NOT_PROVIDED', artifacts: [] },
+        references: [],
+      },
+      scope: { partial: false, units: [] },
+    });
+  }
+  if (prompt.includes('исслед') || prompt.includes('Research')) {
+    return 'Локальный mock-отчёт: подтверждены durable execution, независимые очереди, идемпотентность и наблюдаемость.';
+  }
   if (prompt.includes('Выделить 5-7 категорий')) {
     return JSON.stringify({
       categories: [
@@ -39,9 +66,6 @@ function responseFor(prompt) {
         { id: 'NFT-3', text: 'Выполнение должно возобновляться после перезапуска worker без потери подтверждённых этапов.' },
       ],
     });
-  }
-  if (prompt.includes('исслед') || prompt.includes('Research')) {
-    return 'Локальный mock-отчёт: подтверждены durable execution, независимые очереди, идемпотентность и наблюдаемость.';
   }
   return 'Локальный mock-результат: требования дополнены критериями надёжности, масштабирования и эксплуатации.';
 }

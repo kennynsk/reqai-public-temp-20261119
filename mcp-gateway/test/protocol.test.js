@@ -34,12 +34,13 @@ function fakeClient(calls) {
     async researchRequirements(token, input) { calls.push(['researchRequirements', token, input]); return accepted; },
     async getStatus(token, input) { calls.push(['getStatus', token, input]); if (token.startsWith('tenant-b')) throw new GatewayError({ status: 404, code: 'JOB_NOT_FOUND', message: 'Job not found' }); return { jobId: JOB_ID, parentJobId: null, inputArtifactId: ARTIFACT_ID, type: 'DECOMPOSITION', mode: 'DECOMPOSITION', status: 'RUNNING', outcome: null, progress: 25, currentStep: 'decompose', message: null, resultArtifactId: null, createdAt: '2026-01-01T00:00:00.000Z', startedAt: '2026-01-01T00:00:01.000Z', completedAt: null, updatedAt: '2026-01-01T00:00:02.000Z' }; },
     async getResult(token, input) { calls.push(['getResult', token, input]); return { jobId: JOB_ID, parentJobId: null, inputArtifactId: ARTIFACT_ID, type: 'DECOMPOSITION', status: 'SUCCEEDED', outcome: 'COMPLETE', mode: 'DECOMPOSITION', summary: 'done', resultArtifactId: ARTIFACT_ID, resultContentUrl: `/api/v1/jobs/${JOB_ID}/result/content`, failedSteps: [], modelAttempts: [] }; },
+    async getResultContent(token, input) { calls.push(['getResultContent', token, input]); return { jobId: JOB_ID, format: input.format, content: '# Requirements\n\n- Email notification', contentType: 'text/markdown; charset=utf-8' }; },
   };
 }
 
 async function fixture(token = 'human-token') {
   const calls = [];
-  const config = { enabled: true, bodyLimitBytes: 1_100_000, maxConcurrency: 8, path: '/mcp', allowedHosts: [], buildVersion: '1.0.0', schemaVersion: '2.0.0', host: '127.0.0.1', port: 0 };
+  const config = { enabled: true, bodyLimitBytes: 1_100_000, maxConcurrency: 8, path: '/mcp', allowedHosts: [], buildVersion: '1.0.0', schemaVersion: '2.1.0', host: '127.0.0.1', port: 0 };
   const runtime = createHttpRuntime({ config, client: fakeClient(calls), metrics: createMetrics() });
   runtime.setBackendReady(true);
   await runtime.listen();
@@ -50,11 +51,11 @@ async function fixture(token = 'human-token') {
   return { calls, runtime, client, transport };
 }
 
-test('Streamable HTTP conformance advertises exactly four tools and maps every operation', async () => {
+test('Streamable HTTP conformance advertises exactly five tools and maps every operation', async () => {
   const value = await fixture();
   try {
     const listed = await value.client.listTools();
-    assert.deepEqual(listed.tools.map((tool) => tool.name), ['decompose_requirements', 'research_requirements', 'get_task_status', 'get_task_result']);
+    assert.deepEqual(listed.tools.map((tool) => tool.name), ['decompose_requirements', 'research_requirements', 'get_task_status', 'get_task_result', 'get_task_result_content']);
     assert.equal(listed.tools.every((tool) => tool.inputSchema.additionalProperties === false), true);
     const decomposition = await value.client.callTool({ name: 'decompose_requirements', arguments: { idempotencyKey: 'decompose-12345678', businessContext: 'Need' } });
     assert.ok(decomposition.structuredContent, JSON.stringify(decomposition));
@@ -62,7 +63,10 @@ test('Streamable HTTP conformance advertises exactly four tools and maps every o
     await value.client.callTool({ name: 'research_requirements', arguments: { idempotencyKey: 'version-research-123', versionId: JOB_ID } });
     assert.equal((await value.client.callTool({ name: 'get_task_status', arguments: { jobId: JOB_ID } })).structuredContent.status, 'RUNNING');
     assert.equal((await value.client.callTool({ name: 'get_task_result', arguments: { jobId: JOB_ID } })).structuredContent.outcome, 'COMPLETE');
-    assert.deepEqual(value.calls.filter(([name]) => name !== 'authenticate').map(([name]) => name), ['decompose', 'researchRequirements', 'getStatus', 'getResult']);
+    const content = await value.client.callTool({ name: 'get_task_result_content', arguments: { jobId: JOB_ID } });
+    assert.equal(content.structuredContent.format, 'markdown');
+    assert.match(content.structuredContent.content, /Email notification/);
+    assert.deepEqual(value.calls.filter(([name]) => name !== 'authenticate').map(([name]) => name), ['decompose', 'researchRequirements', 'getStatus', 'getResult', 'getResultContent']);
     assert.equal(value.calls.filter(([name]) => name !== 'authenticate').every(([, token]) => token === 'human-token'), true);
   } finally { await value.client.close(); await value.runtime.close(); }
 });
@@ -96,7 +100,7 @@ test('protocol validation rejects tenant, prompt and lineage fields before backe
 
 test('missing bearer is rejected before MCP initialization', async () => {
   const calls = [];
-  const config = { enabled: true, bodyLimitBytes: 100_000, maxConcurrency: 2, path: '/mcp', allowedHosts: [], buildVersion: '1.0.0', schemaVersion: '2.0.0', host: '127.0.0.1', port: 0 };
+  const config = { enabled: true, bodyLimitBytes: 100_000, maxConcurrency: 2, path: '/mcp', allowedHosts: [], buildVersion: '1.0.0', schemaVersion: '2.1.0', host: '127.0.0.1', port: 0 };
   const runtime = createHttpRuntime({ config, client: fakeClient(calls), metrics: createMetrics() });
   await runtime.listen();
   try {
@@ -110,7 +114,7 @@ test('missing bearer is rejected before MCP initialization', async () => {
 test('invalid, expired and wrong-audience credentials fail during initialization', async () => {
   for (const token of ['invalid', 'expired', 'wrong-audience']) {
     const calls = [];
-    const config = { enabled: true, bodyLimitBytes: 100_000, maxConcurrency: 2, path: '/mcp', allowedHosts: [], buildVersion: '1.0.0', schemaVersion: '2.0.0', host: '127.0.0.1', port: 0 };
+    const config = { enabled: true, bodyLimitBytes: 100_000, maxConcurrency: 2, path: '/mcp', allowedHosts: [], buildVersion: '1.0.0', schemaVersion: '2.1.0', host: '127.0.0.1', port: 0 };
     const runtime = createHttpRuntime({ config, client: fakeClient(calls), metrics: createMetrics() });
     await runtime.listen();
     try {
@@ -154,7 +158,7 @@ test('health, version and metrics endpoints expose only safe operational metadat
     const base = `http://127.0.0.1:${value.runtime.server.address().port}`;
     assert.equal((await fetch(`${base}/health/live`)).status, 200);
     assert.equal((await (await fetch(`${base}/health/ready`)).json()).backendCompatible, true);
-    assert.deepEqual(await (await fetch(`${base}/version`)).json(), { buildVersion: '1.0.0', toolSchemaVersion: '2.0.0', sdk: '1.30.0', transport: 'streamable-http' });
+    assert.deepEqual(await (await fetch(`${base}/version`)).json(), { buildVersion: '1.0.0', toolSchemaVersion: '2.1.0', sdk: '1.30.0', transport: 'streamable-http' });
     const metrics = await (await fetch(`${base}/metrics`)).text();
     assert.doesNotMatch(metrics, /human-token|tenant|jobId/);
   } finally { await value.client.close(); await value.runtime.close(); }

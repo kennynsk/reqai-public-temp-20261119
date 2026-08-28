@@ -9,6 +9,7 @@ const row = {
   type: 'RESEARCH',
   status: 'SUCCEEDED',
   outcome: 'PARTIAL',
+  reason_code: null,
   progress: '100.00',
   current_step: 'synthesis',
   message: 'One category failed; partial result returned',
@@ -32,7 +33,7 @@ function setup() {
         job: row,
         steps: [{ step_id: 'category-3', step_type: 'RESEARCH_CATEGORY', status: 'FAILED', summary: { reasonCode: 'MODEL_TIMEOUT' } }],
         attempts: [{
-          step_id: 'category-3', requested_model: 'GC-Max', actual_model: 'GC-M', attempt: 1,
+          step_id: 'category-3', requested_model: 'GC-Max', actual_model: 'GC-M', execution_id: 'execution-1', attempt: 1,
           status: 'FAILED', reason_code: 'MODEL_TIMEOUT', input_tokens: '100', output_tokens: '0', duration_ms: '300000',
         }],
       };
@@ -63,6 +64,7 @@ test('REST reconciliation exposes the latest milestone and execution timestamps'
   assert.equal(job.startedAt, '2026-01-01T00:00:05.000Z');
   assert.equal(job.completedAt, '2026-01-01T01:00:00.000Z');
   assert.equal(job.mode, 'AGENT_RESEARCH');
+  assert.equal(job.reasonCode, null);
 });
 
 test('partial result exposes actual model and fallback reason and audits the read', async () => {
@@ -76,6 +78,7 @@ test('partial result exposes actual model and fallback reason and audits the rea
   assert.equal(result.modelAttempts[0].requestedModel, 'GC-Max');
   assert.equal(result.modelAttempts[0].model, 'GC-M');
   assert.equal(result.modelAttempts[0].reasonCode, 'MODEL_TIMEOUT');
+  assert.equal(result.modelAttempts[0].executionId, 'execution-1');
   assert.equal(audits[0].action, 'job.result.view');
 });
 

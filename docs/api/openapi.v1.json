@@ -365,6 +365,7 @@
     "schemas": {
       "JobType": { "type": "string", "enum": ["DECOMPOSITION", "RESEARCH"] },
       "FeatureMode": { "type": "string", "enum": ["DECOMPOSITION", "REQUIREMENTS_INSIGHTS"] },
+      "ReasoningLevel": { "type": "string", "enum": ["disabled", "low", "high", "max"], "default": "disabled" },
       "JobStatus": { "type": "string", "enum": ["ACCEPTED", "QUEUED", "RUNNING", "RETRY_WAIT", "SUCCEEDED", "FAILED", "CANCEL_REQUESTED", "CANCELLED"] },
       "JobOutcome": { "type": ["string", "null"], "enum": ["COMPLETE", "PARTIAL", null] },
       "ExecutionOptions": {
@@ -372,13 +373,14 @@
         "properties": {
           "model": { "type": "string", "minLength": 1 },
           "temperature": { "type": "number", "minimum": 0, "maximum": 2 },
+          "reasoning": { "$ref": "#/components/schemas/ReasoningLevel" },
           "promptVersion": { "type": "string", "pattern": "^[1-9][0-9]*\\.[0-9]+\\.[0-9]+$" }
         }
       },
       "DecompositionRequest": {
         "oneOf": [
-          { "type": "object", "required": ["businessContext"], "properties": { "businessContext": { "type": "string", "minLength": 1, "maxLength": 1048576 }, "model": { "type": "string", "minLength": 1 }, "temperature": { "type": "number", "minimum": 0, "maximum": 2 }, "promptVersion": { "type": "string", "pattern": "^[1-9][0-9]*\\.[0-9]+\\.[0-9]+$" } }, "additionalProperties": false },
-          { "type": "object", "required": ["inputArtifactId"], "properties": { "inputArtifactId": { "type": "string", "format": "uuid" }, "model": { "type": "string", "minLength": 1 }, "temperature": { "type": "number", "minimum": 0, "maximum": 2 }, "promptVersion": { "type": "string", "pattern": "^[1-9][0-9]*\\.[0-9]+\\.[0-9]+$" } }, "additionalProperties": false }
+          { "type": "object", "required": ["businessContext"], "properties": { "businessContext": { "type": "string", "minLength": 1, "maxLength": 1048576 }, "baselineArtifactId": { "type": "string", "format": "uuid" }, "referenceArtifactIds": { "type": "array", "maxItems": 20, "uniqueItems": true, "items": { "type": "string", "format": "uuid" } }, "model": { "type": "string", "minLength": 1 }, "temperature": { "type": "number", "minimum": 0, "maximum": 2 }, "reasoning": { "$ref": "#/components/schemas/ReasoningLevel" }, "promptVersion": { "type": "string", "pattern": "^[1-9][0-9]*\\.[0-9]+\\.[0-9]+$" } }, "additionalProperties": false },
+          { "type": "object", "required": ["inputArtifactId"], "properties": { "inputArtifactId": { "type": "string", "format": "uuid" }, "baselineArtifactId": { "type": "string", "format": "uuid" }, "referenceArtifactIds": { "type": "array", "maxItems": 20, "uniqueItems": true, "items": { "type": "string", "format": "uuid" } }, "model": { "type": "string", "minLength": 1 }, "temperature": { "type": "number", "minimum": 0, "maximum": 2 }, "reasoning": { "$ref": "#/components/schemas/ReasoningLevel" }, "promptVersion": { "type": "string", "pattern": "^[1-9][0-9]*\\.[0-9]+\\.[0-9]+$" } }, "additionalProperties": false }
         ]
       },
       "RequirementsResearchRequest": {
@@ -386,6 +388,7 @@
         "properties": {
           "model": { "type": "string", "minLength": 1 },
           "temperature": { "type": "number", "minimum": 0, "maximum": 2 },
+          "reasoning": { "$ref": "#/components/schemas/ReasoningLevel" },
           "promptVersion": { "type": "string", "pattern": "^[1-9][0-9]*\\.[0-9]+\\.[0-9]+$" }
         },
         "additionalProperties": false
@@ -407,6 +410,7 @@
           "mode": { "type": "string", "const": "DECOMPOSITION" },
           "model": { "type": "string" },
           "temperature": { "type": "number", "minimum": 0, "maximum": 2, "default": 0.2 },
+          "reasoning": { "$ref": "#/components/schemas/ReasoningLevel" },
           "promptVersion": { "type": "string", "pattern": "^[1-9][0-9]*\\.[0-9]+\\.[0-9]+$" }
         },
         "additionalProperties": false
@@ -435,6 +439,7 @@
           "mode": { "type": ["string", "null"] },
           "status": { "$ref": "#/components/schemas/JobStatus" },
           "outcome": { "$ref": "#/components/schemas/JobOutcome" },
+          "reasonCode": { "type": ["string", "null"] },
           "progress": { "type": "number", "minimum": 0, "maximum": 100 },
           "currentStep": { "type": ["string", "null"] },
           "message": { "type": ["string", "null"] },
@@ -458,10 +463,12 @@
           "stepId": { "type": "string" },
           "requestedModel": { "type": "string" },
           "model": { "type": "string" },
+          "executionId": { "type": ["string", "null"], "format": "uuid" },
           "attempt": { "type": "integer", "minimum": 1 },
           "result": { "type": "string", "enum": ["SUCCEEDED", "FAILED", "CANCELLED"] },
           "reasonCode": { "type": ["string", "null"] },
-          "tokenUsage": { "type": ["object", "null"], "additionalProperties": { "type": "integer" } }
+          "tokenUsage": { "type": ["object", "null"], "additionalProperties": { "type": "integer" } },
+          "durationMs": { "type": ["integer", "null"], "minimum": 0 }
         }
       },
       "JobResult": {
@@ -474,6 +481,7 @@
           "type": { "$ref": "#/components/schemas/JobType" },
           "status": { "$ref": "#/components/schemas/JobStatus" },
           "outcome": { "$ref": "#/components/schemas/JobOutcome" },
+          "reasonCode": { "type": ["string", "null"] },
           "mode": { "type": ["string", "null"] },
           "summary": { "type": ["string", "null"] },
           "resultArtifactId": { "type": ["string", "null"], "format": "uuid" },
@@ -509,6 +517,7 @@
           "mode": { "type": ["string", "null"] },
           "status": { "$ref": "#/components/schemas/JobStatus" },
           "outcome": { "$ref": "#/components/schemas/JobOutcome" },
+          "reasonCode": { "type": ["string", "null"] },
           "currentStep": { "type": ["string", "null"] },
           "createdAt": { "type": "string", "format": "date-time" },
           "startedAt": { "type": ["string", "null"], "format": "date-time" },

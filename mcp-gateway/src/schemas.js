@@ -5,13 +5,17 @@ const idempotencyKey = z.string().regex(/^[A-Za-z0-9._:-]{16,128}$/);
 const promptVersion = z.string().regex(/^[1-9]\d*\.\d+\.\d+$/);
 const model = z.string().trim().min(1).max(128);
 const temperature = z.number().min(0).max(2);
+const reasoning = z.enum(['disabled', 'low', 'high', 'max']);
 const artifactInput = {
   businessContext: z.string().trim().min(1).max(1_048_576).optional(),
   inputArtifactId: uuid.optional(),
+  baselineArtifactId: uuid.optional(),
+  referenceArtifactIds: z.array(uuid).max(20).refine((items) => new Set(items).size === items.length, { message: 'referenceArtifactIds must not contain duplicates' }).optional(),
 };
 const execution = {
   model: model.optional(),
   temperature: temperature.optional(),
+  reasoning: reasoning.optional(),
   promptVersion: promptVersion.optional(),
 };
 
@@ -55,6 +59,7 @@ export const taskStatusOutput = z.strictObject({
   mode: nullableString,
   status: z.enum(['ACCEPTED', 'QUEUED', 'RUNNING', 'RETRY_WAIT', 'SUCCEEDED', 'FAILED', 'CANCEL_REQUESTED', 'CANCELLED']),
   outcome: nullableString,
+  reasonCode: nullableString.optional(),
   progress: z.number(),
   currentStep: nullableString,
   message: nullableString,
@@ -72,6 +77,7 @@ export const taskResultOutput = z.strictObject({
   type: z.enum(['DECOMPOSITION', 'RESEARCH']),
   status: z.literal('SUCCEEDED'),
   outcome: nullableString,
+  reasonCode: nullableString.optional(),
   mode: nullableString,
   summary: nullableString,
   resultArtifactId: uuid.nullable(),
@@ -81,12 +87,26 @@ export const taskResultOutput = z.strictObject({
     stepId,
     requestedModel: z.string(),
     model: z.string(),
+    executionId: uuid.nullable().optional(),
     attempt: z.number(),
     result: z.string(),
     reasonCode: nullableString,
     tokenUsage: z.strictObject({ input: z.number(), output: z.number() }).nullable(),
     durationMs: z.number().nullable(),
   })),
+});
+
+const resultContentFormat = z.enum(['markdown', 'raw']);
+export const taskResultContentInput = z.strictObject({
+  jobId: uuid,
+  format: resultContentFormat.optional().default('markdown'),
+});
+
+export const taskResultContentOutput = z.strictObject({
+  jobId: uuid,
+  format: resultContentFormat,
+  contentType: z.string().trim().min(1).max(256),
+  content: z.string().max(1_000_000),
 });
 
 export const errorOutput = z.strictObject({
@@ -106,4 +126,5 @@ export const TOOL_DEFINITIONS = Object.freeze({
   research_requirements: { inputSchema: researchRequirementsInput, outputSchema: toolOutput(acceptedJobOutput), successSchema: acceptedJobOutput, description: 'Start asynchronous research for an immutable requirements version.' },
   get_task_status: { inputSchema: taskInput, outputSchema: toolOutput(taskStatusOutput), successSchema: taskStatusOutput, description: 'Read canonical ReqAI task status.' },
   get_task_result: { inputSchema: taskInput, outputSchema: toolOutput(taskResultOutput), successSchema: taskResultOutput, description: 'Read canonical ReqAI task result metadata.' },
+  get_task_result_content: { inputSchema: taskResultContentInput, outputSchema: toolOutput(taskResultContentOutput), successSchema: taskResultContentOutput, description: 'Read the full human-readable result content after a task succeeds.' },
 });

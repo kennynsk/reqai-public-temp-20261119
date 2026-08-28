@@ -53,7 +53,7 @@ test('both MCP starts complete through ReqAI REST and the mock provider', async 
   const backend = app.listen(0, '127.0.0.1');
   await new Promise((resolve) => backend.once('listening', resolve));
   const backendUrl = `http://127.0.0.1:${backend.address().port}`;
-  const gatewayConfig = { enabled: true, production: false, bodyLimitBytes: 1_100_000, responseLimitBytes: 262_144, maxConcurrency: 8, path: '/mcp', allowedHosts: [], buildVersion: '1.0.0', schemaVersion: '2.0.0', host: '127.0.0.1', port: 0, backendUrl, backendTimeoutMs: 1000, authTimeoutMs: 1000 };
+  const gatewayConfig = { enabled: true, production: false, bodyLimitBytes: 1_100_000, responseLimitBytes: 262_144, maxConcurrency: 8, path: '/mcp', allowedHosts: [], buildVersion: '1.0.0', schemaVersion: '2.1.0', host: '127.0.0.1', port: 0, backendUrl, backendTimeoutMs: 1000, authTimeoutMs: 1000 };
   const gateway = createHttpRuntime({ config: gatewayConfig, client: createReqAiClient({ config: gatewayConfig }), metrics: createMetrics() });
   gateway.setBackendReady(true);
   await gateway.listen();

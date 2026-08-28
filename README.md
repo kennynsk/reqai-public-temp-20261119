@@ -31,8 +31,8 @@ npm run dev
 LLM_PROVIDER_MODE=zai
 ZAI_API_KEY=...
 ZAI_BASE_URL=https://api.z.ai/api/coding/paas/v4
-ZAI_MODELS=glm-5.3,glm-5-turbo,glm-4.7,glm-4.7-flash
-LLM_MODEL_PRIORITY=glm-5.3,glm-5-turbo,glm-4.7
+ZAI_MODELS=glm-5.3-flash,glm-5.3,glm-5.2,glm-5-turbo,glm-4.7,glm-4.7-flash
+LLM_MODEL_PRIORITY=glm-5.3-flash,glm-5.3,glm-5.2
 ```
 
 Откройте `http://localhost:8080`. `npm run dev` запускает frontend, API, decomposition/research workers, PostgreSQL, Kafka и Temporal через Docker Compose. Фоновый режим: `npm run dev:detached`. Полная инструкция — [docs/local-development.md](docs/local-development.md), каталог переменных — [docs/configuration.md](docs/configuration.md).
@@ -45,7 +45,7 @@ MCP gateway выключен по умолчанию и запускается �
 docker compose --profile mcp up --build
 ```
 
-Endpoint `http://localhost:5180/mcp` предоставляет четыре инструмента: декомпозицию, исследование сохранённой версии, чтение статуса и чтение результата. См. [MCP gateway](docs/mcp-requirements-adapter.md).
+Endpoint `http://localhost:5180/mcp` предоставляет пять инструментов: декомпозицию, исследование сохранённой версии, чтение статуса, metadata результата и полного содержимого результата. См. [MCP gateway](docs/mcp-requirements-adapter.md).
 
 ## Production
 

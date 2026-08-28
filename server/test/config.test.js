@@ -7,14 +7,36 @@ test('enterprise config parses documented defaults when async processing is disa
   const config = loadConfig({}, { loadFiles: false });
   assert.equal(config.asyncEnabled, false);
   assert.equal(config.llm.providerMode, 'zai');
-  assert.deepEqual(config.llm.availableModels, ['glm-5.3', 'glm-5-turbo', 'glm-4.7', 'glm-4.7-flash']);
-  assert.deepEqual(config.llm.models, ['glm-5.3', 'glm-5-turbo', 'glm-4.7']);
+  assert.deepEqual(config.llm.availableModels, ['glm-5.3-flash', 'glm-5.3', 'glm-5.2', 'glm-5-turbo', 'glm-4.7', 'glm-4.7-flash']);
+  assert.deepEqual(config.llm.models, ['glm-5.3-flash', 'glm-5.3', 'glm-5.2']);
   assert.equal(config.llm.requestTimeoutMs, 600000);
+  assert.equal(config.llm.outputTokens['glm-5.3-flash'], 32000);
+  assert.equal(config.llm.decompositionThinking, 'disabled');
+  assert.equal(config.llm.decompositionOutputTokens['glm-5.3-flash'], 16000);
   assert.equal(config.jobs.inputMaxBytes, 104857600);
+  assert.equal(config.prompts.policy['requirements-decomposition'].active, '2.0.0');
+  assert.deepEqual(config.prompts.policy['requirements-decomposition'].released, ['1.0.0', '2.0.0']);
+  assert.equal(config.prompts.policy['requirements-insights'].active, '2.0.0');
   assert.equal(config.diagnostics.captureProtected, false);
   assert.equal(config.diagnostics.maxPageSize, 100);
   assert.equal(config.slo.availabilityPercent, 99.5);
   assert.ok(Object.isFrozen(config));
+});
+
+test('decomposition latency settings support documented overrides', () => {
+  const config = loadConfig({
+    LLM_DECOMPOSITION_THINKING: 'enabled',
+    LLM_DECOMPOSITION_OUTPUT_TOKENS_JSON: JSON.stringify({
+      'glm-5.3-flash': 24000,
+      'glm-5.3': 24000,
+      'glm-5.2': 24000,
+      'glm-5-turbo': 24000,
+      'glm-4.7': 24000,
+      'glm-4.7-flash': 24000,
+    }),
+  }, { loadFiles: false });
+  assert.equal(config.llm.decompositionThinking, 'enabled');
+  assert.equal(config.llm.decompositionOutputTokens['glm-5.3'], 24000);
 });
 
 test('async mode fails fast when infrastructure is missing', () => {

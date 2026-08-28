@@ -8,6 +8,7 @@ const OPERATIONS = Object.freeze({
   research_requirements: 'researchRequirements',
   get_task_status: 'getStatus',
   get_task_result: 'getResult',
+  get_task_result_content: 'getResultContent',
 });
 
 function gatewayError(error) {
@@ -22,7 +23,7 @@ function resultContent(value, isError = false) {
 export function createRequirementsMcpServer({ client, token, config, metrics, clock = () => Date.now() }) {
   const server = new McpServer({ name: 'reqai-requirements', version: config.buildVersion }, {
     capabilities: { tools: {} },
-    instructions: `ReqAI requirements tools; schema ${config.schemaVersion}. Start operations are asynchronous and return canonical job references.`,
+    instructions: `ReqAI requirements tools; schema ${config.schemaVersion}. Start operations are asynchronous and return canonical job references. After a job succeeds, call get_task_result_content with format=markdown to read the full human-readable requirements report.`,
   });
 
   for (const [name, definition] of Object.entries(TOOL_DEFINITIONS)) {
