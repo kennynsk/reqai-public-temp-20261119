@@ -4,6 +4,7 @@ import { ApiError } from '../errors/api-error.js';
 import { injectTrace } from '../observability/telemetry.js';
 import { logEvent } from '../middleware/safe-logging.js';
 import { isSupportedCreateMode } from '../domain/job-modes.js';
+import { executionSettingsSnapshot } from '../domain/model-capabilities.js';
 
 const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9._:-]{16,128}$/;
 
@@ -114,6 +115,7 @@ export function createJobService({ config, jobRepository, operationalRepository,
             featureMode,
             ...(promptProfile ? { promptProfile } : {}),
             temperature: body.options?.temperature ?? 0.2,
+            executionSettings: executionSettingsSnapshot({ model: selectedModels[0], reasoning, temperature: body.options?.temperature ?? 0.2 }),
             maxModelsPerStep: config.llm.maxModelsPerStep,
             maxAttemptsPerModel: config.llm.maxAttemptsPerModel,
             requestTimeoutMs: config.llm.requestTimeoutMs,

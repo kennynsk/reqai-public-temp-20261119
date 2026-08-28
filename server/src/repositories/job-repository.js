@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { ApiError } from '../errors/api-error.js';
 import { assertJobTransition } from '../domain/job-state.js';
 import { withTenantTransaction } from '../db/transaction.js';
+import { initialJobMetadata } from '../domain/job-metadata.js';
 
 export class JobRepository {
   constructor(pool, { schema = 'reqai', artifactSchema = 'reqai_artifacts' } = {}) {
@@ -37,7 +38,7 @@ export class JobRepository {
     });
   }
 
-  async listVisible({ tenantId, ownerUserId = null, status = null, beforeCreatedAt = null, beforeId = null, limit = 20 }) {
+  async listVisible({ tenantId, ownerUserId = null, status = null, beforeCreatedAt = null, beforeId = null, limit = 20, q = '', type = null }) {
     return withTenantTransaction(this.pool, tenantId, async (client) => {
       const result = await client.query(
         `SELECT * FROM ${this.schema}.jobs
@@ -45,11 +46,79 @@ export class JobRepository {
            AND ($2::text IS NULL OR owner_user_id = $2)
            AND ($3::text IS NULL OR status = $3)
            AND ($4::timestamptz IS NULL OR (created_at, id) < ($4, $5::uuid))
+           AND ($7='' OR strpos(lower(COALESCE(title,'') || ' ' || search_summary),lower($7))>0)
+           AND ($8::text IS NULL OR type=$8)
          ORDER BY created_at DESC, id DESC
          LIMIT $6`,
-        [tenantId, ownerUserId, status, beforeCreatedAt, beforeId, Math.min(Math.max(limit, 1), 100) + 1],
+        [tenantId, ownerUserId, status, beforeCreatedAt, beforeId, Math.min(Math.max(limit, 1), 100) + 1, q, type],
       );
       return result.rows;
+    });
+  }
+
+  async workflowMetadata({ tenantId, ownerUserId = null, jobId }) {
+    return withTenantTransaction(this.pool, tenantId, async (client) => {
+      const result = await client.query(`SELECT COALESCE(p.id,j.id) AS id, COALESCE(p.title,j.title) AS title,
+        COALESCE(p.metadata_revision,j.metadata_revision) AS metadata_revision, j.type, j.created_at
+        FROM ${this.schema}.jobs j LEFT JOIN ${this.schema}.jobs p ON p.tenant_id=j.tenant_id AND p.id=j.parent_job_id
+          AND p.type='DECOMPOSITION' AND ($2::text IS NULL OR p.owner_user_id=$2)
+        WHERE j.tenant_id = $1 AND ($2::text IS NULL OR j.owner_user_id=$2) AND j.id=$3`, [tenantId, ownerUserId, jobId]);
+      return result.rows[0] || null;
+    });
+  }
+
+  async updateWorkflowMetadata({ tenantId, ownerUserId = null, jobId, title, expectedRevision, actorId }) {
+    return withTenantTransaction(this.pool, tenantId, async (client) => {
+      const target = await client.query(`SELECT COALESCE(p.id,j.id) AS id FROM ${this.schema}.jobs j
+        LEFT JOIN ${this.schema}.jobs p ON p.tenant_id=j.tenant_id AND p.id=j.parent_job_id AND p.type='DECOMPOSITION' AND ($2::text IS NULL OR p.owner_user_id=$2)
+        WHERE j.tenant_id = $1 AND j.id=$3 AND ($2::text IS NULL OR j.owner_user_id=$2)`, [tenantId, ownerUserId, jobId]);
+      if (!target.rows[0]) return null;
+      const rootId = target.rows[0].id;
+      const updated = await client.query(`UPDATE ${this.schema}.jobs SET title=$4, metadata_revision=metadata_revision+1,
+        sequence=sequence+1, version=version+1, updated_at=clock_timestamp()
+        WHERE tenant_id = $1 AND id=$2 AND metadata_revision=$3 RETURNING *`, [tenantId, rootId, expectedRevision, title]);
+      if (!updated.rows[0]) throw new ApiError({ status: 409, code: 'METADATA_CONFLICT', message: 'The title was changed by another client. Reload it before renaming.' });
+      const root = updated.rows[0];
+      const children = await client.query(`UPDATE ${this.schema}.jobs SET sequence=sequence+1, version=version+1
+        WHERE tenant_id = $1 AND parent_job_id=$2 AND ($3::text IS NULL OR owner_user_id=$3) RETURNING *`, [tenantId, rootId, ownerUserId]);
+      for (const row of [root, ...children.rows]) await client.query(`INSERT INTO ${this.schema}.outbox_events(event_id,tenant_id,aggregate_type,aggregate_id,sequence,event_type,schema_version,payload)
+        VALUES($1,$2,'job',$3,$4,'job.metadata-updated','1.0',$5::jsonb)`, [randomUUID(), tenantId, row.id, row.sequence, JSON.stringify({ jobId: row.id, metadataJobId: rootId, title, metadataRevision: root.metadata_revision, actorUserId: actorId })]);
+      return root;
+    });
+  }
+
+  async listWorkflows({ tenantId, ownerUserId = null, q = '', type = null, status = null, beforeCreatedAt = null, beforeId = null, limit = 20 }) {
+    return withTenantTransaction(this.pool, tenantId, async (client) => {
+      const result = await client.query(`WITH visible AS (
+        SELECT * FROM ${this.schema}.jobs WHERE tenant_id = $1 AND ($2::text IS NULL OR owner_user_id=$2)
+      ), members AS (
+        SELECT j.*, COALESCE(p.id,j.id) AS root_id FROM visible j LEFT JOIN visible p ON p.id=j.parent_job_id AND p.type='DECOMPOSITION'
+      ) SELECT r.*,
+        COALESCE((SELECT jsonb_agg(to_jsonb(c) ORDER BY c.created_at,c.id) FROM members c WHERE c.root_id=r.id AND c.id<>r.id),'[]'::jsonb) AS children,
+        (SELECT jsonb_agg(saved.entry) FROM (SELECT jsonb_build_object('jobId',v.source_job_id,'versionId',v.id,'createdAt',v.created_at,'final',v.research_job_id IS NOT NULL OR COALESCE(v.decisions->>'skippedResearch'='true',false)) AS entry
+          FROM ${this.schema}.requirements_versions v WHERE v.tenant_id = $1 AND ($2::text IS NULL OR v.owner_user_id=$2) AND v.source_job_id IN (SELECT m.id FROM members m WHERE m.root_id=r.id)
+          ORDER BY v.created_at DESC,v.id DESC LIMIT 1) saved) AS saved_versions
+        FROM visible r WHERE r.id IN (SELECT DISTINCT root_id FROM members)
+          AND ($3='' OR EXISTS(SELECT 1 FROM members m WHERE m.root_id=r.id AND strpos(lower(COALESCE(m.title,'') || ' ' || m.search_summary),lower($3))>0))
+          AND ($4::text IS NULL OR EXISTS(SELECT 1 FROM members m WHERE m.root_id=r.id AND m.type=$4))
+          AND ($5::text IS NULL OR EXISTS(SELECT 1 FROM members m WHERE m.root_id=r.id AND m.status=$5))
+          AND ($6::timestamptz IS NULL OR (r.created_at,r.id)<($6,$7::uuid))
+        ORDER BY r.created_at DESC,r.id DESC LIMIT $8`, [tenantId, ownerUserId, q, type, status, beforeCreatedAt, beforeId, limit + 1]);
+      const pending = await client.query(`SELECT EXISTS(SELECT 1 FROM ${this.schema}.jobs WHERE tenant_id = $1 AND ($2::text IS NULL OR owner_user_id=$2) AND metadata_indexed_at IS NULL) AS pending`, [tenantId, ownerUserId]);
+      return { rows: result.rows, indexingPending: pending.rows[0].pending };
+    });
+  }
+
+  async backfillMetadata({ tenantId, limit = 100 }) {
+    return withTenantTransaction(this.pool, tenantId, async (client) => {
+      const jobs = await client.query(`SELECT * FROM ${this.schema}.jobs WHERE tenant_id = $1 AND metadata_indexed_at IS NULL ORDER BY created_at,id LIMIT $2 FOR UPDATE SKIP LOCKED`, [tenantId, Math.min(500, Math.max(1, limit))]);
+      for (const job of jobs.rows) {
+        const source = await client.query(`SELECT substring(c.content from 1 for 8000) AS content FROM ${this.artifactSchema}.artifact_content c JOIN ${this.schema}.artifacts a ON a.id=c.artifact_id AND a.tenant_id=c.tenant_id
+          WHERE c.tenant_id = $1 AND c.artifact_id=$2 AND c.chunk_index=0 AND a.content_type LIKE 'text/%' AND a.storage_status='AVAILABLE'`, [tenantId, job.input_artifact_id]);
+        const metadata = initialJobMetadata({ text: source.rows[0]?.content?.subarray(0, 8000).toString('utf8'), name: job.configuration_snapshot?.materials?.primary?.name, type: job.type, createdAt: job.created_at });
+        await client.query(`UPDATE ${this.schema}.jobs SET title=COALESCE(title,$3),search_summary=$4,metadata_indexed_at=clock_timestamp() WHERE tenant_id = $1 AND id=$2`, [tenantId, job.id, metadata.title, metadata.summary]);
+      }
+      return jobs.rowCount;
     });
   }
 
@@ -116,11 +185,18 @@ export class JobRepository {
           }
         }
 
+        let primaryText = inlineArtifact?.content ? Buffer.from(inlineArtifact.content).subarray(0, 8000).toString('utf8') : '';
+        if (!primaryText && job.type === 'DECOMPOSITION') {
+          const source = await client.query(`SELECT substring(c.content from 1 for 8000) AS content FROM ${this.artifactSchema}.artifact_content c JOIN ${this.schema}.artifacts a ON a.id=c.artifact_id AND a.tenant_id=c.tenant_id
+            WHERE c.tenant_id = $1 AND c.artifact_id=$2 AND c.chunk_index=0 AND a.content_type LIKE 'text/%' AND a.storage_status='AVAILABLE'`, [tenantId, job.inputArtifactId]);
+          primaryText = source.rows[0]?.content?.subarray(0, 8000).toString('utf8') || '';
+        }
+        const metadata = initialJobMetadata({ text: primaryText, name: job.configurationSnapshot?.materials?.primary?.name, type: job.type });
         const inserted = await client.query(
           `INSERT INTO ${this.schema}.jobs (
              id, tenant_id, owner_user_id, parent_job_id, type, status, priority,
-             input_artifact_id, configuration_snapshot, created_site, deadline_at, sequence
-           ) VALUES ($1, $2, $3, $4, $5, 'ACCEPTED', $6, $7, $8::jsonb, $9, $10, 1)
+             input_artifact_id, configuration_snapshot, created_site, deadline_at, sequence, title, search_summary, metadata_indexed_at
+           ) VALUES ($1, $2, $3, $4, $5, 'ACCEPTED', $6, $7, $8::jsonb, $9, $10, 1, $11, $12, clock_timestamp())
            RETURNING *`,
           [
             job.id,
@@ -133,6 +209,8 @@ export class JobRepository {
             JSON.stringify(job.configurationSnapshot),
             job.createdSite,
             job.deadlineAt,
+            metadata.title,
+            metadata.summary,
           ],
         );
 
@@ -155,7 +233,7 @@ export class JobRepository {
           const parent = await client.query(
             `UPDATE ${this.schema}.jobs
              SET sequence=sequence+1, version=version+1, updated_at=now()
-             WHERE tenant_id=$1 AND id=$2 RETURNING sequence`,
+             WHERE tenant_id = $1 AND id=$2 RETURNING sequence`,
             [tenantId, job.parentJobId],
           );
           await client.query(

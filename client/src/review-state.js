@@ -44,7 +44,7 @@ export function assembleReview(state, createRecord, normalize = (value) => value
   for (const draft of Object.values(state.drafts)) {
     // Merely opening an empty composer does not add a blank requirement.
     if (draft.isNew && draft.text === '') continue;
-    if (!draft.text.trim()) return { error: { id: draft.id, type: draft.group, message: 'Введите формулировку требования.' } };
+    if (!draft.text.trim()) return { error: { id: draft.id, type: draft.group, field: 'text', message: 'Введите формулировку требования.' } };
     if (draft.isNew) groups[draft.group].push(createRecord(draft.group, draft.text.trim(), groups[draft.group]));
     else groups[draft.group] = groups[draft.group].map((item) => item.id === draft.id ? { ...item, ...draft.fields, text: draft.text.trim() } : item);
   }

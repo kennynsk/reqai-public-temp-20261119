@@ -89,7 +89,10 @@
         "parameters": [
           { "name": "cursor", "in": "query", "schema": { "type": "string" } },
           { "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 20 } },
-          { "name": "status", "in": "query", "schema": { "$ref": "#/components/schemas/JobStatus" } }
+          { "name": "status", "in": "query", "schema": { "$ref": "#/components/schemas/JobStatus" } },
+          {"name":"q","in":"query","schema":{"type":"string","maxLength":200}},
+          {"name":"groupBy","in":"query","schema":{"type":"string","enum":["workflow"]}},
+          {"name":"type","in":"query","schema":{"$ref":"#/components/schemas/JobType"}}
         ],
         "responses": {
           "200": {
@@ -97,6 +100,84 @@
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JobPage" } } }
           },
           "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/v1/jobs/{jobId}/metadata": {
+      "patch": {
+        "operationId": "updateJobMetadata",
+        "parameters": [
+          {
+            "name": "jobId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "title",
+                  "expectedRevision"
+                ],
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120
+                  },
+                  "expectedRevision": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Workflow title updated; child references resolve to their authorized parent",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "jobId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "metadataRevision": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
         }
       }
     },
@@ -430,30 +511,153 @@
       },
       "Job": {
         "type": "object",
-        "required": ["jobId", "type", "status", "outcome", "progress", "createdAt", "updatedAt"],
+        "required": [
+          "jobId",
+          "type",
+          "status",
+          "outcome",
+          "progress",
+          "createdAt",
+          "updatedAt"
+        ],
         "properties": {
-          "jobId": { "type": "string", "format": "uuid" },
-          "parentJobId": { "type": ["string", "null"], "format": "uuid" },
-          "inputArtifactId": { "type": "string", "format": "uuid" },
-          "type": { "$ref": "#/components/schemas/JobType" },
-          "mode": { "type": ["string", "null"] },
-          "status": { "$ref": "#/components/schemas/JobStatus" },
-          "outcome": { "$ref": "#/components/schemas/JobOutcome" },
-          "reasonCode": { "type": ["string", "null"] },
-          "progress": { "type": "number", "minimum": 0, "maximum": 100 },
-          "currentStep": { "type": ["string", "null"] },
-          "message": { "type": ["string", "null"] },
-          "resultArtifactId": { "type": ["string", "null"], "format": "uuid" },
-          "createdAt": { "type": "string", "format": "date-time" },
-          "updatedAt": { "type": "string", "format": "date-time" }
+          "jobId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "parentJobId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "inputArtifactId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "type": {
+            "$ref": "#/components/schemas/JobType"
+          },
+          "mode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobStatus"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/JobOutcome"
+          },
+          "reasonCode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "progress": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "currentStep": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "resultArtifactId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "metadataRevision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "metadataJobId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "children": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Job"
+            }
+          },
+          "savedVersions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "jobId": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "versionId": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "createdAt": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "final": {
+                  "type": [
+                    "boolean",
+                    "null"
+                  ]
+                }
+              }
+            }
+          }
         }
       },
       "JobPage": {
         "type": "object",
-        "required": ["items", "nextCursor"],
+        "required": [
+          "items",
+          "nextCursor"
+        ],
         "properties": {
-          "items": { "type": "array", "items": { "$ref": "#/components/schemas/Job" } },
-          "nextCursor": { "type": ["string", "null"] }
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Job"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "indexingPending": {
+            "type": "boolean",
+            "description": "Returned with grouped history while older authorized jobs still require metadata backfill."
+          }
         }
       },
       "ModelAttempt": {
@@ -473,21 +677,102 @@
       },
       "JobResult": {
         "type": "object",
-        "required": ["jobId", "status", "outcome", "failedSteps", "modelAttempts"],
+        "required": [
+          "jobId",
+          "status",
+          "outcome",
+          "failedSteps",
+          "modelAttempts"
+        ],
         "properties": {
-          "jobId": { "type": "string", "format": "uuid" },
-          "parentJobId": { "type": ["string", "null"], "format": "uuid" },
-          "inputArtifactId": { "type": "string", "format": "uuid" },
-          "type": { "$ref": "#/components/schemas/JobType" },
-          "status": { "$ref": "#/components/schemas/JobStatus" },
-          "outcome": { "$ref": "#/components/schemas/JobOutcome" },
-          "reasonCode": { "type": ["string", "null"] },
-          "mode": { "type": ["string", "null"] },
-          "summary": { "type": ["string", "null"] },
-          "resultArtifactId": { "type": ["string", "null"], "format": "uuid" },
-          "resultContentUrl": { "type": ["string", "null"] },
-          "failedSteps": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
-          "modelAttempts": { "type": "array", "items": { "$ref": "#/components/schemas/ModelAttempt" } }
+          "jobId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "parentJobId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "inputArtifactId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "type": {
+            "$ref": "#/components/schemas/JobType"
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobStatus"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/JobOutcome"
+          },
+          "reasonCode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "mode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "summary": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "resultArtifactId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "resultContentUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "failedSteps": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "modelAttempts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ModelAttempt"
+            }
+          },
+          "executionSettings": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "requestedModel": {
+                "type": "string"
+              },
+              "requestedReasoning": {
+                "type": "string"
+              },
+              "effectiveReasoning": {
+                "type": "string"
+              },
+              "temperature": {
+                "type": "number"
+              }
+            }
+          }
         }
       },
       "JobTraceEntry": {
@@ -568,46 +853,283 @@
       },
       "CreateRequirementsVersion": {
         "type": "object",
-        "required": ["sourceJobId", "requirements"],
+        "required": [
+          "sourceJobId"
+        ],
         "properties": {
-          "sourceJobId": { "type": "string", "format": "uuid" },
-          "baseVersionId": { "type": ["string", "null"], "format": "uuid" },
-          "requirements": { "$ref": "#/components/schemas/RequirementsGroups" },
-          "decisions": { "type": "object", "additionalProperties": true }
+          "sourceJobId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "baseVersionId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "requirements": {
+            "$ref": "#/components/schemas/RequirementsGroups"
+          },
+          "decisions": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "expectedLatestVersionId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Optional concurrency precondition; null requires no previous version."
+          },
+          "clientMutationId": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_-]{8,100}$",
+            "description": "Stable identity for retrying exactly the same save payload."
+          },
+          "registry": {
+            "type": "object",
+            "description": "Canonical BABOK registry validated by the versioned babok-requirements.v1 server contract.",
+            "required": [
+              "schemaVersion",
+              "groups"
+            ],
+            "properties": {
+              "schemaVersion": {
+                "const": "babok-requirements.v1"
+              },
+              "groups": {
+                "type": "object"
+              }
+            },
+            "additionalProperties": true
+          },
+          "babokRegistry": {
+            "type": "object",
+            "description": "Canonical BABOK registry validated by the versioned babok-requirements.v1 server contract.",
+            "required": [
+              "schemaVersion",
+              "groups"
+            ],
+            "properties": {
+              "schemaVersion": {
+                "const": "babok-requirements.v1"
+              },
+              "groups": {
+                "type": "object"
+              }
+            },
+            "additionalProperties": true,
+            "deprecated": true
+          },
+          "editedRecordIds": {
+            "type": "array",
+            "maxItems": 200,
+            "items": {
+              "type": "string"
+            }
+          }
         },
-        "additionalProperties": false
+        "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "requirements"
+            ]
+          },
+          {
+            "required": [
+              "registry"
+            ]
+          },
+          {
+            "required": [
+              "babokRegistry"
+            ]
+          }
+        ]
       },
       "RequirementsVersion": {
         "type": "object",
-        "required": ["versionId", "sourceJobId", "requirements", "createdAt"],
+        "required": [
+          "versionId",
+          "sourceJobId",
+          "requirements",
+          "createdAt"
+        ],
         "properties": {
-          "versionId": { "type": "string", "format": "uuid" },
-          "sourceJobId": { "type": "string", "format": "uuid" },
-          "baseVersionId": { "type": ["string", "null"], "format": "uuid" },
-          "researchJobId": { "type": ["string", "null"], "format": "uuid" },
-          "requirements": { "$ref": "#/components/schemas/RequirementsGroups" },
-          "decisions": { "type": "object", "additionalProperties": true },
-          "createdAt": { "type": "string", "format": "date-time" }
+          "versionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sourceJobId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "baseVersionId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "researchJobId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "requirements": {
+            "$ref": "#/components/schemas/RequirementsGroups"
+          },
+          "decisions": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "registry": {
+            "type": "object",
+            "description": "Canonical BABOK registry validated by the versioned babok-requirements.v1 server contract.",
+            "required": [
+              "schemaVersion",
+              "groups"
+            ],
+            "properties": {
+              "schemaVersion": {
+                "const": "babok-requirements.v1"
+              },
+              "groups": {
+                "type": "object"
+              }
+            },
+            "additionalProperties": true
+          },
+          "revision": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": true
+          },
+          "contentSchemaVersion": {
+            "type": "string"
+          }
         }
       },
       "ApiCapabilities": {
         "type": "object",
-        "required": ["name", "version", "requestId", "userId", "tenantId", "capabilities"],
+        "required": [
+          "name",
+          "version",
+          "requestId",
+          "userId",
+          "tenantId",
+          "capabilities"
+        ],
         "properties": {
-          "name": { "type": "string" },
-          "version": { "type": "string" },
-          "requestId": { "type": "string" },
-          "userId": { "type": "string" },
-          "tenantId": { "type": "string" },
+          "name": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "requestId": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          },
+          "tenantId": {
+            "type": "string"
+          },
           "capabilities": {
             "type": "object",
-            "required": ["models", "decompositionModes", "researchModes", "domainOperations", "promptReleases"],
+            "required": [
+              "models",
+              "decompositionModes",
+              "researchModes",
+              "domainOperations",
+              "promptReleases"
+            ],
             "properties": {
-              "models": { "type": "array", "items": { "type": "string" } },
-              "decompositionModes": { "type": "array", "items": { "$ref": "#/components/schemas/FeatureMode" } },
-              "researchModes": { "type": "array", "items": { "$ref": "#/components/schemas/FeatureMode" } },
-              "domainOperations": { "type": "array", "items": { "type": "string", "enum": ["decomposition", "requirements-research"] } },
-              "promptReleases": { "type": "object", "additionalProperties": { "type": "object", "required": ["active", "selectable"], "properties": { "active": { "type": "string" }, "selectable": { "type": "array", "items": { "type": "string" } } } }
+              "models": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "decompositionModes": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/FeatureMode"
+                }
+              },
+              "researchModes": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/FeatureMode"
+                }
+              },
+              "domainOperations": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "decomposition",
+                    "requirements-research"
+                  ]
+                }
+              },
+              "promptReleases": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "required": [
+                    "active",
+                    "selectable"
+                  ],
+                  "properties": {
+                    "active": {
+                      "type": "string"
+                    },
+                    "selectable": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              },
+              "inputMaxBytes": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "modelSettings": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "reasoningLevels": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "defaultReasoning": {
+                      "type": "string"
+                    },
+                    "disabledMapsTo": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
             }
           }
         }
@@ -651,5 +1173,4 @@
       "Unavailable": { "description": "Service unavailable or not accepting new jobs", "headers": { "Retry-After": { "schema": { "type": "integer" } } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } }
     }
   }
-}
 }

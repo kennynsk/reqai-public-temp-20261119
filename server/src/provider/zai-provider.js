@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { Agent } from 'undici';
 
 import { classifyProviderError } from './provider-error.js';
+import { FORCED_REASONING_MODELS } from '../domain/model-capabilities.js';
 
 function extractText(response) {
   const content = response?.choices?.[0]?.message?.content;
@@ -11,7 +12,6 @@ function extractText(response) {
   throw new Error('Provider response has no text content');
 }
 
-const FORCED_REASONING_MODELS = new Set(['glm-5.3', 'glm-5.3-flash']);
 const REASONING_EFFORTS = new Set(['low', 'high', 'max']);
 
 function resolveReasoning({ model, thinking, reasoning }) {

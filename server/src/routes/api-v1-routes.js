@@ -7,6 +7,7 @@ import { ApiError, badRequest } from '../errors/api-error.js';
 import { isRetiredMode, SUPPORTED_CREATE_MODES } from '../domain/job-modes.js';
 import { streamJobEvents } from '../services/sse-service.js';
 import { renderBabokReport } from '../services/babok-report-renderer.js';
+import { modelCapabilities } from '../domain/model-capabilities.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const DECOMPOSITION_MODES = new Set(['DECOMPOSITION']);
@@ -116,6 +117,8 @@ export function createApiV1Router({ config, services = {} }) {
       tenantId: req.auth.tenantId,
       capabilities: {
         models: config.llm.availableModels || config.llm.models,
+        inputMaxBytes: config.jobs.inputMaxBytes,
+        modelSettings: Object.fromEntries((config.llm.availableModels || config.llm.models).map((model) => [model, modelCapabilities(model)])),
         decompositionModes: SUPPORTED_CREATE_MODES.filter((mode) => mode === 'DECOMPOSITION'),
         researchModes: SUPPORTED_CREATE_MODES.filter((mode) => mode === 'REQUIREMENTS_INSIGHTS'),
         domainOperations: config.features?.requirementsIntegrationApi ? ['decomposition', 'requirements-research'] : [],
@@ -163,7 +166,14 @@ export function createApiV1Router({ config, services = {} }) {
       cursor: req.query.cursor,
       limit: req.query.limit || 20,
       status: req.query.status,
+      q: req.query.q,
+      groupBy: req.query.groupBy,
+      type: req.query.type,
     }));
+  }));
+
+  router.patch('/api/v1/jobs/:jobId/metadata', requireAnyRole('user', 'tenant-admin', 'system-admin'), asyncRoute(async (req, res) => {
+    res.json(await services.jobQueryService.updateMetadata({ auth: req.auth, jobId: requireUuid(req.params.jobId), body: req.body, requestId: req.context?.requestId }));
   }));
 
   router.get('/api/v1/jobs/:jobId', requireAnyRole('user', 'tenant-admin', 'operator', 'auditor', 'system-admin'), asyncRoute(async (req, res) => {

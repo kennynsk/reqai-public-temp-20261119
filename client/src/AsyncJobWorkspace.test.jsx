@@ -4,7 +4,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-  listJobs: vi.fn(), getJob: vi.fn(), getResult: vi.fn(), getResultContent: vi.fn(), getCapabilities: vi.fn(),
+  listJobs: vi.fn(), getJob: vi.fn(), getResult: vi.fn(), getResultContent: vi.fn(), getCapabilities: vi.fn(), decomposeRequirements: vi.fn(),
   uploadArtifact: vi.fn(), createJob: vi.fn(), researchRequirements: vi.fn(), cancelJob: vi.fn(), downloadArtifact: vi.fn(), getJobTrace: vi.fn(), getJobTraceDetail: vi.fn(),
   listRequirementsVersions: vi.fn(), getRequirementsVersion: vi.fn(), saveRequirementsVersion: vi.fn(), subscribe: vi.fn(),
 }));
@@ -13,6 +13,7 @@ vi.mock('./api/enterprise-api.js', () => ({
   enterpriseApi: {
     listJobs: mocks.listJobs, getJob: mocks.getJob, getResult: mocks.getResult, getResultContent: mocks.getResultContent,
     getCapabilities: mocks.getCapabilities, uploadArtifact: mocks.uploadArtifact, createJob: mocks.createJob,
+    decomposeRequirements: mocks.decomposeRequirements,
     researchRequirements: mocks.researchRequirements,
     cancelJob: mocks.cancelJob, downloadArtifact: mocks.downloadArtifact, listRequirementsVersions: mocks.listRequirementsVersions,
     getRequirementsVersion: mocks.getRequirementsVersion, saveRequirementsVersion: mocks.saveRequirementsVersion,
@@ -44,6 +45,70 @@ beforeEach(() => {
   mocks.subscribe.mockResolvedValue();
 });
 afterEach(cleanup);
+
+test('context helpers preserve text until explicit insertion', async () => {
+  render(<AsyncJobWorkspace />);
+  const context = screen.getByRole('textbox', { name: 'Бизнес-контекст' });
+  fireEvent.change(context, { target: { value: 'Моя бизнес-задача' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Показать пример' }));
+  expect(context).toHaveValue('Моя бизнес-задача');
+  fireEvent.click(screen.getByRole('button', { name: 'Добавить в конец' }));
+  expect(context.value).toMatch(/^Моя бизнес-задача\nНужна система/);
+});
+
+test('material roles use integration API and retry only failed file uploads', async () => {
+  mocks.getCapabilities.mockResolvedValue({ capabilities: { models: ['glm-5.3-flash'], domainOperations: ['decomposition'] } });
+  const primary = new File(['Primary'], 'primary.txt', { type: 'text/plain' });
+  const baseline = new File(['Baseline'], 'baseline.txt', { type: 'text/plain' });
+  const reference = new File(['Reference'], 'reference.txt', { type: 'text/plain' });
+  let referenceAttempts = 0;
+  mocks.uploadArtifact.mockImplementation(async (file) => {
+    if (file === reference && ++referenceAttempts === 1) throw new Error('Network');
+    return { artifactId: file.name };
+  });
+  mocks.decomposeRequirements.mockResolvedValue({ jobId: 'material-job' });
+  mocks.getJob.mockResolvedValue({ jobId: 'material-job', type: 'DECOMPOSITION', status: 'RUNNING' });
+  render(<AsyncJobWorkspace />);
+  fireEvent.click(screen.getByText('Предыдущая версия и справочные материалы (необязательно)'));
+  fireEvent.change(await screen.findByLabelText('Предыдущая версия требований'), { target: { files: [baseline] } });
+  fireEvent.change(screen.getByLabelText('Файл требований'), { target: { files: [primary] } });
+  fireEvent.change(screen.getByLabelText('Справочные материалы'), { target: { files: [reference] } });
+  fireEvent.click(screen.getByRole('button', { name: 'Декомпозировать требования' }));
+  await screen.findByText(/Не все материалы загружены/);
+  expect(mocks.decomposeRequirements).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Декомпозировать требования' }));
+  await waitFor(() => expect(mocks.decomposeRequirements).toHaveBeenCalledWith({ inputArtifactId: 'primary.txt', baselineArtifactId: 'baseline.txt', referenceArtifactIds: ['reference.txt'], model: 'glm-5.3-flash', reasoning: 'low', temperature: 0.2 }));
+  expect(mocks.uploadArtifact.mock.calls.filter(([file]) => file === primary)).toHaveLength(1);
+  expect(mocks.uploadArtifact.mock.calls.filter(([file]) => file === baseline)).toHaveLength(1);
+  expect(mocks.uploadArtifact.mock.calls.filter(([file]) => file === reference)).toHaveLength(2);
+});
+
+test('next-run settings restore per actor and old disabled migrates to low for GLM', async () => {
+  localStorage.setItem('reqai.nextAiSettings:["tenant","user"]', JSON.stringify({ model: 'glm-5.3-flash', reasoning: 'disabled', temperature: 0.7 }));
+  mocks.getCapabilities.mockResolvedValue({ tenantId: 'tenant', userId: 'user', capabilities: { models: ['glm-4.7', 'glm-5.3-flash'] } });
+  render(<AsyncJobWorkspace />);
+  fireEvent.click(screen.getByLabelText('Настройки AI'));
+  await waitFor(() => expect(screen.getByRole('combobox', { name: 'Модель' })).toHaveValue('glm-5.3-flash'));
+  expect(screen.getByRole('combobox', { name: 'Reasoning' })).toHaveValue('low');
+  expect(screen.queryByRole('option', { name: 'Выключен' })).not.toBeInTheDocument();
+  expect(screen.getByRole('spinbutton', { name: 'Температура' })).toHaveValue(0.7);
+});
+
+test('reading a saved job preserves the unsent context draft and attachments', async () => {
+  const item = { jobId: 'history-room', type: 'DECOMPOSITION', status: 'SUCCEEDED', title: 'Сохранённая задача', createdAt: new Date().toISOString() };
+  mocks.listJobs.mockResolvedValue({ items: [item], nextCursor: null });
+  mocks.getJob.mockResolvedValue(item);
+  mocks.getResult.mockResolvedValue({ ...item, resultArtifactId: 'result' });
+  mocks.getResultContent.mockResolvedValue(JSON.stringify({ mode: 'DECOMPOSITION', requirements: { business: [], functional: [], nonfunctional: [] } }));
+  mocks.listRequirementsVersions.mockResolvedValue({ items: [{ versionId: 'saved', sourceJobId: item.jobId, requirements: { business: [], functional: [], nonfunctional: [] }, decisions: {}, createdAt: item.createdAt }] });
+  render(<AsyncJobWorkspace />);
+  fireEvent.change(screen.getByRole('textbox', { name: 'Бизнес-контекст' }), { target: { value: 'Будущая задача' } });
+  fireEvent.change(screen.getByLabelText('Файл требований'), { target: { files: [new File(['draft'], 'draft.txt')] } });
+  await selectHistoryEntry('Сохранённая задача');
+  fireEvent.click(await screen.findByRole('button', { name: 'К черновику новой задачи' }));
+  await waitFor(() => expect(screen.getByRole('textbox', { name: 'Бизнес-контекст' })).toHaveValue('Будущая задача'));
+  expect(screen.getByText('draft.txt')).toBeInTheDocument();
+});
 
 async function openSavedRoomReview() {
   const registry = roomBookingRegistry();
@@ -85,7 +150,7 @@ test('global save includes an open card draft and retains it after failure', asy
     clientMutationId: expect.any(String), expectedLatestVersionId: 'rooms-v1',
     registry: expect.objectContaining({ groups: expect.objectContaining({ BR: [expect.objectContaining({ text: 'Сохранить мой черновик.' })] }) }),
   })));
-  await screen.findByText(/Сеть недоступна/);
+  await screen.findByText(/Не удалось выполнить действие/);
   expect(screen.getByRole('textbox', { name: 'Текст требования BR-001' })).toHaveValue('Сохранить мой черновик.');
   fireEvent.click(screen.getByRole('button', { name: 'Сохранить изменения' }));
   await waitFor(() => expect(mocks.saveRequirementsVersion).toHaveBeenCalledTimes(2));
@@ -183,6 +248,26 @@ test('confirms deletion, supports undo, and does not reuse the deleted identifie
   expect(screen.getByText('BR-002')).toBeInTheDocument();
 });
 
+test('question links return to the pending requirement without losing edits', async () => {
+  await openSavedRoomReview();
+  fireEvent.click(screen.getByRole('button', { name: 'Вопросы · 7' }));
+  expect(screen.getByRole('heading', { name: 'Вопросы для уточнения · 7' })).toBeInTheDocument();
+  fireEvent.click(screen.getAllByRole('link', { name: 'BR-001' })[0]);
+  expect(screen.getByRole('textbox', { name: 'Текст требования BR-001' })).toHaveValue('Сохранить мой черновик.');
+});
+
+test('all-requirements navigation moves focus while by-type mode filters', async () => {
+  await openSavedRoomReview();
+  fireEvent.click(screen.getByRole('button', { name: 'Все требования', exact: true }));
+  fireEvent.click(screen.getByRole('tab', { name: 'FR · Функциональные требования' }));
+  expect(screen.getByRole('textbox', { name: 'Текст требования BR-001' })).toHaveValue('Сохранить мой черновик.');
+  await waitFor(() => expect(screen.getByRole('region', { name: 'Функциональные требования', exact: true })).toHaveFocus());
+  fireEvent.click(screen.getByRole('button', { name: 'По типам', exact: true }));
+  expect(screen.queryByRole('textbox', { name: 'Текст требования BR-001' })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('tab', { name: 'BR · Бизнес-требования' }));
+  expect(screen.getByRole('textbox', { name: 'Текст требования BR-001' })).toHaveValue('Сохранить мой черновик.');
+});
+
 async function openHistory() {
   fireEvent.click(await screen.findByRole('button', { name: 'История' }));
   return screen.findByRole('dialog', { name: 'История задач' });
@@ -244,7 +329,7 @@ test('allows choosing a reasoning level and sends it with a new task', async () 
   render(<AsyncJobWorkspace />);
   fireEvent.click(screen.getByText('Настройки AI').closest('summary'));
   const reasoning = screen.getByRole('combobox', { name: 'Reasoning' });
-  expect(reasoning).toHaveValue('disabled');
+  expect(reasoning).toHaveValue('low');
   fireEvent.change(reasoning, { target: { value: 'high' } });
   fireEvent.change(screen.getByPlaceholderText('Опишите бизнес-задачу...'), { target: { value: 'Сократить время обработки' } });
   fireEvent.click(screen.getByRole('button', { name: 'Декомпозировать требования' }));
@@ -273,28 +358,28 @@ test('shows honest backend milestones separately from business workflow progress
   mocks.getJob.mockResolvedValue(running);
   render(<AsyncJobWorkspace />);
 
-  expect(await screen.findByText('Сопоставляем требования с отраслевыми практиками')).toBeInTheDocument();
+  expect(await screen.findByText('Модель исследует требования. Ожидаем результат.')).toBeInTheDocument();
   const estimatedProgress = screen.getByRole('progressbar', { name: 'Прогресс выполнения задачи' });
-  expect(Number(estimatedProgress.getAttribute('aria-valuenow'))).toBeGreaterThan(20);
+  expect(Number(estimatedProgress.getAttribute('aria-valuenow'))).toBe(20);
   expect(Number(estimatedProgress.getAttribute('aria-valuenow'))).toBeLessThan(90);
-  expect(estimatedProgress).toHaveAttribute('aria-valuetext', expect.stringContaining('Оценка'));
+  expect(estimatedProgress).toHaveAttribute('aria-valuetext', expect.stringContaining('подтверждено сервером'));
   expectBusinessStage(3);
   expect(screen.getByRole('listitem', { name: 'Подготовка: завершено' })).toBeInTheDocument();
   expect(screen.getByRole('listitem', { name: 'AI-анализ: выполняется' })).toHaveAttribute('aria-current', 'step');
   expect(screen.queryByText(/Сейчас в фокусе:/)).not.toBeInTheDocument();
-  expect(screen.getByText(/обычно 3–6 минут/)).toBeInTheDocument();
-  expect(screen.getByLabelText('Об ориентировочной оценке прогресса')).toHaveAttribute('title', 'Процент — ориентировочная оценка. Переходы между этапами подтверждаются сервером.');
+  expect(screen.getByText(/Оценка ожидания: 3–6 минут/)).toBeInTheDocument();
+  expect(screen.queryByLabelText('Об ориентировочной оценке прогресса')).not.toBeInTheDocument();
   expect(screen.getByLabelText(/Прошло 00:1[12]/)).toBeInTheDocument();
 
   fireEvent.click(screen.getByRole('button', { name: 'Продолжить в фоне' }));
   await waitFor(() => expect(window.location.pathname).toBe('/'));
-  const indicator = await screen.findByRole('button', { name: 'Фоновая задача: AI анализирует требования' });
-  expect(Number(indicator.textContent.match(/(\d+)%/)?.[1])).toBeGreaterThan(20);
+  const indicator = await screen.findByRole('button', { name: 'Фоновая задача: AI анализирует требования. Этап: AI-анализ' });
+  expect(Number(indicator.textContent.match(/(\d+)%/)?.[1])).toBe(20);
   expect(screen.queryByRole('region', { name: 'Выполнение задачи' })).not.toBeInTheDocument();
 
   fireEvent.click(indicator);
   await waitFor(() => expect(window.location.pathname).toBe('/tasks/honest-1'));
-  expect(await screen.findByText('Сопоставляем требования с отраслевыми практиками')).toBeInTheDocument();
+  expect(await screen.findByText('Модель исследует требования. Ожидаем результат.')).toBeInTheDocument();
 });
 
 test('continues the overall percentage through an authoritative assembly milestone', async () => {
@@ -309,15 +394,15 @@ test('continues the overall percentage through an authoritative assembly milesto
   render(<AsyncJobWorkspace />);
 
   const progress = await screen.findByRole('progressbar', { name: 'Прогресс выполнения задачи' });
-  expect(Number(progress.getAttribute('aria-valuenow'))).toBeGreaterThan(20);
+  expect(Number(progress.getAttribute('aria-valuenow'))).toBe(20);
   expect(screen.getByRole('listitem', { name: 'AI-анализ: выполняется' })).toBeInTheDocument();
 
   const assembly = { ...running, progress: 90, currentStep: 'assembly', message: 'Собираем требования по категориям', updatedAt: new Date(Date.now() - 30_000).toISOString() };
   await waitFor(() => expect(onEvent).toBeTypeOf('function'));
   await act(() => onEvent({ jobId: running.jobId, eventType: 'job.progress', job: assembly }));
-  expect(Number(progress.getAttribute('aria-valuenow'))).toBeGreaterThan(90);
+  expect(Number(progress.getAttribute('aria-valuenow'))).toBe(90);
   expect(Number(progress.getAttribute('aria-valuenow'))).toBeLessThan(95);
-  expect(progress).toHaveAttribute('aria-valuetext', expect.stringMatching(/Оценка \d+ процентов, этап Сборка/));
+  expect(progress).toHaveAttribute('aria-valuetext', '90 процентов подтверждено сервером');
   expect(screen.getByText(/\d+% · Сборка/)).toBeInTheDocument();
   expect(screen.getByRole('listitem', { name: 'AI-анализ: завершено' })).toBeInTheDocument();
   expect(screen.getByRole('listitem', { name: 'Сборка: выполняется' })).toHaveAttribute('aria-current', 'step');
@@ -325,7 +410,7 @@ test('continues the overall percentage through an authoritative assembly milesto
   mocks.getJob.mockResolvedValue(assembly);
   fireEvent.click(screen.getByRole('button', { name: 'Продолжить в фоне' }));
   const indicator = await screen.findByRole('button', { name: 'Фоновая задача: Собираем требования по категориям. Этап: Сборка' });
-  expect(indicator.textContent).toMatch(/9[1-4]%/);
+  expect(indicator.textContent).toMatch(/90%/);
 });
 
 test('shows a realistic decomposition duration without warning before the expected window ends', async () => {
@@ -337,8 +422,8 @@ test('shows a realistic decomposition duration without warning before the expect
   mocks.getJob.mockResolvedValue(running);
   render(<AsyncJobWorkspace />);
 
-  expect(await screen.findByText(/обычно 2–4 минуты/)).toBeInTheDocument();
-  expect(screen.queryByText('Обработка занимает больше обычного, но задача продолжает выполняться.')).not.toBeInTheDocument();
+  expect(await screen.findByText(/Оценка ожидания: 2–4 минуты/)).toBeInTheDocument();
+  expect(screen.queryByText('Обработка занимает больше оценочного времени. Последний подтверждённый этап показан ниже.')).not.toBeInTheDocument();
 });
 
 test('explains a decomposition run that exceeds the four-minute estimate', async () => {
@@ -350,11 +435,11 @@ test('explains a decomposition run that exceeds the four-minute estimate', async
   mocks.getJob.mockResolvedValue(running);
   render(<AsyncJobWorkspace />);
 
-  expect(await screen.findByText('Обработка занимает больше обычного, но задача продолжает выполняться.')).toBeInTheDocument();
+  expect(await screen.findByText('Обработка занимает больше оценочного времени. Последний подтверждённый этап показан ниже.')).toBeInTheDocument();
   const progress = screen.getByRole('progressbar', { name: 'Прогресс выполнения задачи' });
-  expect(Number(progress.getAttribute('aria-valuenow'))).toBeGreaterThan(95);
+  expect(Number(progress.getAttribute('aria-valuenow'))).toBe(95);
   expect(Number(progress.getAttribute('aria-valuenow'))).toBeLessThan(100);
-  expect(progress).toHaveAttribute('aria-valuetext', expect.stringMatching(/Оценка \d+ процентов, этап Сохранение/));
+  expect(progress).toHaveAttribute('aria-valuetext', '95 процентов подтверждено сервером');
   expect(screen.getByText(/\d+% · Сохранение/)).toBeInTheDocument();
 });
 
@@ -384,10 +469,12 @@ test('opens compact history drawer, filters jobs and renders localized partial s
   ], nextCursor: null });
   render(<AsyncJobWorkspace />);
   const visibleDrawer = await openHistory();
-  expect(within(visibleDrawer).getByText('Готово частично')).toBeInTheDocument();
+  expect(await within(visibleDrawer).findByText('Готово частично')).toBeInTheDocument();
+  mocks.listJobs.mockResolvedValue({ items: [{ jobId: 'd2', type: 'DECOMPOSITION', mode: 'DECOMPOSITION', status: 'SUCCEEDED', createdAt: new Date().toISOString() }], nextCursor: null });
   fireEvent.click(within(visibleDrawer).getByRole('button', { name: 'Декомпозиция' }));
   expect(within(visibleDrawer).queryByText('Исследование', { exact: true })).not.toBeInTheDocument();
-  expect(within(visibleDrawer).getByText('Подготовка требований', { exact: true })).toBeInTheDocument();
+  expect(await within(visibleDrawer).findByText('Подготовка требований', { exact: true })).toBeInTheDocument();
+  expect(mocks.listJobs).toHaveBeenLastCalledWith({ groupBy: 'workflow', limit: 20, type: 'DECOMPOSITION' }, expect.any(Object));
 });
 
 test('cancels active job and reconciles authoritative REST state', async () => {
@@ -505,10 +592,10 @@ test('finishes requirements without AI research and switches category layout', a
   const categories = await screen.findByLabelText('Категории требований');
   expect(categories).toHaveClass('xl:grid-cols-3');
   const layoutToggle = screen.getByRole('group', { name: 'Вид требований' });
-  fireEvent.click(within(layoutToggle).getByRole('button', { name: 'Строки' }));
+  fireEvent.click(within(layoutToggle).getByRole('button', { name: 'По типам' }));
   expect(categories).toHaveClass('grid-cols-1');
   expect(categories).not.toHaveClass('xl:grid-cols-3');
-  expect(localStorage.getItem('reqai.requirementsLayout')).toBe('rows');
+  expect(localStorage.getItem('reqai.requirementsView')).toBe('by-type');
 
   fireEvent.click(screen.getByRole('button', { name: 'Перейти к финальной версии' }));
   await waitFor(() => expect(mocks.saveRequirementsVersion).toHaveBeenCalledWith(expect.objectContaining({
@@ -693,7 +780,7 @@ test('starts a clean new task from a terminal workflow and keeps the completed j
   expect(screen.queryByRole('button', { name: 'Новая задача' })).not.toBeInTheDocument();
 
   const drawer = await openHistory();
-  expect(within(drawer).getByText('Подготовка требований', { exact: true })).toBeInTheDocument();
+  expect(await within(drawer).findByText('Подготовка требований', { exact: true })).toBeInTheDocument();
   view.unmount();
   render(<AsyncJobWorkspace />);
   expect(await screen.findByRole('heading', { name: 'Сформулируйте бизнес-задачу' })).toBeInTheDocument();

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { createJobQueryService } from '../src/services/job-query-service.js';
+import { initialJobMetadata } from '../src/domain/job-metadata.js';
 
 const row = {
   id: '00000000-0000-4000-8000-000000000001',
@@ -91,4 +92,51 @@ test('unfinished job result returns a retryable conflict', async () => {
     () => service.result({ auth: { tenantId: 'tenant-a', userId: 'user-a', roles: ['user'] }, jobId: row.id }),
     (error) => error.code === 'RESULT_NOT_READY' && error.retryable,
   );
+});
+
+test('metadata is deterministic, bounded, and supports unavailable input', () => {
+  assert.equal(initialJobMetadata({ text: '  Комнаты\n\tи встречи ' }).title, 'Комнаты и встречи');
+  assert.equal(initialJobMetadata({ name: 'brief.docx' }).title, 'brief.docx');
+  assert.equal(initialJobMetadata({ type: 'RESEARCH', createdAt: '2026-01-01' }).title, 'AI-исследование · 2026-01-01');
+  const metadata = initialJobMetadata({ text: 'x'.repeat(9000) });
+  assert.equal(metadata.title.length, 120);
+  assert.equal(metadata.summary.length, 2000);
+});
+
+test('grouped history binds cursor to search and filters without changing legacy response', async () => {
+  const calls = [];
+  const auth = { tenantId: 'a', userId: 'alice', roles: ['user'] };
+  const service = createJobQueryService({ jobRepository: {
+    async listWorkflows(input) { calls.push(input); return { rows: [{ ...row, title: 'Комнаты', children: [row], metadata_revision: 2 }, row], indexingPending: true }; },
+    async listVisible() { return [row]; },
+  }, config: {} });
+  const input = { auth, groupBy: 'workflow', q: ' комнаты ', type: 'RESEARCH', limit: 1 };
+  const page = await service.list(input);
+  assert.equal(page.items[0].title, 'Комнаты');
+  assert.equal(page.items[0].children[0].title, 'Комнаты');
+  assert.equal(page.indexingPending, true);
+  assert.equal(calls[0].ownerUserId, 'alice');
+  await service.list({ ...input, cursor: page.nextCursor });
+  assert.equal(calls[1].beforeId, row.id);
+  await assert.rejects(service.list({ ...input, q: 'другое', cursor: page.nextCursor }), { code: 'INVALID_CURSOR' });
+  await assert.rejects(service.list({ auth, q: 'x'.repeat(201) }), { code: 'VALIDATION_ERROR' });
+  const legacy = await service.list({ auth });
+  assert.equal('title' in legacy.items[0], false);
+  assert.equal('indexingPending' in legacy, false);
+});
+
+test('metadata writes validate preconditions and use trusted identity', async () => {
+  const calls = [], audits = [];
+  const auth = { tenantId: 'a', userId: 'alice', roles: ['user'] };
+  const service = createJobQueryService({ jobRepository: {
+    async updateWorkflowMetadata(input) { calls.push(input); return { id: row.id, title: input.title, metadata_revision: 4 }; },
+  }, config: { process: { siteId: 'test' } }, auditRepository: { async record(value) { audits.push(value); } } });
+  for (const body of [{ title: 'x' }, { title: ' ', expectedRevision: 0 }, { title: 'x', expectedRevision: -1 }, { title: 'x', expectedRevision: 0, actorId: 'bob' }, { title: 'a\nb', expectedRevision: 0 }]) {
+    await assert.rejects(service.updateMetadata({ auth, jobId: row.id, body }), { code: 'VALIDATION_ERROR' });
+  }
+  const result = await service.updateMetadata({ auth, jobId: row.id, body: { title: ' Комнаты ', expectedRevision: 3 } });
+  assert.equal(result.title, 'Комнаты');
+  assert.equal(calls[0].actorId, 'alice');
+  assert.equal(calls[0].ownerUserId, 'alice');
+  assert.equal(audits[0].action, 'job.metadata.update');
 });

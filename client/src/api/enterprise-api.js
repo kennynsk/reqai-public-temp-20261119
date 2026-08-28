@@ -24,7 +24,8 @@ async function request(path, { method = 'GET', headers = {}, body, signal } = {}
 
 export const enterpriseApi = {
   getCapabilities: () => request('/api/v1'),
-  listJobs: (query = {}) => request(`/api/v1/jobs?${new URLSearchParams(Object.entries(query).filter(([, value]) => value != null))}`),
+  listJobs: (query = {}, options = {}) => request(`/api/v1/jobs?${new URLSearchParams(Object.entries(query).filter(([, value]) => value != null))}`, options),
+  updateJobMetadata: (id, body) => request(`/api/v1/jobs/${id}/metadata`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }),
   getJob: (id, options = {}) => request(`/api/v1/jobs/${id}`, options),
   getResult: (id, options = {}) => request(`/api/v1/jobs/${id}/result`, options),
   getJobTrace: (id, query = {}, options = {}) => request(`/api/v1/jobs/${id}/trace?${new URLSearchParams(Object.entries(query).filter(([, value]) => value != null))}`, options),
@@ -35,6 +36,7 @@ export const enterpriseApi = {
     return response.text();
   },
   createJob: (body, idempotencyKey = crypto.randomUUID()) => request('/api/v1/jobs', { method: 'POST', headers: { 'content-type': 'application/json', 'Idempotency-Key': idempotencyKey }, body: JSON.stringify(body) }),
+  decomposeRequirements: (body, idempotencyKey = crypto.randomUUID()) => request('/api/v1/decompositions', { method: 'POST', headers: { 'content-type': 'application/json', 'Idempotency-Key': idempotencyKey }, body: JSON.stringify(body) }),
   researchRequirements: (versionId, body = {}, idempotencyKey = crypto.randomUUID()) => request(`/api/v1/requirements/versions/${versionId}/research`, { method: 'POST', headers: { 'content-type': 'application/json', 'Idempotency-Key': idempotencyKey }, body: JSON.stringify(body) }),
   saveRequirementsVersion: (body) => request('/api/v1/requirements/versions', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }),
   getRequirementsVersion: (id) => request(`/api/v1/requirements/versions/${id}`),

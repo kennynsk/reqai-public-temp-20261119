@@ -35,9 +35,18 @@ import { enterpriseApi, subscribeJobEvents } from './api/enterprise-api.js';
 import { EXECUTION_PHASES, executionPhaseIndex, focusMessageForJob, progressPresentationForJob } from './job-progress.js';
 import { assembleReview, clearReviewDrafts, rebaseReview, useDraftField, useReviewState } from './review-state.js';
 import { SessionContext } from './review-context.js';
+import RegistryAnalysis, { RecordLinks } from './RegistryAnalysis.jsx';
+import RequirementTypeNav from './RequirementTypeNav.jsx';
+import HistoryDrawer from './HistoryDrawer.jsx';
+import TaskTitle from './TaskTitle.jsx';
+import ContextInput from './ContextInput.jsx';
+import LegacyDeletionNotice from './LegacyDeletionNotice.jsx';
+import { useLegacyDeletion } from './use-legacy-deletion.js';
+import ResultSettings from './ResultSettings.jsx';
+import { effectiveReasoning, readNextSettings, reasoningLevels } from './ai-settings.js';
 import ReviewDialog from './ReviewDialog.jsx';
 import { readAccessToken } from './api/auth-session.js';
-import { SourceEvidence, MaterialCoverage } from './SourceEvidence.jsx';
+import { CoverageWarning, SourceEvidence } from './SourceEvidence.jsx';
 import { STRUCTURED_FIELDS, QUALITY_OPTIONS } from './review-fields.js';
 import { ReviewDraftProvider, ReviewSessionProvider } from './ReviewDraftProvider.jsx';
 
@@ -121,16 +130,6 @@ const BABOK_REQUIREMENT_COLUMNS = [
 ];
 const BABOK_REQUIREMENT_TYPES = BABOK_REQUIREMENT_COLUMNS.map(([type]) => type);
 const BABOK_ANALYSIS_TYPES = ['GAP', 'HYP', 'TERM'];
-const BABOK_ANALYSIS_LABELS = {
-  GAP: 'Пробелы',
-  HYP: 'Гипотезы',
-  TERM: 'Термины',
-};
-const BABOK_ANALYSIS_COLORS = {
-  GAP: 'border-amber-200 bg-amber-50 text-amber-900',
-  HYP: 'border-violet-200 bg-violet-50 text-violet-900',
-  TERM: 'border-cyan-200 bg-cyan-50 text-cyan-900',
-};
 const BABOK_PROVENANCE_LABELS = {
   'Извлечено': 'Извлечено из источника',
   'Нормализовано': 'Нормализовано из источника',
@@ -156,7 +155,9 @@ function primaryStatus(jobOrResult) {
 
 function userFacingError(cause) {
   if (cause?.code === 'USER_ACTIVE_JOB_LIMIT') return 'Другая задача уже выполняется. Дождитесь её завершения и попробуйте снова.';
-  return `${cause?.code || 'ERROR'}: ${cause?.message || 'Не удалось выполнить действие'}`;
+  if (cause?.status === 401 || cause?.status === 403) return 'Нет доступа. Проверьте вход и права пользователя.';
+  if (cause?.status === 413) return 'Материал превышает допустимый размер.';
+  return 'Не удалось выполнить действие. Ваши данные сохранены в форме. Повторите попытку; подробности доступны в Debug.';
 }
 
 function failureMessage(job) {
@@ -390,10 +391,10 @@ function EditableRequirementCard({ type, requirement, onEdit, onDelete, onDraftC
   }
 
   return (
-    <article className={`group relative py-5 first:pt-0 last:pb-0 ${requirement.fromResearch ? 'bg-indigo-50/40 -mx-3 px-3 rounded-xl' : ''}`}>
+    <article id={`record-${requirement.id}`} tabIndex={-1} style={{ scrollMarginTop: '14rem' }} className={`group relative py-5 first:pt-0 last:pb-0 ${requirement.fromResearch ? 'bg-indigo-50/40 -mx-3 px-3 rounded-xl' : ''}`}>
       <div className="flex items-start justify-between gap-4 mb-2">
         <div className="flex items-center gap-2">
-          <span className="text-xs font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded">{requirement.id}</span>
+          <a href={`#record-${requirement.id}`} className="text-xs font-bold text-indigo-700 bg-indigo-50 px-2 py-1 rounded underline underline-offset-2">{requirement.id}</a>
           {requirement.fromResearch && <span className="inline-flex items-center gap-1 text-xs font-bold text-indigo-600"><Sparkles className="w-3.5 h-3.5" />AI</span>}
         </div>
         {!editing && !readOnly && <details className="relative">
@@ -421,7 +422,7 @@ function EditableRequirementCard({ type, requirement, onEdit, onDelete, onDraftC
   );
 }
 
-function BabokRequirementCard({ type, requirement, onEdit, onDelete, onDraftChange, readOnly = false, materials, manuallyEdited = false }) {
+function BabokRequirementCard({ type, requirement, onEdit, onDelete, onDraftChange, readOnly = false, materials, manuallyEdited = false, onNavigate }) {
   const field = useDraftField({ group: type, id: requirement.id, text: requirement.text || '' });
   const [localEditing, setLocalEditing] = useState(false);
   const [localText, setLocalText] = useState(requirement.text || '');
@@ -429,7 +430,7 @@ function BabokRequirementCard({ type, requirement, onEdit, onDelete, onDraftChan
   const text = field.draft?.text ?? localText;
   const setEditing = (value) => { if (field.controlled) { if (value) field.start(); else field.clear(); } else setLocalEditing(value); };
   const setText = (value) => { if (field.controlled) field.change(value); else setLocalText(value); };
-  const details = babokRecordDetails(type, requirement);
+  const details = babokRecordDetails(type, requirement).filter(([label]) => label !== 'Связанные записи');
   const source = requirement.source;
   const [fieldError, setFieldError] = useState('');
 
@@ -450,10 +451,10 @@ function BabokRequirementCard({ type, requirement, onEdit, onDelete, onDraftChan
   }
 
   return (
-    <article className={`group relative py-5 first:pt-0 last:pb-0 ${requirement.fromResearch ? 'bg-indigo-50/40 -mx-3 px-3 rounded-xl' : ''}`}>
+    <article id={`record-${requirement.id}`} tabIndex={-1} style={{ scrollMarginTop: '14rem' }} className={`group relative py-5 first:pt-0 last:pb-0 ${requirement.fromResearch ? 'bg-indigo-50/40 -mx-3 px-3 rounded-xl' : ''}`}>
       <div className="flex items-start justify-between gap-4 mb-2">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-xs font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded font-mono">{requirement.id}</span>
+          <RecordLinks ids={[requirement.id]} onNavigate={onNavigate} />
           {manuallyEdited && <span className="text-xs text-slate-600">Изменено вручную</span>}
           {requirement.quality !== 'Готово' && <span className="text-xs rounded bg-amber-50 px-2 py-1 text-amber-800">{BABOK_QUALITY_LABELS[requirement.quality] || 'Нужно уточнить'}</span>}
           {requirement.fromResearch && <span className="inline-flex items-center gap-1 text-xs font-bold text-indigo-600"><Sparkles className="w-3.5 h-3.5" />AI-предложение</span>}
@@ -488,6 +489,7 @@ function BabokRequirementCard({ type, requirement, onEdit, onDelete, onDraftChan
           <span>Источник, качество и связи</span><ChevronDown className="w-3.5 h-3.5 group-open/evidence:hidden" /><ChevronUp className="w-3.5 h-3.5 hidden group-open/evidence:block" />
         </summary>
         <div className="border-t border-slate-100 px-3 py-3 space-y-2 text-xs text-slate-600">
+          <RecordLinks ids={requirement.relatedIds || requirement.relatedTo} onNavigate={onNavigate} />
           {details.map(([label, value]) => <p key={label}><span className="font-semibold text-slate-500">{label}:</span> {value}</p>)}
           <SourceEvidence source={source} materials={materials} />
           <p><span className="font-semibold text-slate-500">Происхождение:</span> {BABOK_PROVENANCE_LABELS[requirement.provenance] || requirement.provenance || '—'}</p>
@@ -564,75 +566,19 @@ function AddRequirementForm({ type, onAdd, onDraftChange, categoryLabel }) {
 }
 
 function useRequirementsLayout() {
-  const [layout, setLayoutState] = useState(() => localStorage.getItem('reqai.requirementsLayout') === 'rows' ? 'rows' : 'columns');
+  const [layout, setLayoutState] = useState(() => { try { const value = localStorage.getItem('reqai.requirementsView') || localStorage.getItem('reqai.requirementsLayout'); return ['by-type', 'rows'].includes(value) ? 'rows' : 'columns'; } catch { return 'columns'; } });
   function setLayout(value) {
     setLayoutState(value);
-    localStorage.setItem('reqai.requirementsLayout', value);
+    try { localStorage.setItem('reqai.requirementsView', value === 'rows' ? 'by-type' : 'all'); } catch { /* preference is optional */ }
   }
   return [layout, setLayout];
 }
 
 function RequirementsLayoutToggle({ layout, onChange }) {
   return <div role="group" aria-label="Вид требований" className="inline-flex rounded-lg border border-slate-200 bg-white p-1 shadow-sm">
-    <button type="button" aria-pressed={layout === 'columns'} onClick={() => onChange('columns')} className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold ${layout === 'columns' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-500 hover:bg-slate-50'}`}><Columns3 className="w-3.5 h-3.5" />Столбцы</button>
-    <button type="button" aria-pressed={layout === 'rows'} onClick={() => onChange('rows')} className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold ${layout === 'rows' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-500 hover:bg-slate-50'}`}><List className="w-3.5 h-3.5" />Строки</button>
+    <button type="button" aria-pressed={layout === 'columns'} onClick={() => onChange('columns')} className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold ${layout === 'columns' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-500 hover:bg-slate-50'}`}><Columns3 className="w-3.5 h-3.5" />Все требования</button>
+    <button type="button" aria-pressed={layout === 'rows'} onClick={() => onChange('rows')} className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold ${layout === 'rows' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-500 hover:bg-slate-50'}`}><List className="w-3.5 h-3.5" />По типам</button>
   </div>;
-}
-
-function BabokAnalysisPanels({ registry }) {
-  const counts = babokRegistryCounts(registry);
-  const analysis = registry.analysis || {};
-  const materials = registry.materials || {};
-  const scope = registry.scope || {};
-  const evidence = (record) => record?.source && <SourceEvidence source={record.source} materials={materials} />;
-
-  return (
-    <section aria-label="Контекст и анализ требований" className="space-y-4">
-      <div className="rounded-2xl border border-slate-200 bg-white p-5">
-        <div className="flex items-start justify-between gap-4 flex-wrap">
-          <div><h2 className="text-base font-bold text-slate-900">Контекст и аналитические записи</h2><p className="text-xs text-slate-500 mt-1">Анализ, пробелы и связи остаются отдельно от подтверждённых требований.</p></div>
-          {scope.partial && <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800">Результат частичный</span>}
-        </div>
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2 mt-4" aria-label="Сводные количества требований">
-          {[...BABOK_REQUIREMENT_TYPES, 'CTX', ...BABOK_ANALYSIS_TYPES, 'DELTA'].map((type) => <div key={type} className="rounded-lg bg-slate-50 border border-slate-100 px-3 py-2"><span className="block text-[11px] font-bold text-slate-400">{type}</span><span className="text-lg font-bold text-slate-800">{counts[type]}</span></div>)}
-        </div>
-        {registry.summary?.text && <p className="mt-4 text-sm leading-relaxed text-slate-700 whitespace-pre-wrap">{registry.summary.text}</p>}
-        {registry.summary?.conclusions?.length > 0 && <ul className="mt-3 list-disc pl-5 text-sm text-slate-600 space-y-1">{registry.summary.conclusions.map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}</ul>}
-      </div>
-
-      <div className="grid gap-4 lg:grid-cols-2">
-        <section className="rounded-2xl border border-slate-200 bg-white p-5">
-          <h3 className="font-bold text-slate-900">Контекст</h3>
-          <div className="mt-3 space-y-3">
-            {registry.context?.length ? registry.context.map((item) => <article key={item.id} className="rounded-xl border border-slate-100 bg-slate-50/60 p-3"><div className="flex items-center justify-between gap-3"><span className="font-mono text-xs font-bold text-slate-500">{item.id}</span><span className="text-xs text-slate-400">{item.kind}</span></div><p className="text-sm text-slate-700 mt-2 leading-relaxed">{item.text}</p><div className="mt-2 flex flex-wrap gap-2 text-xs"><span className="rounded bg-white px-2 py-1 text-slate-600">{BABOK_PROVENANCE_LABELS[item.provenance] || item.provenance}</span><span className="rounded bg-white px-2 py-1 text-slate-600">{BABOK_QUALITY_LABELS[item.quality] || item.quality}</span>{evidence(item)}</div>{item.relatedIds?.length > 0 && <p className="text-xs text-indigo-700 mt-2">Связи: {item.relatedIds.join(', ')}</p>}</article>) : <p className="text-sm text-slate-400">Контекстные записи отсутствуют.</p>}
-          </div>
-        </section>
-        <MaterialCoverage materials={materials} scope={scope} />
-      </div>
-
-      <div className="grid gap-4 lg:grid-cols-3">
-        {BABOK_ANALYSIS_TYPES.map((type) => <section key={type} aria-label={BABOK_ANALYSIS_LABELS[type]} className={`rounded-2xl border p-5 ${BABOK_ANALYSIS_COLORS[type]}`}>
-          <div className="flex items-center justify-between gap-3"><h3 className="font-bold">{BABOK_ANALYSIS_LABELS[type]}</h3><span className="rounded-full bg-white/70 px-2 py-0.5 text-xs font-semibold">{analysis[type]?.length || 0}</span></div>
-          <div className="mt-3 space-y-3">
-            {analysis[type]?.length ? analysis[type].map((item) => <article key={item.id} className="rounded-xl border border-white/80 bg-white/70 p-3"><div className="flex items-center justify-between gap-3"><span className="font-mono text-xs font-bold">{item.id}</span>{evidence(item)}</div>{type === 'TERM' ? <><p className="font-semibold text-sm mt-2">{item.term}</p><p className="text-sm mt-1 leading-relaxed">{item.meaning || 'Значение требует уточнения.'}</p></> : <p className="text-sm mt-2 leading-relaxed">{item.text}</p>}{item.affectedIds?.length > 0 && <p className="text-xs mt-2">Затронуто: <span className="font-mono">{item.affectedIds.join(', ')}</span></p>}{item.nextStep && <p className="text-xs mt-2"><span className="font-semibold">Следующий шаг:</span> {item.nextStep}</p>}</article>) : <p className="text-sm opacity-70">Записей нет.</p>}
-          </div>
-        </section>)}
-      </div>
-
-      <div className="grid gap-4 lg:grid-cols-2">
-        <section aria-label="Трассируемость" className="rounded-2xl border border-slate-200 bg-white p-5">
-          <div className="flex items-center justify-between gap-3"><h3 className="font-bold text-slate-900">Трассируемость</h3><span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500">{analysis.traceability?.length || 0}</span></div>
-          {analysis.traceability?.length ? <div className="mt-3 space-y-2">{analysis.traceability.map((link, index) => <div key={`${link.from}:${link.to}:${index}`} className="rounded-lg border border-slate-100 bg-slate-50 p-3 text-xs"><div className="flex flex-wrap items-center gap-2"><span className="font-mono font-semibold text-indigo-700">{link.from}</span><Link2 className="w-3.5 h-3.5 text-slate-400" /><span className="font-mono font-semibold text-indigo-700">{link.to}</span><span className="ml-auto rounded bg-white px-2 py-0.5 text-slate-600">{link.status}</span></div><p className="mt-1 text-slate-600">{link.relation}</p>{evidence(link)}</div>)}</div> : <p className="text-sm text-slate-400 mt-3">Связи не сформированы.</p>}
-        </section>
-        <section aria-label="Вопросы для уточнения" className="rounded-2xl border border-slate-200 bg-white p-5">
-          <div className="flex items-center justify-between gap-3"><h3 className="font-bold text-slate-900">Вопросы для уточнения</h3><span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">{analysis.questions?.length || 0}</span></div>
-          {analysis.questions?.length ? <div className="mt-3 space-y-2">{analysis.questions.map((question) => <article key={question.id} className="rounded-lg border border-amber-100 bg-amber-50/60 p-3"><div className="flex items-center gap-2 flex-wrap"><span className="font-mono text-xs font-bold text-amber-800">{question.id}</span><span className="rounded bg-white px-2 py-0.5 text-xs font-bold text-amber-800">{question.priority}</span><span className="text-xs text-slate-500">{question.addressee}</span></div><p className="text-sm text-slate-700 mt-2 leading-relaxed">{question.text}</p><p className="text-xs text-slate-500 mt-2">Связан с {question.gapId}</p></article>)}</div> : <p className="text-sm text-slate-400 mt-3">Уточняющих вопросов нет.</p>}
-        </section>
-      </div>
-
-      {analysis.delta?.length > 0 && <section aria-label="Изменения относительно baseline" className="rounded-2xl border border-slate-200 bg-white p-5"><div className="flex items-center justify-between gap-3"><h3 className="font-bold text-slate-900">Изменения относительно baseline</h3><span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500">{analysis.delta.length}</span></div><div className="mt-3 grid gap-2 md:grid-cols-2">{analysis.delta.map((delta) => <article key={delta.id} className="rounded-lg border border-slate-100 bg-slate-50 p-3 text-xs"><div className="flex items-center gap-2 flex-wrap"><span className="font-mono font-bold text-slate-600">{delta.id}</span><span className="rounded bg-white px-2 py-0.5 text-slate-600">{delta.kind}</span></div><p className="text-sm text-slate-700 mt-2">{delta.comment}</p><p className="font-mono text-slate-500 mt-2">{delta.baselineId || '—'} → {delta.newId || '—'}</p></article>)}</div></section>}
-    </section>
-  );
 }
 
 function BabokRegistryResult({ value, latestVersion, onSave, onStartResearch, onDirtyChange, busy, researchBusy, finalVersion = false, readOnly = false, title = null, onBack = null }) {
@@ -645,6 +591,15 @@ function BabokRegistryResult({ value, latestVersion, onSave, onStartResearch, on
   const [pendingDeletion, setPendingDeletion] = useState(null);
   const [lastDeletion, setLastDeletion] = useState(null);
   const [activeType, setActiveType] = useState('BR');
+  const [needsClarification, setNeedsClarification] = useState(false);
+  const [reviewSection, setReviewSection] = useState('requirements');
+  const navigateRecord = (id) => {
+    const type = BABOK_REQUIREMENT_TYPES.find((key) => registry.groups[key].some((record) => record.id === id));
+    if (type) { setReviewSection('requirements'); setActiveType(type); setNeedsClarification(false); }
+    else if (id.startsWith('GAP-')) setReviewSection('questions');
+    requestAnimationFrame(() => { const target = document.getElementById(`record-${id}`); let parent = target?.parentElement; while (parent) { if (parent.tagName === 'DETAILS') parent.open = true; parent = parent.parentElement; } target?.scrollIntoView?.({ block: 'center' }); target?.focus(); });
+  };
+  const selectType = (type) => { setActiveType(type); if (layout === 'columns') requestAnimationFrame(() => { const target = document.getElementById(`req-type-${type}`); target?.scrollIntoView?.({ block: 'start' }); target?.focus(); }); };
   const [layout, setLayout] = useRequirementsLayout();
   const finalMode = finalVersion || latestVersion?.decisions?.skippedResearch;
   const hasSavedVersion = readOnly || Boolean(latestVersion?.versionId);
@@ -722,7 +677,7 @@ function BabokRegistryResult({ value, latestVersion, onSave, onStartResearch, on
       {pendingDeletion && <ReviewDialog label="Удаление требования" onClose={() => setPendingDeletion(null)}><h2 className="text-lg font-bold">Удалить {pendingDeletion.id}?</h2><p className="my-3">Связанные записи: {pendingDeletion.affectedIds.join(', ') || 'нет'}. Связей в схеме: {pendingDeletion.links}. Ссылки на удалённое требование будут убраны. До сохранения удаление можно отменить.</p><div className="flex gap-3"><button className="rounded-lg border p-3" onClick={() => setPendingDeletion(null)}>Не удалять</button><button className="rounded-lg bg-red-700 text-white p-3" onClick={confirmDeletion}>Подтвердить удаление</button></div></ReviewDialog>}
       {lastDeletion && <p role="status" className="rounded-xl bg-amber-50 p-3">Удалено {lastDeletion.id}. <button className="font-semibold text-indigo-700 underline p-2" onClick={undoDeletion}>Отменить удаление</button></p>}
       {validationError && <p role="alert" className="text-sm text-red-700">{validationError.id}: {validationError.message}</p>}
-      <div className="sticky top-16 z-30 -mx-4 px-4 py-3 bg-gray-50/95 backdrop-blur border-y border-slate-200 flex items-center justify-between gap-4 flex-wrap">
+      <div className="sm:sticky sm:top-16 z-30 -mx-4 px-4 py-3 bg-gray-50/95 backdrop-blur border-y border-slate-200 flex items-center justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-3 min-w-0">
           {hasSavedVersion && !hasUnsavedChanges && <span className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0"><Check className="w-4 h-4" /></span>}
           <div className="min-w-0"><h1 id="babok-save-status" className={`text-sm font-semibold ${hasSavedVersion && !hasUnsavedChanges ? 'text-emerald-700' : 'text-slate-700'}`}>{title || (finalMode ? 'Финальная версия требований' : 'Проверка реестра требований')}</h1><p className="text-xs text-slate-500 mt-0.5">{statusText}</p></div>
@@ -739,21 +694,24 @@ function BabokRegistryResult({ value, latestVersion, onSave, onStartResearch, on
         </>}</div>
       </div>
 
+      <CoverageWarning registry={registry} />
+      <div role="group" aria-label="Разделы проверки" className="flex flex-wrap gap-2">{[['requirements', 'Требования'], ['questions', 'Вопросы'], ['links', 'Связи']].map(([key, label]) => <button key={key} aria-pressed={reviewSection === key} onClick={() => setReviewSection(key)} className={`rounded-lg border px-4 py-2 text-sm font-semibold ${reviewSection === key ? 'bg-indigo-600 text-white' : 'bg-white text-slate-700'}`}>{label}{key === 'questions' ? ` · ${registry.analysis.GAP.length}` : ''}</button>)}</div>
+      <p className="text-sm text-slate-600">Требований: {BABOK_REQUIREMENT_TYPES.reduce((total, type) => total + registry.groups[type].length, 0)} · Вопросов: {registry.analysis.GAP.length}{registry.scope.partial ? ' · Частичная обработка' : ''}</p>
+      <div hidden={reviewSection !== 'requirements'} className="space-y-4">
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div><h2 className="text-base font-bold text-slate-900">Типы требований</h2><p className="text-xs text-slate-500 mt-1">Выберите тип, чтобы сфокусироваться на его записях. Стабильные ID сохраняются при ревизиях.</p></div>
         <RequirementsLayoutToggle layout={layout} onChange={setLayout} />
       </div>
-      <div role="tablist" aria-label="Типы требований" className="flex gap-2 overflow-x-auto pb-1">
-        {BABOK_REQUIREMENT_COLUMNS.map(([type, label]) => <button key={type} type="button" role="tab" aria-label={`${type} · ${label}`} aria-selected={activeType === type} aria-pressed={activeType === type} onClick={() => setActiveType(type)} className={`shrink-0 rounded-xl border px-3 py-2 text-left ${activeType === type ? 'border-indigo-300 bg-indigo-50 text-indigo-800' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}><span className="block text-xs font-bold">{type}</span><span className="block text-xs mt-0.5">{label}</span><span className="block text-[11px] font-semibold mt-1 opacity-70">{registry.groups[type]?.length || 0}</span></button>)}
-      </div>
-      <div id="babok-requirements" aria-label="Реестр требований" className={`grid gap-4 ${layout === 'columns' ? 'xl:grid-cols-2' : 'grid-cols-1'}`}>
+      <RequirementTypeNav columns={BABOK_REQUIREMENT_COLUMNS} groups={registry.groups} activeType={activeType} onSelect={selectType} />
+      <label className="flex items-center gap-2 text-sm text-slate-700 p-2"><input type="checkbox" checked={needsClarification} onChange={(event) => setNeedsClarification(event.target.checked)} />Нужно уточнить</label>
+      <div id="babok-requirements" aria-label="Реестр требований" className="grid gap-4 grid-cols-1">
         {visibleTypes.map((type) => {
           const [, label, subtitle, color] = BABOK_REQUIREMENT_COLUMNS.find((item) => item[0] === type);
-          const records = registry.groups[type] || [];
-          return <section key={type} role="region" aria-label={label} className={`bg-white rounded-2xl border border-slate-200 border-t-4 ${color} px-5 py-5`}>
+          const records = (registry.groups[type] || []).filter((record) => !needsClarification || record.quality !== 'Готово');
+          return <section key={type} id={`req-type-${type}`} tabIndex={-1} style={{ scrollMarginTop: '14rem' }} role="region" aria-label={label} className={`bg-white rounded-2xl border border-slate-200 border-t-4 ${color} px-5 py-5`}>
             <div className="flex items-start justify-between gap-3 mb-2"><div><div className="flex items-center gap-2"><span className="font-mono text-xs font-bold text-slate-500">{type}</span><h2 className="text-base font-bold text-slate-900">{label}</h2></div><p className="text-xs text-slate-500 mt-1">{subtitle}</p></div><span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500">{records.length}</span></div>
             <div className="divide-y divide-slate-200 mt-4">
-              {records.map((item) => <BabokRequirementCard key={item.id} type={type} materials={registry.materials} manuallyEdited={editedRecordIds.has(item.id) || latestVersion?.revision?.manualDecisionMetadata?.editedRecordIds?.includes(item.id)} requirement={item} onEdit={(text, fields) => editRequirement(type, item.id, text, fields)} onDelete={() => deleteRequirement(type, item.id)} onDraftChange={(dirty) => setDraftDirty(`${type}:${item.id}`, dirty)} readOnly={readOnly} />)}
+              {records.map((item) => <BabokRequirementCard key={item.id} type={type} materials={registry.materials} onNavigate={navigateRecord} manuallyEdited={editedRecordIds.has(item.id) || latestVersion?.revision?.manualDecisionMetadata?.editedRecordIds?.includes(item.id)} requirement={item} onEdit={(text, fields) => editRequirement(type, item.id, text, fields)} onDelete={() => deleteRequirement(type, item.id)} onDraftChange={(dirty) => setDraftDirty(`${type}:${item.id}`, dirty)} readOnly={readOnly} />)}
               {!records.length && <p className="py-6 text-sm text-slate-400">Нет сформированных требований</p>}
             </div>
             {!readOnly && <div className="mt-4 pt-3 border-t border-slate-100"><BabokAddRequirementForm type={type} categoryLabel={label} onAdd={(text) => addRequirement(type, text)} onDraftChange={(dirty) => setDraftDirty(`${type}:new`, dirty)} /></div>}
@@ -761,7 +719,8 @@ function BabokRegistryResult({ value, latestVersion, onSave, onStartResearch, on
         })}
       </div>
       {layout === 'rows' && <p className="text-xs text-slate-500">Сейчас выбран тип {activeMeta[0]} · {activeMeta[1]}. Переключите вкладку, чтобы просмотреть другой тип.</p>}
-      <BabokAnalysisPanels registry={registry} />
+      </div>
+      <RegistryAnalysis registry={registry} section={reviewSection} onNavigate={navigateRecord} />
     </div></ReviewDraftProvider>
   );
 }
@@ -775,6 +734,7 @@ function makeLegacyRecord(type, text, records, reservedIds = []) {
 function DecompositionResult({ value, latestVersion, onSave, onStartResearch, onDirtyChange, busy, researchBusy }) {
   const review = useReviewState(latestVersion?.requirements?.business && latestVersion?.requirements?.functional && latestVersion?.requirements?.nonfunctional ? latestVersion.requirements : collectRequirements(value), latestVersion?.decisions || {});
   const { content: requirements, setContent: setRequirements } = review;
+  const deletion = useLegacyDeletion(review);
   const [validationError, setValidationError] = useState(null);
   function saveReview(decisions = review.state.decisions) {
     const assembled = assembleReview(review.state, (type, text, records) => makeLegacyRecord(type, text, records, review.state.reservedIds));
@@ -784,6 +744,8 @@ function DecompositionResult({ value, latestVersion, onSave, onStartResearch, on
   }
   const [dirtyDrafts, setDirtyDrafts] = useState(() => new Set());
   const [layout, setLayout] = useRequirementsLayout();
+  const [activeType, setActiveType] = useState('business');
+  const selectType = (type) => { setActiveType(type); if (layout === 'columns') requestAnimationFrame(() => { const target = document.getElementById(`req-type-${type}`); target?.scrollIntoView?.({ block: 'start' }); target?.focus(); }); };
   const hasSavedVersion = Boolean(latestVersion?.versionId);
   const hasUnsavedChanges = review.dirty || dirtyDrafts.size > 0 || !hasSavedVersion || JSON.stringify(requirements) !== JSON.stringify(latestVersion.requirements);
 
@@ -798,7 +760,7 @@ function DecompositionResult({ value, latestVersion, onSave, onStartResearch, on
   }
 
   function deleteRequirement(type, id) {
-    setRequirements((current) => ({ ...current, [type]: current[type].filter((item) => item.id !== id) }));
+    deletion.ask(type, id);
   }
 
   function addRequirement(type, text, fromResearch = false) {
@@ -811,6 +773,7 @@ function DecompositionResult({ value, latestVersion, onSave, onStartResearch, on
 
   return (
     <ReviewDraftProvider review={review} submit={saveReview} busy={busy}><div className="space-y-5">
+      <LegacyDeletionNotice deletion={deletion} />
       {validationError && <p role="alert">{validationError.id}: {validationError.message}</p>}
       <div className="sticky top-16 z-30 -mx-4 px-4 py-3 bg-gray-50/95 backdrop-blur border-y border-slate-200 flex items-center justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-3">
@@ -827,8 +790,9 @@ function DecompositionResult({ value, latestVersion, onSave, onStartResearch, on
         <h2 className="text-base font-bold text-slate-900">Категории требований</h2>
         <RequirementsLayoutToggle layout={layout} onChange={setLayout} />
       </div>
+      <RequirementTypeNav columns={REQUIREMENT_COLUMNS} groups={requirements} activeType={activeType} onSelect={selectType} />
       <div aria-label="Категории требований" className={`grid gap-4 ${layout === 'columns' ? 'xl:grid-cols-3' : 'grid-cols-1'}`}>
-        {REQUIREMENT_COLUMNS.map(([key, title, subtitle, color]) => <section key={key} aria-label={title} className={`bg-white rounded-2xl border border-slate-200 border-t-4 ${color} px-5 py-5`}>
+        {REQUIREMENT_COLUMNS.filter(([key]) => layout !== 'rows' || key === activeType).map(([key, title, subtitle, color]) => <section key={key} id={`req-type-${key}`} tabIndex={-1} style={{ scrollMarginTop: '14rem' }} aria-label={title} className={`bg-white rounded-2xl border border-slate-200 border-t-4 ${color} px-5 py-5`}>
           <div className="flex items-start justify-between gap-3 mb-2"><div><h2 className="text-base font-bold text-slate-900">{title}</h2><p className="text-xs text-slate-500 mt-1">{subtitle}</p></div><span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500">{requirements[key].length}</span></div>
           <div className="divide-y divide-slate-200 mt-4">
             {requirements[key].map((item) => <EditableRequirementCard key={item.id} type={key} requirement={item} onEdit={(text) => editRequirement(key, item.id, text)} onDelete={() => deleteRequirement(key, item.id)} onDraftChange={(dirty) => setDraftDirty(`${key}:${item.id}`, dirty)} />)}
@@ -1036,6 +1000,7 @@ function OriginalBusinessContext({ value, loading = false, editable = false, chi
 function FinalRequirementsEditor({ latestVersion, onSave, onShowInsights, onShowSource, onShowContext, onStartResearch, onDirtyChange, busy, researchBusy = false, researchSkipped = false }) {
   const review = useReviewState(latestVersion?.requirements || { business: [], functional: [], nonfunctional: [] }, latestVersion?.decisions || {});
   const { content: requirements, setContent: setRequirements } = review;
+  const deletion = useLegacyDeletion(review);
   const [validationError, setValidationError] = useState(null);
   function saveReview() {
     const assembled = assembleReview(review.state, (type, text, records) => makeLegacyRecord(type, text, records, review.state.reservedIds));
@@ -1045,6 +1010,8 @@ function FinalRequirementsEditor({ latestVersion, onSave, onShowInsights, onShow
   }
   const [dirtyDrafts, setDirtyDrafts] = useState(() => new Set());
   const [layout, setLayout] = useRequirementsLayout();
+  const [activeType, setActiveType] = useState('business');
+  const selectType = (type) => { setActiveType(type); if (layout === 'columns') requestAnimationFrame(() => { const target = document.getElementById(`req-type-${type}`); target?.scrollIntoView?.({ block: 'start' }); target?.focus(); }); };
   const hasUnsavedChanges = review.dirty || dirtyDrafts.size > 0 || JSON.stringify(requirements) !== JSON.stringify(latestVersion?.requirements || {});
 
   function setDraftDirty(key, dirty) {
@@ -1058,7 +1025,7 @@ function FinalRequirementsEditor({ latestVersion, onSave, onShowInsights, onShow
   }
 
   function deleteRequirement(type, id) {
-    setRequirements((current) => ({ ...current, [type]: current[type].filter((item) => item.id !== id) }));
+    deletion.ask(type, id);
   }
 
   function addRequirement(type, text) {
@@ -1071,6 +1038,7 @@ function FinalRequirementsEditor({ latestVersion, onSave, onShowInsights, onShow
 
   return (
     <ReviewDraftProvider review={review} submit={saveReview} busy={busy}><section className="space-y-5">
+      <LegacyDeletionNotice deletion={deletion} />
       {validationError && <p role="alert">{validationError.id}: {validationError.message}</p>}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
         <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -1095,8 +1063,9 @@ function FinalRequirementsEditor({ latestVersion, onSave, onShowInsights, onShow
         <h2 className="text-base font-bold text-slate-900">Категории требований</h2>
         <RequirementsLayoutToggle layout={layout} onChange={setLayout} />
       </div>
+      <RequirementTypeNav columns={REQUIREMENT_COLUMNS} groups={requirements} activeType={activeType} onSelect={selectType} />
       <div aria-label="Финальные требования по категориям" className={`grid gap-4 ${layout === 'columns' ? 'xl:grid-cols-3' : 'grid-cols-1'}`}>
-        {REQUIREMENT_COLUMNS.map(([key, title, subtitle, color]) => <section key={key} aria-label={title} className={`bg-white rounded-2xl border border-slate-200 border-t-4 ${color} px-5 py-5`}>
+        {REQUIREMENT_COLUMNS.filter(([key]) => layout !== 'rows' || key === activeType).map(([key, title, subtitle, color]) => <section key={key} id={`req-type-${key}`} tabIndex={-1} style={{ scrollMarginTop: '14rem' }} aria-label={title} className={`bg-white rounded-2xl border border-slate-200 border-t-4 ${color} px-5 py-5`}>
           <div className="flex items-start justify-between gap-3 mb-2"><div><h2 className="text-base font-bold text-slate-900">{title}</h2><p className="text-xs text-slate-500 mt-1">{subtitle}</p></div><span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500">{requirements[key].length}</span></div>
           <div className="divide-y divide-slate-200 mt-4">
             {requirements[key].map((item) => <EditableRequirementCard key={item.id} type={key} requirement={item} onEdit={(text) => editRequirement(key, item.id, text)} onDelete={() => deleteRequirement(key, item.id)} onDraftChange={(dirty) => setDraftDirty(`${key}:${item.id}`, dirty)} />)}
@@ -1350,10 +1319,12 @@ function ResultView({ content, latestVersion, businessContext, businessContextLo
   return <p className="text-sm text-slate-500">Формат результата не поддерживается текущей версией интерфейса.</p>;
 }
 
-function ModelControls({ models, model, setModel, temperature, setTemperature, reasoning, setReasoning }) {
-  const forcedReasoningModel = model === 'glm-5.3' || model === 'glm-5.3-flash';
+function ModelControls({ models, model, setModel, temperature, setTemperature, reasoning, setReasoning, capabilities }) {
+  const levels = reasoningLevels(model, capabilities);
+  const forcedReasoningModel = !levels.includes('disabled');
   return (
     <div className="grid gap-3 md:grid-cols-2">
+      <p className="md:col-span-2 text-sm text-slate-600">Настройки следующего запуска. Сохранённый результат не изменится.</p>
       <label className="block">
         <span className="text-sm font-semibold text-slate-700 mb-1.5 block">Модель</span>
         <select value={model} onChange={(event) => setModel(event.target.value)} className="w-full h-10 px-3 border-2 border-slate-200 rounded-lg bg-white focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100">
@@ -1367,9 +1338,9 @@ function ModelControls({ models, model, setModel, temperature, setTemperature, r
       <label className="block md:col-span-2">
         <span className="text-sm font-semibold text-slate-700 mb-1.5 block">Reasoning</span>
         <select aria-label="Reasoning" {...(forcedReasoningModel ? { 'aria-describedby': 'ai-reasoning-help' } : {})} value={reasoning} onChange={(event) => setReasoning(event.target.value)} className="w-full h-10 px-3 border-2 border-slate-200 rounded-lg bg-white focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100">
-          {REASONING_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          {REASONING_OPTIONS.filter(([value]) => levels.includes(value)).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
         </select>
-        {forcedReasoningModel && <span id="ai-reasoning-help" className="block text-xs text-slate-400 mt-1.5">Для GLM-5.3 reasoning не отключается: «Выключен» использует минимальный уровень.</span>}
+        {forcedReasoningModel && <span id="ai-reasoning-help" className="block text-xs text-slate-400 mt-1.5">Эта модель не поддерживает отключение reasoning. Минимальный уровень — низкий.</span>}
       </label>
     </div>
   );
@@ -1406,13 +1377,13 @@ function ActiveJobPanel({ job, onCancel, onBackground }) {
   }, []);
   const startedAt = Date.parse(job.startedAt || job.createdAt || '') || now;
   const elapsedMs = Math.max(0, now - startedAt);
-  const { estimated, progress, stageLabel, visualProgress } = progressPresentationForJob(job, now);
+  const { progress, stageLabel, visualProgress } = progressPresentationForJob(job, now);
   const focusMessage = focusMessageForJob(job, now);
   const title = job.type === 'DECOMPOSITION'
     ? 'Декомпозиция требований'
     : job.mode === 'REQUIREMENTS_INSIGHTS' ? 'AI-исследование требований' : MODE_LABELS[job.mode] || 'AI-задача';
   const TitleTag = job.type === 'DECOMPOSITION' || job.mode === 'REQUIREMENTS_INSIGHTS' ? 'h2' : 'p';
-  const durationHint = job.type === 'DECOMPOSITION' ? 'обычно 2–4 минуты' : job.mode === 'REQUIREMENTS_INSIGHTS' ? 'обычно 3–6 минут' : 'обычно несколько минут';
+  const durationHint = job.type === 'DECOMPOSITION' ? 'Оценка ожидания: 2–4 минуты' : job.mode === 'REQUIREMENTS_INSIGHTS' ? 'Оценка ожидания: 3–6 минут' : 'Оценка ожидания: несколько минут';
   const takingLonger = elapsedMs >= (job.type === 'DECOMPOSITION' ? 4 : 6) * 60_000;
   return <section aria-label="Выполнение задачи" className="bg-white rounded-2xl border border-indigo-200 shadow-sm overflow-hidden">
     <div className="p-5 md:p-6">
@@ -1421,7 +1392,7 @@ function ActiveJobPanel({ job, onCancel, onBackground }) {
           <span className="w-11 h-11 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0"><Loader2 className="w-5 h-5 animate-spin" /></span>
           <div className="min-w-0">
             <TitleTag className="text-lg md:text-xl font-bold text-slate-900">{title}</TitleTag>
-            {takingLonger && <p className="text-sm text-slate-500 mt-1">Обработка занимает больше обычного, но задача продолжает выполняться.</p>}
+            {takingLonger && <p className="text-sm text-slate-500 mt-1">Обработка занимает больше оценочного времени. Последний подтверждённый этап показан ниже.</p>}
           </div>
         </div>
         <p className="text-sm text-slate-500 shrink-0" aria-label={`Прошло ${formatElapsed(elapsedMs)}, ${durationHint}`}><span className="font-mono font-semibold text-slate-700">{formatElapsed(elapsedMs)}</span> · {durationHint}</p>
@@ -1432,8 +1403,8 @@ function ActiveJobPanel({ job, onCancel, onBackground }) {
       </div>}
       <ExecutionTimeline job={job} />
       <div className="mt-5">
-        <div className="flex items-center justify-between gap-3 mb-2"><span className="flex items-center gap-1.5 text-xs font-semibold text-slate-500">Прогресс{estimated && <span title="Процент — ориентировочная оценка. Переходы между этапами подтверждаются сервером." aria-label="Об ориентировочной оценке прогресса" className="inline-flex text-slate-400 cursor-help"><Info className="w-3.5 h-3.5" /></span>}</span><span className="text-xs font-bold text-indigo-700">{progress}%{stageLabel ? ` · ${stageLabel}` : ''}</span></div>
-        <div role="progressbar" aria-label="Прогресс выполнения задачи" aria-valuemin="0" aria-valuemax="100" aria-valuenow={progress} aria-valuetext={estimated ? `Оценка ${progress} процентов${stageLabel ? `, этап ${stageLabel}` : ''}; переход этапа подтверждается сервером` : `${progress} процентов подтверждено сервером`} className="relative h-3 rounded-full bg-slate-100 overflow-hidden">
+        <div className="flex items-center justify-between gap-3 mb-2"><span className="flex items-center gap-1.5 text-xs font-semibold text-slate-500">Прогресс</span><span className="text-xs font-bold text-indigo-700">{progress}%{stageLabel ? ` · ${stageLabel}` : ''}</span></div>
+        <div role="progressbar" aria-label="Прогресс выполнения задачи" aria-valuemin="0" aria-valuemax="100" aria-valuenow={progress} aria-valuetext={`${progress} процентов подтверждено сервером`} className="relative h-3 rounded-full bg-slate-100 overflow-hidden">
           <span className="block h-full rounded-full bg-gradient-to-r from-indigo-500 to-indigo-600 transition-[width] duration-1000 ease-out" style={{ width: `${visualProgress}%` }} />
           <span className="reqai-progress-shimmer absolute inset-y-0 bg-gradient-to-r from-transparent via-white/75 to-transparent" aria-hidden="true" />
         </div>
@@ -1490,26 +1461,6 @@ function JobStateCard({ job, onCancel }) {
       </div>
     </section>
   );
-}
-
-function HistoryDrawer({ open, onClose, history, filter, setFilter, activeJobId, onSelect, cursor, onLoadMore }) {
-  useEffect(() => {
-    if (!open) return undefined;
-    const handleKey = (event) => { if (event.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', handleKey);
-    return () => window.removeEventListener('keydown', handleKey);
-  }, [onClose, open]);
-  if (!open) return null;
-  const filtered = history.filter((item) => filter === 'all' || (filter === 'decomposition' ? item.type === 'DECOMPOSITION' : item.type === 'RESEARCH'));
-  return <div className="fixed inset-0 z-[70]" role="dialog" aria-modal="true" aria-label="История задач">
-    <button aria-label="Закрыть историю" onClick={onClose} className="absolute inset-0 bg-slate-900/30 backdrop-blur-[1px]" />
-    <aside className="absolute right-0 top-0 h-full w-full max-w-md bg-white shadow-2xl flex flex-col">
-      <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between gap-3"><div><h2 className="font-bold text-slate-900">История задач</h2><p className="text-xs text-slate-500 mt-0.5">Откройте ранее сохранённый результат</p></div><button aria-label="Закрыть" onClick={onClose} className="p-2 rounded-lg text-slate-500 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"><X className="w-5 h-5" /></button></div>
-      <div className="px-5 py-3 border-b border-slate-100 flex gap-2" role="group" aria-label="Фильтр истории">{[['all', 'Все'], ['decomposition', 'Декомпозиция'], ['research', 'Исследования']].map(([key, label]) => <button key={key} aria-pressed={filter === key} onClick={() => setFilter(key)} className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${filter === key ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{label}</button>)}</div>
-      <div className="flex-1 overflow-y-auto p-4 space-y-2">{filtered.length === 0 ? <p className="text-sm text-slate-400 text-center py-10">В этой категории задач пока нет.</p> : filtered.map((item) => { const status = primaryStatus(item); const label = RETIRED_MODES.has(item.mode) ? 'Архивная задача' : MODE_LABELS[item.mode] || TYPE_LABELS[item.type] || 'Задача'; return <button key={item.jobId} aria-current={activeJobId === item.jobId ? 'true' : undefined} onClick={() => onSelect(item.jobId)} className={`w-full rounded-xl border p-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${activeJobId === item.jobId ? 'border-indigo-300 bg-indigo-50' : 'border-slate-200 hover:border-indigo-200 hover:bg-slate-50'}`}><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="text-sm font-semibold text-slate-900 truncate">{label}</p><span className={`inline-flex mt-1.5 px-2 py-0.5 rounded-full text-xs font-semibold ${status.tone}`}>{status.label}</span></div><time className="text-xs text-slate-400 whitespace-nowrap">{new Date(item.createdAt).toLocaleString([], { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</time></div></button>; })}</div>
-      {cursor && <div className="p-4 border-t border-slate-200"><button onClick={onLoadMore} className="w-full px-4 py-2.5 rounded-xl border border-indigo-200 text-indigo-700 text-sm font-semibold hover:bg-indigo-50">Загрузить ещё</button></div>}
-    </aside>
-  </div>;
 }
 
 function DebugPanel({ open, onClose, jobId, observations, refreshKey, triggerRef, onDownload }) {
@@ -1606,19 +1557,27 @@ function ArchivedLegacyResult({ job, result, onDownload }) {
 export default function AsyncJobWorkspace() {
   const [routeJobId, setRouteJobId] = useState(() => jobIdFromPath());
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [historyFilter, setHistoryFilter] = useState('all');
+  const closeHistory = useCallback(() => setHistoryOpen(false), []);
+  const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
   const [requirements, setRequirements] = useState('');
   const [businessContextLoading, setBusinessContextLoading] = useState(false);
+  const unsentContextRef = useRef({ text: '', file: null, baseline: null, references: [] });
+  const [hasContextDraft, setHasContextDraft] = useState(false);
   const [file, setFile] = useState(null);
+  const [baselineFile, setBaselineFile] = useState(null);
+  const [referenceFiles, setReferenceFiles] = useState([]);
+  const [materialUploads, setMaterialUploads] = useState(() => new Map());
+  const uploadedMaterialsRef = useRef(new Map());
+  const [inputCapabilities, setInputCapabilities] = useState({});
   const [models, setModels] = useState(DEFAULT_MODELS);
   const [model, setModel] = useState('glm-5.3-flash');
   const [temperature, setTemperature] = useState(0.2);
-  const [reasoning, setReasoning] = useState('disabled');
+  const [reasoning, setReasoning] = useState('low');
+  const [modelSettings, setModelSettings] = useState({});
   const [upload, setUpload] = useState(0);
   const [job, setJob] = useState(null);
   const [result, setResult] = useState(null);
   const [resultContent, setResultContent] = useState('');
-  const [history, setHistory] = useState([]);
   const [backgroundJob, setBackgroundJob] = useState(null);
   const [completionNotice, setCompletionNotice] = useState(null);
   const [requirementsVersions, setRequirementsVersions] = useState([]);
@@ -1643,7 +1602,6 @@ export default function AsyncJobWorkspace() {
   const [versionBusy, setVersionBusy] = useState(false);
   const linkedResearchSubmissionRef = useRef(false);
   const [linkedResearchSubmitting, setLinkedResearchSubmitting] = useState(false);
-  const [cursor, setCursor] = useState(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [routeUnavailable, setRouteUnavailable] = useState(false);
@@ -1706,8 +1664,9 @@ export default function AsyncJobWorkspace() {
       clearReviewDrafts();
       editorDirtyRef.current = false;
       editorControllerRef.current = null;
-      setIdentityReady(false); setActorScope(null); setHistory([]); setBackgroundJob(null); setCompletionNotice(null);
-      setPendingNavigation(null); setRequirements(''); setFile(null);
+      setIdentityReady(false); setActorScope(null); setHistoryRefreshKey((key) => key + 1); setBackgroundJob(null); setCompletionNotice(null);
+      unsentContextRef.current = { text: '', file: null, baseline: null, references: [] }; setHasContextDraft(false);
+      setPendingNavigation(null); setRequirements(''); setFile(null); setBaselineFile(null); setReferenceFiles([]); uploadedMaterialsRef.current.clear(); setMaterialUploads(new Map());
       navigate(null, { confirmed: true, replace: true });
       setAuthEpoch((value) => value + 1);
     };
@@ -1728,6 +1687,7 @@ export default function AsyncJobWorkspace() {
     editorDirtyRef.current = false;
     const next = pendingNavigation;
     setPendingNavigation(null);
+    if (!next.view) setHistoryOpen(false);
     if (next.historyDelta) window.history.go(next.historyDelta);
     else if (next.view) { setEditorEpoch((value) => value + 1); setActiveReviewView(next.view); }
     else if (next.submit) submit();
@@ -1800,8 +1760,7 @@ export default function AsyncJobWorkspace() {
 
   const refresh = useCallback(async () => {
     const page = await enterpriseApi.listJobs({ limit: 20 });
-    setHistory(page.items);
-    setCursor(page.nextCursor);
+    setHistoryRefreshKey((key) => key + 1);
     const rememberedId = localStorage.getItem(BACKGROUND_JOB_KEY);
     const remembered = rememberedId && page.items.find((item) => item.jobId === rememberedId);
     if (remembered && TERMINAL.has(remembered.status)) {
@@ -1827,10 +1786,13 @@ export default function AsyncJobWorkspace() {
           try { const previous = sessionStorage.getItem('reqai.reviewActor'); if (previous && previous !== scope) clearReviewDrafts(); sessionStorage.setItem('reqai.reviewActor', scope); } catch { /* session recovery is optional */ }
           setActorScope(scope);
         }
+        setInputCapabilities({ integrationAvailable: value.capabilities?.domainOperations?.includes('decomposition') || false, maxBytes: value.capabilities?.inputMaxBytes });
         const configured = value.capabilities?.models;
         if (!configured?.length) return;
         setModels(configured);
-        setModel(configured[0]);
+        const capabilities = value.capabilities?.modelSettings || {};
+        const saved = readNextSettings(value.userId && value.tenantId ? JSON.stringify([value.tenantId, value.userId]) : null, configured, capabilities);
+        setModelSettings(capabilities); setModel(saved.model); setTemperature(saved.temperature); setReasoning(saved.reasoning);
       }),
     ]).catch((cause) => setError(cause.message)).finally(() => setIdentityReady(true));
   }, [refresh, authEpoch]);
@@ -1849,11 +1811,14 @@ export default function AsyncJobWorkspace() {
     setRestoredReviewState(null); setRebasePreview(null);
     setDebugOpen(false); setSseObservations([]); setRouteUnavailable(false); setError('');
     if (!routeJobId) {
+      const draft = unsentContextRef.current;
+      setRequirements(draft.text); setFile(draft.file); setBaselineFile(draft.baseline); setReferenceFiles(draft.references);
       setJob(null); setResult(null); setResultContent(''); setRequirementsVersions([]); setRemoteRequirementsVersions(null);
       setBusinessContextLoading(false);
       loadedResultJobIdRef.current = null;
       return undefined;
     }
+    setFile(null); setBaselineFile(null); setReferenceFiles([]);
     const controller = new AbortController();
     (async () => {
       try {
@@ -1929,7 +1894,7 @@ export default function AsyncJobWorkspace() {
       try {
         const next = await enterpriseApi.getJob(backgroundJob.jobId);
         if (stopped) return;
-        setHistory((current) => current.map((item) => item.jobId === next.jobId ? { ...item, ...next } : item));
+        if (TERMINAL.has(next.status)) setHistoryRefreshKey((key) => key + 1);
         if (TERMINAL.has(next.status)) {
           if (localStorage.getItem(BACKGROUND_JOB_KEY) === next.jobId) localStorage.removeItem(BACKGROUND_JOB_KEY);
           setBackgroundJob(null);
@@ -1942,6 +1907,11 @@ export default function AsyncJobWorkspace() {
     return () => { stopped = true; window.clearInterval(timer); };
   }, [backgroundJob?.jobId, backgroundJob?.status]);
 
+  useEffect(() => {
+    if (!identityReady || !actorScope) return;
+    try { localStorage.setItem(`reqai.nextAiSettings:${actorScope}`, JSON.stringify({ model, temperature: Number(temperature), reasoning })); } catch { /* settings still apply to this tab */ }
+  }, [actorScope, identityReady, model, temperature, reasoning]);
+
   const options = useMemo(() => ({ mode: 'DECOMPOSITION', model, temperature: Number(temperature), reasoning }), [model, reasoning, temperature]);
 
   async function submit() {
@@ -1952,11 +1922,25 @@ export default function AsyncJobWorkspace() {
     setError('');
     setUpload(0);
     try {
-      const artifact = await enterpriseApi.uploadArtifact(input, setUpload);
-      const accepted = await enterpriseApi.createJob({ type: 'DECOMPOSITION', inputArtifactId: artifact.artifactId, options });
+      const uploadMaterial = async (material) => {
+        if (uploadedMaterialsRef.current.has(material)) return uploadedMaterialsRef.current.get(material);
+        try {
+          const artifact = await enterpriseApi.uploadArtifact(material, (progress) => { setUpload(progress); setMaterialUploads((current) => new Map(current).set(material, { progress })); });
+          uploadedMaterialsRef.current.set(material, artifact);
+          setMaterialUploads((current) => new Map(current).set(material, artifact));
+          return artifact;
+        } catch (cause) { setMaterialUploads((current) => new Map(current).set(material, { error: true })); throw cause; }
+      };
+      const artifact = await uploadMaterial(input);
+      const extra = await Promise.allSettled([baselineFile, ...referenceFiles].filter(Boolean).map(uploadMaterial));
+      if (extra.some((item) => item.status === 'rejected')) throw new Error('Не все материалы загружены. Успешные вложения сохранены; повторите запуск, чтобы загрузить оставшиеся.');
+      const accepted = inputCapabilities.integrationAvailable
+        ? await enterpriseApi.decomposeRequirements({ inputArtifactId: artifact.artifactId, ...(baselineFile ? { baselineArtifactId: uploadedMaterialsRef.current.get(baselineFile).artifactId } : {}), ...(referenceFiles.length ? { referenceArtifactIds: referenceFiles.map((value) => uploadedMaterialsRef.current.get(value).artifactId) } : {}), model, temperature: Number(temperature), reasoning })
+        : await enterpriseApi.createJob({ type: 'DECOMPOSITION', inputArtifactId: artifact.artifactId, options });
+      unsentContextRef.current = { text: '', file: null, baseline: null, references: [] }; setHasContextDraft(false);
       navigate(accepted.jobId);
       await refresh();
-    } catch (cause) { setError(`${cause.code || 'ERROR'}: ${cause.message}`); }
+    } catch (cause) { setError(cause.code ? userFacingError(cause) : cause.message || 'Не удалось запустить задачу. Повторите попытку.'); }
     finally { setBusy(false); }
   }
 
@@ -1978,9 +1962,10 @@ export default function AsyncJobWorkspace() {
 
   function startNewTask() {
     if (editorDirtyRef.current) { setPendingNavigation({ id: null, newTask: true }); return; }
+    unsentContextRef.current = { text: '', file: null, baseline: null, references: [] }; setHasContextDraft(false);
     navigate(null);
     setRequirements('');
-    setFile(null);
+    setFile(null); setBaselineFile(null); setReferenceFiles([]); uploadedMaterialsRef.current.clear(); setMaterialUploads(new Map());
     setUpload(0);
     setJob(null);
     setResult(null);
@@ -2062,19 +2047,21 @@ export default function AsyncJobWorkspace() {
   const progressingJob = job && ['ACCEPTED', 'QUEUED', 'RUNNING'].includes(job.status);
   const backgroundActive = backgroundJob && !TERMINAL.has(backgroundJob.status);
   const submissionBlocked = activeJob || backgroundActive;
-  const cancelActiveJob = () => enterpriseApi.cancelJob(job.jobId).then(() => enterpriseApi.getJob(job.jobId)).then((next) => setJob(next));
+  const cancelActiveJob = async () => {
+    const id = job.jobId;
+    try { await enterpriseApi.cancelJob(id); const next = await enterpriseApi.getJob(id); if (routeJobIdRef.current === id) setJob(next); }
+    catch (cause) { if (routeJobIdRef.current === id) setError(userFacingError(cause)); }
+  };
 
-  const commonInput = (
-    <>
-      <label className="block mb-4">
-        <textarea value={requirements} onChange={(event) => setRequirements(event.target.value)} placeholder="Опишите бизнес-задачу..." className="w-full h-32 px-4 py-3 border-2 border-slate-200 rounded-lg focus:border-indigo-500 focus:outline-none focus:ring-2 focus:outline-none focus:ring-indigo-100 resize-none bg-slate-50/50" />
-      </label>
-      <label className="inline-flex items-center gap-2 text-sm text-slate-500 cursor-pointer hover:text-indigo-600">
-        <FileUp className="w-4 h-4" /><span>{file ? file.name : 'Приложить файл до 100 МБ'}</span>
-        <input aria-label="Файл требований" type="file" className="sr-only" onChange={(event) => setFile(event.target.files[0])} />
-      </label>
-    </>
-  );
+  const changeContext = (key, value, setter) => {
+    setter(value);
+    if (!routeJobIdRef.current) {
+      unsentContextRef.current = { ...unsentContextRef.current, [key]: value };
+      const draft = unsentContextRef.current;
+      setHasContextDraft(Boolean(draft.text.trim() || draft.file || draft.baseline || draft.references.length));
+    }
+  };
+  const commonInput = <ContextInput text={requirements} onText={(value) => changeContext('text', value, setRequirements)} file={file} onFile={(value) => changeContext('file', value, setFile)} baseline={baselineFile} onBaseline={(value) => changeContext('baseline', value, setBaselineFile)} references={referenceFiles} onReferences={(value) => changeContext('references', value, setReferenceFiles)} uploads={materialUploads} busy={busy} {...inputCapabilities} />;
 
   const submitButton = (
     <button disabled={!canSubmit || busy || submissionBlocked} onClick={submit} className="w-full sm:w-auto text-white py-3 px-6 rounded-lg font-semibold disabled:bg-slate-300 disabled:cursor-not-allowed flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2">
@@ -2105,7 +2092,7 @@ export default function AsyncJobWorkspace() {
             {job && TERMINAL.has(job.status) && <button aria-label="Новая задача" onClick={startNewTask} className="p-2 sm:px-3 sm:py-2 rounded-lg text-sm font-semibold text-indigo-600 hover:bg-indigo-50 flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"><Plus className="w-4 h-4" /><span className="hidden sm:inline">Новая задача</span></button>}
             {backgroundActive && <BackgroundJobIndicator job={backgroundJob} onOpen={() => load(backgroundJob.jobId)} />}
             <button aria-label="История" onClick={() => setHistoryOpen(true)} className="p-2 sm:px-3 sm:py-2 rounded-lg text-sm font-semibold text-gray-600 hover:bg-gray-100 flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"><History className="w-4 h-4" /><span className="hidden sm:inline">История</span></button>
-            <AiSettingsDisclosure model={model}><ModelControls models={models} model={model} setModel={setModel} temperature={temperature} setTemperature={setTemperature} reasoning={reasoning} setReasoning={setReasoning} /></AiSettingsDisclosure>
+            <AiSettingsDisclosure model={model}><ModelControls capabilities={modelSettings} models={models} model={model} setModel={(value) => { setModel(value); setReasoning(effectiveReasoning(value, reasoning, modelSettings)); }} temperature={temperature} setTemperature={setTemperature} reasoning={reasoning} setReasoning={setReasoning} /></AiSettingsDisclosure>
             <button ref={debugTriggerRef} aria-label="Debug" title={job ? 'Debug' : 'Debug станет доступен после запуска задачи'} disabled={!job} onClick={() => setDebugOpen(true)} className="ml-auto p-2 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 disabled:text-slate-300 disabled:hover:bg-transparent disabled:cursor-not-allowed flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"><Bug className="w-4 h-4" /></button>
           </div>
         </div>
@@ -2119,7 +2106,10 @@ export default function AsyncJobWorkspace() {
         </main>
       ) : (
         <main className="max-w-7xl mx-auto px-4 py-6">
+          {job?.title && <section aria-label="Название задачи" className="mb-4"><TaskTitle key={job.jobId} job={job} onUpdated={(metadata) => { setJob((current) => current && [current.jobId, current.metadataJobId].includes(metadata.jobId) ? ({ ...current, title: metadata.title, metadataRevision: metadata.metadataRevision }) : current); setHistoryRefreshKey((key) => key + 1); }} /></section>}
+          {job && hasContextDraft && <button onClick={() => navigate(null)} className="mb-4 p-2 border rounded-lg text-sm text-indigo-700">К черновику новой задачи</button>}
           {(contextComplete || activeLinkedResearch || (linkedResearch && result)) && <WorkflowStepper currentStage={currentStage} completedStage={completedStage} skippedStages={directFinalReady ? [3] : []} />}
+          {result && <ResultSettings result={result} />}
           {showReadOnlyBusinessContext && <section className="bg-white rounded-2xl border border-slate-200 mb-5 overflow-hidden"><OriginalBusinessContext value={requirements} loading={businessContextLoading} /></section>}
           {activeLinkedResearch && !contextComplete ? <div className="mb-5"><ActiveJobPanel job={job} onCancel={cancelActiveJob} onBackground={continueInBackground} /></div> : contextComplete && !directFinalReady ? <section className="bg-white rounded-2xl border border-slate-200 mb-5 overflow-hidden">
             <div className="p-5 md:px-6"><h1 className="text-2xl md:text-3xl font-bold text-slate-900">Проверка требований</h1></div>
@@ -2150,7 +2140,7 @@ export default function AsyncJobWorkspace() {
         </main>
       )}
 
-      <HistoryDrawer open={historyOpen} onClose={() => setHistoryOpen(false)} history={history} filter={historyFilter} setFilter={setHistoryFilter} activeJobId={jobId} onSelect={load} cursor={cursor} onLoadMore={async () => { const page = await enterpriseApi.listJobs({ limit: 20, cursor }); setHistory((current) => [...current, ...page.items]); setCursor(page.nextCursor); }} />
+      <HistoryDrawer key={actorScope || 'anonymous'} open={historyOpen && !pendingNavigation && !rebasePreview} onClose={closeHistory} activeJobId={jobId} onSelect={load} refreshKey={historyRefreshKey} />
       <DebugPanel open={debugOpen} onClose={() => setDebugOpen(false)} jobId={jobId} observations={sseObservations} refreshKey={debugRefreshKey} triggerRef={debugTriggerRef} onDownload={result?.resultArtifactId ? download : null} />
       {completionNotice && <section role="status" aria-label="Задача завершена" className="fixed right-5 bottom-5 z-[90] w-[min(24rem,calc(100vw-2.5rem))] rounded-2xl border border-slate-200 bg-white shadow-2xl p-4"><div className="flex items-start gap-3"><span className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${completionNotice.status === 'SUCCEEDED' ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500'}`}>{completionNotice.status === 'SUCCEEDED' ? <CheckCircle2 className="w-5 h-5" /> : <AlertTriangle className="w-5 h-5" />}</span><div className="min-w-0 flex-1"><p className="font-semibold text-slate-900">{completionNotice.status === 'SUCCEEDED' ? 'Задача готова' : STATUS_LABELS[completionNotice.status]}</p><p className="text-sm text-slate-500 mt-0.5">{MODE_LABELS[completionNotice.mode] || TYPE_LABELS[completionNotice.type]}</p><div className="flex gap-2 mt-3"><button onClick={() => { const id = completionNotice.jobId; setCompletionNotice(null); load(id); }} className="px-3 py-2 rounded-lg bg-indigo-600 text-white text-xs font-semibold">Открыть результат</button><button aria-label="Закрыть уведомление" onClick={() => setCompletionNotice(null)} className="px-3 py-2 rounded-lg border border-slate-200 text-slate-600 text-xs font-semibold">Закрыть</button></div></div></div></section>}
     </div>

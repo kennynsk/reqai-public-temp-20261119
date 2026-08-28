@@ -1,6 +1,12 @@
 const STATUS_LABELS = { AVAILABLE: 'Доступен', NOT_PROVIDED: 'Не предоставлен', UNAVAILABLE: 'Недоступен' };
 const technical = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f-]{23,}|\b(?:chunk|unit|sha256|artifactId)\b/i;
 
+export function CoverageWarning({ registry }) {
+  const { materials = {}, scope = {} } = registry;
+  if (!scope.partial && materials.primary?.status !== 'UNAVAILABLE' && materials.baseline?.status !== 'UNAVAILABLE' && !materials.references?.some((item) => item.status === 'UNAVAILABLE')) return null;
+  return <p role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">Часть материалов недоступна или обработана не полностью. Проверьте вопросы и охват в приложениях перед использованием требований.</p>;
+}
+
 export function SourceEvidence({ source, materials = {} }) {
   if (!source) return <span className="text-xs text-slate-500">Источник не указан</span>;
   const entries = [materials.primary, ...(materials.baseline?.artifacts || []), ...(materials.references || [])].filter(Boolean);

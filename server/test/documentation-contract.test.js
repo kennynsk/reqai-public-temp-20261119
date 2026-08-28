@@ -24,6 +24,21 @@ test('OpenAPI declares every v1 and system router operation', async () => {
   assert.deepEqual(documented, runtime);
 });
 
+test('every local OpenAPI reference resolves, including shared errors and metadata', async () => {
+  const document = JSON.parse(await read('docs/api/openapi.v1.json'));
+  function inspect(value) {
+    if (!value || typeof value !== 'object') return;
+    if (value.$ref?.startsWith('#/')) {
+      const target = value.$ref.slice(2).split('/').map((part) => part.replace(/~1/g, '/').replace(/~0/g, '~')).reduce((node, part) => node?.[part], document);
+      assert.ok(target, `Unresolved ${value.$ref}`);
+    }
+    Object.values(value).forEach(inspect);
+  }
+  inspect(document);
+  assert.ok(document.components.schemas.CreateRequirementsVersion.properties.registry);
+  assert.ok(document.components.schemas.JobResult.properties.executionSettings);
+});
+
 test('human documentation describes the current guided workflow and retirement boundary', async () => {
   const [readme, parity, integration] = await Promise.all([
     read('README.md'), read('docs/functional-parity.md'), read('docs/requirements-integration-api.md'),
