@@ -126,12 +126,17 @@ export function createRequirementsVersionService({ config, jobRepository, artifa
       const suppliedDecisions = body.decisions && typeof body.decisions === 'object' && !Array.isArray(body.decisions) ? body.decisions : {};
       const decisions = { ...(base?.content.decisions || {}), ...suppliedDecisions };
       const businessContextArtifactId = sourceJob.type === 'DECOMPOSITION' ? sourceJob.input_artifact_id : base?.content.businessContextArtifactId || null;
+      let researchResult = null;
+      if (sourceJob.type === 'RESEARCH' && (suppliedDecisions.review?.proposals || suppliedDecisions.review?.citationChecks) && sourceJob.result_artifact_id) {
+        try { researchResult = JSON.parse(await artifactRepository.readText({ tenantId: auth.tenantId, artifactId: sourceJob.result_artifact_id })); }
+        catch { throw new ApiError({ status: 409, code: 'REVIEW_SOURCE_UNAVAILABLE', message: 'Research review context is unavailable' }); }
+      }
       let analysisBase = base?.content.registry || null;
       if (!analysisBase && suppliedDecisions.review && sourceJob.result_artifact_id) {
         try { analysisBase = JSON.parse(await artifactRepository.readText({ tenantId: auth.tenantId, artifactId: sourceJob.result_artifact_id })); }
         catch { throw new ApiError({ status: 409, code: 'REVIEW_SOURCE_UNAVAILABLE', message: 'Original review context is unavailable' }); }
       }
-      const review = normalizeReviewMetadata({ supplied: suppliedDecisions.review, inherited: base?.content.decisions?.review, content: registry || requirements, allowedGaps: analysisBase?.analysis?.GAP || [], contextId: businessContextArtifactId, actorId: auth.userId, now, baseVersionId: base?.row.id, finalizing: sourceJob.type === 'RESEARCH' || decisions.skippedResearch === true });
+      const review = normalizeReviewMetadata({ supplied: suppliedDecisions.review, inherited: base?.content.decisions?.review, content: registry || requirements, allowedGaps: analysisBase?.analysis?.GAP || [], contextId: businessContextArtifactId, actorId: auth.userId, now, baseVersionId: base?.row.id, finalizing: sourceJob.type === 'RESEARCH' || decisions.skippedResearch === true, baseContent: base?.content.registry || base?.content.requirements, researchResult, researchJobId: sourceJob.type === 'RESEARCH' ? sourceJob.id : null });
       if (review !== undefined) decisions.review = review;
       const manualDecisionMetadata = {
         actorUserId: auth.userId,

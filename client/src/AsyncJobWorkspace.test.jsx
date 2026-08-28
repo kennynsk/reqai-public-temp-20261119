@@ -875,9 +875,9 @@ test('restores requirements insights and applies explicit accepted enhancements'
   expect(screen.getByRole('button', { name: 'Тренды рынка · 1' })).toBeInTheDocument();
   const insightCards = screen.getByRole('region', { name: 'Карточки результатов AI-исследования' });
   expect(within(insightCards).getAllByRole('article')).toHaveLength(1);
-  const applicability = within(insightCards).getByRole('meter', { name: 'Применимость' });
+  const applicability = within(insightCards).getByRole('meter', { name: 'Применимость · оценка модели' });
   expect(applicability).toHaveAttribute('aria-valuenow', '90');
-  expect(applicability).toHaveAttribute('aria-valuetext', 'Применимость 90%');
+  expect(applicability).toHaveAttribute('aria-valuetext', 'Оценка модели: применимость 90%');
   const applicabilitySegments = within(applicability).getAllByTestId('applicability-segment');
   expect(applicabilitySegments).toHaveLength(5);
   expect(applicabilitySegments.filter((segment) => segment.dataset.active === 'true')).toHaveLength(5);
@@ -900,6 +900,8 @@ test('restores requirements insights and applies explicit accepted enhancements'
   expect(rejectEnhancement).toHaveAttribute('aria-pressed', 'true');
   const acceptEnhancement = screen.getByRole('button', { name: 'Принять улучшение: Система должна автоматически обрабатывать заявку' });
   fireEvent.click(acceptEnhancement);
+  expect(acceptEnhancement).toHaveAttribute('aria-pressed', 'false');
+  fireEvent.click(screen.getByRole('button', { name: 'Принять точное изменение' }));
   expect(acceptEnhancement).toHaveAttribute('aria-pressed', 'true');
   fireEvent.click(screen.getByText('Исходные данные'));
   fireEvent.click(screen.getByRole('button', { name: 'Требования для AI' }));
@@ -953,6 +955,7 @@ test('restores the original business task for a directly opened linked research 
   await waitFor(() => expect(mocks.downloadArtifact).toHaveBeenCalledWith('original-context-artifact'));
   const accept = screen.getByRole('button', { name: 'Принять улучшение: Система должна напоминать руководителю о заявке' });
   fireEvent.click(accept);
+  fireEvent.click(screen.getByRole('button', { name: 'Принять точное изменение' }));
   expect(accept).toHaveAttribute('aria-pressed', 'true');
 
   fireEvent.click(screen.getByText('Исходные данные'));
@@ -1065,6 +1068,7 @@ test('keeps BABOK target types and decision lineage in linked research', async (
   fireEvent.click(within(card).getByRole('button', { name: 'Показать предложение: В FR · функциональные требования' }));
   expect(within(card).getByText('Система хранит историю статусов заявки')).toBeVisible();
   fireEvent.click(within(card).getByRole('button', { name: 'Принять улучшение: Система хранит историю статусов заявки' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Принять точное изменение' }));
   fireEvent.click(screen.getByRole('button', { name: 'Сохранить финальную версию' }));
   fireEvent.click(await screen.findByRole('button', { name: 'Сохранить с открытыми вопросами' }));
   await waitFor(() => expect(mocks.saveRequirementsVersion).toHaveBeenCalledWith(expect.objectContaining({ baseVersionId: 'babok-base', decisions: expect.objectContaining({ acceptedEnhancementKeys: ['babok-insight:0'], rejectedEnhancementKeys: [] }), registry: expect.any(Object) })));

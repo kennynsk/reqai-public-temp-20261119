@@ -1,5 +1,15 @@
 # UX implementation — isolated worktree
 
+## Fourth checkpoint — exact research proposal review
+
+- Accept opens a review dialog, including from collapsed cards. Users choose add/replace, target type, explicit replacement target, exact wording and supported fields. Original wording, rationale (or its absence) and field-level before/after values remain visible. Target references never imply overwrite permission.
+- Accepted changes enter the shared draft immediately, with stable enhancement keys and reserved record identifiers. Save final persists pending content and decisions together. Repeated acceptance is idempotent. Reversing an accepted record previews its current wording and requires explicit restoration/removal or retention as a manual record. Unrelated manual changes are retained.
+- `review.proposals` stores original wording, before/after, operation, target and decision; the server validates research lineage, exact new records and replacement preconditions and supplies reviewer/time. Unchanged historical proposal metadata survives later manual edits. To change type/target after acceptance, reverse the prior decision explicitly first.
+- Optional `rationale` and `citations` survive research normalization without trusting model-supplied verification. Applicability is labelled as a model estimate; absent estimates remain absent. Only HTTP(S) citation links without embedded credentials are clickable. No preview, prefetch or automatic source request is performed. `review.citationChecks` stores manual status/note with authoritative source/reviewer/time.
+- Mixed CJK/Russian text and analyst instructions are warnings, not auto-rewrites or hidden LLM calls. New research results retain base review decisions; old results load them from their authorized input version before review.
+- Validation: 79 client tests, lint and production build passed; 188 server tests passed (two opt-in PostgreSQL tests skipped). Pure tests cover all six types, exact server validation, replacement, reversal, manual retention, ID reservation and legacy deduplication. Component tests require exact confirmation instead of immediate acceptance. The full browser proposal/reload matrix remains an acceptance task.
+- Current build main chunk: approximately 541 kB (warning). Code splitting and final responsive checks remain pending; no merge or archive performed.
+
 ## Third checkpoint — explicit review decisions
 
 - `decisions.review.schemaVersion: 1` stores GAP answers/status/reason, omission references, manual completeness checks and acknowledgment of remaining issues. Review payloads are limited to 256 KiB; answers, reasons and record references are validated. Actor/time and content fingerprints are computed by the server, never trusted from browser input.

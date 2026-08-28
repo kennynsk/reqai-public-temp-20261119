@@ -1,5 +1,7 @@
 import { ApiError } from '../errors/api-error.js';
 import { canonicalSha256 } from '../prompts/prompt-utils.js';
+import { normalizeProposalMetadata } from './proposal-metadata.js';
+import { safeCitationUrl, normalizeCitations } from '../domain/research-evidence.js';
 
 const fail = (message) => { throw new ApiError({ status: 400, code: 'INVALID_REVIEW_METADATA', message }); };
 const object = (value) => value && typeof value === 'object' && !Array.isArray(value);
@@ -15,18 +17,33 @@ export function reviewIssues(content, gaps = {}) {
   ];
 }
 
-export function normalizeReviewMetadata({ supplied, inherited, content, allowedGaps = [], contextId, actorId, now, baseVersionId, finalizing = false }) {
+export function normalizeReviewMetadata({ supplied, inherited, content, allowedGaps = [], contextId, actorId, now, baseVersionId, finalizing = false, baseContent, researchResult, researchJobId }) {
   if (supplied === undefined && !inherited) return undefined;
   if (supplied !== undefined && (!object(supplied) || supplied.schemaVersion !== 1 || Buffer.byteLength(JSON.stringify(supplied), 'utf8') > 262144)) fail('review must use schemaVersion 1 and fit in 256 KiB');
   const previous = object(inherited) ? inherited : {};
   const input = supplied || {};
-  const allowedFields = new Set(['schemaVersion', 'gaps', 'omissions', 'completeness', 'acknowledgment']);
+  const allowedFields = new Set(['schemaVersion', 'gaps', 'omissions', 'completeness', 'acknowledgment', 'proposals', 'citationChecks']);
   if (Object.keys(input).some((key) => !allowedFields.has(key) && (!(key in previous) || !same(input[key], previous[key])))) fail('Unknown review field');
   const stamp = { actorUserId: actorId, recordedAt: now.toISOString() };
   const records = Object.values(content?.groups || content || {}).filter(Array.isArray).flat();
   const recordIds = new Set(records.map((record) => record.id));
   const gapById = new Map(allowedGaps.map((gap) => [gap.id, gap]));
   const next = { ...copy(previous), schemaVersion: 1, gaps: copy(previous.gaps || {}) };
+  if (input.proposals !== undefined) next.proposals = normalizeProposalMetadata({ supplied: input.proposals, inherited: previous.proposals, content, baseContent, researchResult, researchJobId, baseVersionId, stamp });
+  if (input.citationChecks !== undefined) {
+    if (!object(input.citationChecks) || Object.keys(input.citationChecks).length > 600) fail('Invalid citation checks');
+    const sources = new Map((researchResult?.insights || []).flatMap((insight) => normalizeCitations(insight.citations).map((citation, index) => [`${insight.id}:${index}`, citation])));
+    next.citationChecks = copy(previous.citationChecks || {});
+    for (const [key, value] of Object.entries(input.citationChecks)) {
+      if (!object(value) || typeof value.checked !== 'boolean') fail('Invalid citation check');
+      const note = cleanText(value.note, 5000, 'Source check note');
+      const prior = previous.citationChecks?.[key];
+      if (prior && prior.checked === value.checked && prior.note === note) { next.citationChecks[key] = copy(prior); continue; }
+      const source = sources.get(key);
+      if (!source || value.checked && !safeCitationUrl(source.url)) fail('Source is outside the authorized lineage or has an unsafe URL');
+      next.citationChecks[key] = { checked: value.checked, note, source, researchJobId, ...stamp };
+    }
+  }
   if (input.gaps !== undefined) {
     if (!object(input.gaps) || Object.keys(input.gaps).length > 500) fail('gaps must be an object with at most 500 entries');
     for (const [id, value] of Object.entries(input.gaps)) {

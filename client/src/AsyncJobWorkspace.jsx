@@ -1,3 +1,5 @@
+import ResearchEvidence from './ResearchEvidence.jsx';
+import ProposalReview from './ProposalReview.jsx';
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
@@ -811,6 +813,7 @@ function DecompositionResult({ value, latestVersion, onSave, onStartResearch, on
 }
 
 function ApplicabilityBars({ value }) {
+  if (value == null || !Number.isFinite(Number(value))) return <span className="text-xs text-slate-500">Оценка не указана</span>;
   const numericValue = Number(value);
   const normalizedValue = Number.isFinite(numericValue) ? Math.min(100, Math.max(0, numericValue)) : 50;
   const bars = 5;
@@ -819,11 +822,11 @@ function ApplicabilityBars({ value }) {
   return (
     <div
       role="meter"
-      aria-label="Применимость"
+      aria-label="Применимость · оценка модели"
       aria-valuemin="0"
       aria-valuemax="100"
       aria-valuenow={normalizedValue}
-      aria-valuetext={`Применимость ${normalizedValue}%`}
+      aria-valuetext={`Оценка модели: применимость ${normalizedValue}%`}
       className="flex items-center gap-1.5"
     >
       <span aria-hidden="true" className="flex gap-0.5">
@@ -879,7 +882,7 @@ function InsightEnhancementDecisionRow({ enhancement, decision, onDecision }) {
           aria-label={`Принять улучшение: ${enhancement.text}`}
           aria-pressed={accepted}
           onClick={() => onDecision('accepted')}
-          title={accepted ? 'Улучшение принято' : 'Принять сразу'}
+          title={accepted ? 'Проверить принятое изменение' : 'Проверить перед принятием'}
           className="flex items-center justify-center px-3 border-r border-gray-100 hover:bg-gray-50 shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-500"
         >
           {accepted ? <Check className="w-4 h-4 text-emerald-600" /> : <Plus className={`w-4 h-4 ${TARGET_TYPE_ICON_COLORS[type] || TARGET_TYPE_ICON_COLORS.functional}`} />}
@@ -1155,14 +1158,10 @@ function BabokRequirementsInsightsResult({ value, latestVersion, businessContext
   const session = useContext(SessionContext);
   const activeView = session?.view || (latestVersion?.versionId ? 'final' : 'insights');
   const setActiveView = (view) => session?.requestView(view, { preserveDraft: activeView !== 'final' && view !== 'final' });
-  const review = useReviewState(latestVersion?.registry || latestVersion?.requirements || value.baseRegistry || value.baseRequirements, latestVersion?.decisions || {}, { readOnly: activeView === 'final', editor: 'insights' });
+  const review = useReviewState(latestVersion?.registry || latestVersion?.requirements || value.baseRegistry || value.baseRequirements, latestVersion?.decisions || value.baseDecisions || {}, { readOnly: activeView === 'final', editor: 'insights' });
   const decisions = Object.fromEntries([...(review.state.decisions.acceptedEnhancementKeys || []).map((key) => [key, 'accepted']), ...(review.state.decisions.rejectedEnhancementKeys || []).map((key) => [key, 'rejected'])]);
-  const setDecisions = (update) => {
-    const next = update(decisions);
-    review.dispatch({ type: 'decisions', value: { ...review.state.decisions, acceptedEnhancementKeys: Object.keys(next).filter((key) => next[key] === 'accepted'), rejectedEnhancementKeys: Object.keys(next).filter((key) => next[key] === 'rejected') } });
-  };
   const visible = activeFilter === 'all' ? insights : insights.filter((item) => item.category === activeFilter);
-  const hasDecisionChanges = Object.keys(decisions).some((key) => decisions[key] !== (savedAcceptedKeys.includes(key) ? 'accepted' : savedRejectedKeys.includes(key) ? 'rejected' : undefined));
+  const hasDecisionChanges = review.dirty;
 
   useEffect(() => {
     if (activeView !== 'final') onDirtyChange?.(hasDecisionChanges);
@@ -1179,7 +1178,7 @@ function BabokRequirementsInsightsResult({ value, latestVersion, businessContext
   const acceptedKeys = enhancements.filter((item) => decisions[item.key] === 'accepted').map((item) => item.key);
   const rejectedKeys = enhancements.filter((item) => decisions[item.key] === 'rejected').map((item) => item.key);
   const sameKeys = (left, right) => JSON.stringify([...left].sort()) === JSON.stringify([...right].sort());
-  const finalVersionSaved = Boolean(latestVersion?.versionId) && sameKeys(acceptedKeys, savedAcceptedKeys) && sameKeys(rejectedKeys, savedRejectedKeys);
+  const finalVersionSaved = !review.dirty && Boolean(latestVersion?.versionId) && sameKeys(acceptedKeys, savedAcceptedKeys) && sameKeys(rejectedKeys, savedRejectedKeys);
   return (
     <ReviewDraftProvider review={review} submit={saveInsights} busy={busy}><section className="space-y-5">
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-5">
@@ -1195,14 +1194,15 @@ function BabokRequirementsInsightsResult({ value, latestVersion, businessContext
           const sourceTypes = Array.isArray(insight.source_types) ? insight.source_types : [];
           const proposalLabel = `${insightEnhancements.length} ${insightEnhancements.length === 1 ? 'предложение' : insightEnhancements.length > 1 && insightEnhancements.length < 5 ? 'предложения' : 'предложений'}`;
           return <article key={insight.id} className="bg-white rounded-xl border border-gray-200 p-5 hover:shadow-md transition-shadow">
-            <div className="flex items-center justify-between gap-2"><span className="flex items-center gap-2 min-w-0"><CategoryIcon data-testid={`insight-category-icon-${insight.category}`} aria-hidden="true" className="w-4 h-4 text-gray-400 shrink-0" /><span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${meta.color}`}>{meta.label}</span></span><ApplicabilityBars value={insight.applicability ?? 50} /></div>
+            <div className="flex items-center justify-between gap-2"><span className="flex items-center gap-2 min-w-0"><CategoryIcon data-testid={`insight-category-icon-${insight.category}`} aria-hidden="true" className="w-4 h-4 text-gray-400 shrink-0" /><span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${meta.color}`}>{meta.label}</span></span><ApplicabilityBars value={insight.applicability} /></div>
             <h3 className="font-bold text-gray-900 mt-3">{insight.title}</h3><p className="text-sm text-gray-500 mt-2 leading-relaxed">{insight.summary}</p>
+            <ResearchEvidence insight={insight} />
             <details className="mt-3 group"><summary className="list-none text-sm font-semibold text-indigo-600 hover:text-indigo-700 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded flex items-center gap-1"><ChevronDown aria-hidden="true" className="w-3.5 h-3.5 group-open:hidden" /><ChevronUp aria-hidden="true" className="w-3.5 h-3.5 hidden group-open:block" /><span className="group-open:hidden">Подробнее{insightEnhancements.length ? ` · ${proposalLabel}` : ''}</span><span className="hidden group-open:inline">Свернуть</span></summary>
               <div className="hidden group-open:block mt-3 pt-3 border-t border-gray-100">
                 {relatedTo.length > 0 && <div data-testid={`insight-relations-${insight.id}`} className="flex items-center gap-1.5 flex-wrap"><Link2 aria-hidden="true" className="w-3.5 h-3.5 text-gray-400 shrink-0" />{relatedTo.map((id) => <span key={id} className="text-xs font-mono font-medium text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">{id}</span>)}</div>}
                 {insight.detail && <p className="text-sm text-gray-600 leading-relaxed mt-3">{insight.detail}</p>}
                 {sourceTypes.length > 0 && <div className="flex items-center gap-1.5 flex-wrap mt-3"><ExternalLink aria-hidden="true" className="w-3 h-3 text-gray-400 shrink-0" />{sourceTypes.map((source) => <span key={source} className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">{SOURCE_TYPE_LABELS[source] || source}</span>)}</div>}
-                {insightEnhancements.length > 0 && <div className="border-t border-gray-100 mt-4 pt-3 space-y-2">{insightEnhancements.map((enhancement, index) => { const key = `${insight.id}:${index}`; return <InsightEnhancementDecisionRow key={key} enhancement={enhancement} decision={decisions[key]} onDecision={(decision) => setDecisions((current) => ({ ...current, [key]: decision }))} />; })}</div>}
+                {insightEnhancements.length > 0 && <div className="border-t border-gray-100 mt-4 pt-3 space-y-2">{insightEnhancements.map((enhancement, index) => { const key = `${insight.id}:${index}`; return <ProposalReview key={key} enhancement={{ ...enhancement, key, insightTitle: insight.title, rationale: enhancement.rationale || insight.rationale }} decision={decisions[key]}>{(onDecision) => <InsightEnhancementDecisionRow enhancement={enhancement} decision={decisions[key]} onDecision={onDecision} />}</ProposalReview>; })}</div>}
               </div>
             </details>
           </article>;
@@ -1222,14 +1222,10 @@ function RequirementsInsightsResult({ value, latestVersion, businessContext, bus
   const session = useContext(SessionContext);
   const activeView = session?.view || (latestVersion?.versionId ? 'final' : 'insights');
   const setActiveView = (view) => session?.requestView(view, { preserveDraft: activeView !== 'final' && view !== 'final' });
-  const review = useReviewState(latestVersion?.registry || latestVersion?.requirements || value.baseRegistry || value.baseRequirements, latestVersion?.decisions || {}, { readOnly: activeView === 'final', editor: 'insights' });
+  const review = useReviewState(latestVersion?.registry || latestVersion?.requirements || value.baseRegistry || value.baseRequirements, latestVersion?.decisions || value.baseDecisions || {}, { readOnly: activeView === 'final', editor: 'insights' });
   const decisions = Object.fromEntries([...(review.state.decisions.acceptedEnhancementKeys || []).map((key) => [key, 'accepted']), ...(review.state.decisions.rejectedEnhancementKeys || []).map((key) => [key, 'rejected'])]);
-  const setDecisions = (update) => {
-    const next = update(decisions);
-    review.dispatch({ type: 'decisions', value: { ...review.state.decisions, acceptedEnhancementKeys: Object.keys(next).filter((key) => next[key] === 'accepted'), rejectedEnhancementKeys: Object.keys(next).filter((key) => next[key] === 'rejected') } });
-  };
   const visible = activeFilter === 'all' ? insights : insights.filter((item) => item.category === activeFilter);
-  const hasDecisionChanges = Object.keys(decisions).some((key) => decisions[key] !== (savedAcceptedKeys.includes(key) ? 'accepted' : savedRejectedKeys.includes(key) ? 'rejected' : undefined));
+  const hasDecisionChanges = review.dirty;
 
   useEffect(() => {
     if (activeView !== 'final') onDirtyChange?.(hasDecisionChanges);
@@ -1273,7 +1269,7 @@ function RequirementsInsightsResult({ value, latestVersion, businessContext, bus
   const acceptedKeys = enhancements.filter((item) => decisions[item.key] === 'accepted').map((item) => item.key);
   const rejectedKeys = enhancements.filter((item) => decisions[item.key] === 'rejected').map((item) => item.key);
   const sameKeys = (left, right) => JSON.stringify([...left].sort()) === JSON.stringify([...right].sort());
-  const finalVersionSaved = Boolean(latestVersion?.versionId) && sameKeys(acceptedKeys, savedAcceptedKeys) && sameKeys(rejectedKeys, savedRejectedKeys);
+  const finalVersionSaved = !review.dirty && Boolean(latestVersion?.versionId) && sameKeys(acceptedKeys, savedAcceptedKeys) && sameKeys(rejectedKeys, savedRejectedKeys);
   return (
     <ReviewDraftProvider review={review} submit={saveInsights} busy={busy}><section className="space-y-5">
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-5">
@@ -1289,7 +1285,7 @@ function RequirementsInsightsResult({ value, latestVersion, businessContext, bus
           const sourceTypes = Array.isArray(insight.source_types) ? insight.source_types : [];
           const proposalLabel = `${insightEnhancements.length} ${insightEnhancements.length === 1 ? 'предложение' : insightEnhancements.length > 1 && insightEnhancements.length < 5 ? 'предложения' : 'предложений'}`;
           return <article key={insight.id} className="bg-white rounded-xl border border-gray-200 p-5 hover:shadow-md transition-shadow">
-            <div className="flex items-center justify-between gap-2"><span className="flex items-center gap-2 min-w-0"><CategoryIcon data-testid={`insight-category-icon-${insight.category}`} aria-hidden="true" className="w-4 h-4 text-gray-400 shrink-0" /><span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${meta.color}`}>{meta.label}</span></span><ApplicabilityBars value={insight.applicability ?? 50} /></div>
+            <div className="flex items-center justify-between gap-2"><span className="flex items-center gap-2 min-w-0"><CategoryIcon data-testid={`insight-category-icon-${insight.category}`} aria-hidden="true" className="w-4 h-4 text-gray-400 shrink-0" /><span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${meta.color}`}>{meta.label}</span></span><ApplicabilityBars value={insight.applicability} /></div>
             <h3 className="font-bold text-gray-900 mt-3">{insight.title}</h3>
             <p className="text-sm text-gray-500 mt-2 leading-relaxed">{insight.summary}</p>
             <details className="mt-3 group">
@@ -1298,7 +1294,7 @@ function RequirementsInsightsResult({ value, latestVersion, businessContext, bus
                 {relatedTo.length > 0 && <div data-testid={`insight-relations-${insight.id}`} className="flex items-center gap-1.5 flex-wrap"><Link2 aria-hidden="true" className="w-3.5 h-3.5 text-gray-400 shrink-0" />{relatedTo.map((id) => <span key={id} className="text-xs font-mono font-medium text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">{id}</span>)}</div>}
                 {insight.detail && <p className="text-sm text-gray-600 leading-relaxed mt-3">{insight.detail}</p>}
                 {sourceTypes.length > 0 && <div className="flex items-center gap-1.5 flex-wrap mt-3"><ExternalLink aria-hidden="true" className="w-3 h-3 text-gray-400 shrink-0" />{sourceTypes.map((source) => <span key={source} className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">{SOURCE_TYPE_LABELS[source] || source}</span>)}</div>}
-                {insightEnhancements.length > 0 && <div className="border-t border-gray-100 mt-4 pt-3 space-y-2">{insightEnhancements.map((enhancement, index) => { const key = `${insight.id}:${index}`; return <InsightEnhancementDecisionRow key={key} enhancement={enhancement} decision={decisions[key]} onDecision={(decision) => setDecisions((current) => ({ ...current, [key]: decision }))} />; })}</div>}
+                {insightEnhancements.length > 0 && <div className="border-t border-gray-100 mt-4 pt-3 space-y-2">{insightEnhancements.map((enhancement, index) => { const key = `${insight.id}:${index}`; return <ProposalReview key={key} enhancement={{ ...enhancement, key, insightTitle: insight.title, rationale: enhancement.rationale || insight.rationale }} decision={decisions[key]}>{(onDecision) => <InsightEnhancementDecisionRow enhancement={enhancement} decision={decisions[key]} onDecision={onDecision} />}</ProposalReview>; })}</div>}
               </div>
             </details>
           </article>;
@@ -1766,7 +1762,14 @@ export default function AsyncJobWorkspace() {
       loadRequirementsVersions(id),
     ]);
     if (routeJobIdRef.current !== id) return;
-    setResultContent(content);
+    const parsed = safeJson(content);
+    let hydrated = content;
+    if (parsed?.mode === 'REQUIREMENTS_INSIGHTS' && parsed.inputRequirementsVersionId && !parsed.baseDecisions) {
+      const source = await enterpriseApi.getRequirementsVersion(parsed.inputRequirementsVersionId);
+      if (routeJobIdRef.current !== id || signal?.aborted) return;
+      hydrated = JSON.stringify({ ...parsed, baseDecisions: source?.decisions || {} });
+    }
+    setResultContent(hydrated);
     setRequirementsVersions(versions);
     setRemoteRequirementsVersions(null);
     loadedResultJobIdRef.current = id;

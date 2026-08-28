@@ -1,3 +1,4 @@
+import { normalizeCitations } from '../domain/research-evidence.js';
 import { buildDecomposePrompt, buildInsightsPrompt } from '../../decomposer-prompts.js';
 import { withExtractedTrace } from '../observability/telemetry.js';
 import { BABOK_OUTPUT_SCHEMA_VERSION, BABOK_PROVENANCE, BABOK_QUALITY, BABOK_REQUIREMENT_TYPES, BABOK_TRACEABILITY_STATUSES, babokIdentifierSet, validateBabokConsolidation, validateBabokRegistry } from '../services/babok-requirements-contract.js';
@@ -97,13 +98,15 @@ function normalizeRequirementsInsights(value, { babokIds = null } = {}) {
       title: String(item.title || '').trim(),
       summary: String(item.summary || '').trim(),
       detail: String(item.detail || '').trim(),
-      applicability: Math.max(0, Math.min(100, Number.isFinite(item.applicability) ? item.applicability : 50)),
+      applicability: Number.isFinite(item.applicability) ? Math.max(0, Math.min(100, item.applicability)) : null,
+      ...(typeof item.rationale === 'string' ? { rationale: item.rationale.slice(0, 10000) } : {}),
+      ...(Array.isArray(item.citations) ? { citations: normalizeCitations(item.citations) } : {}),
       source_types: Array.isArray(item.source_types) ? item.source_types.map(String) : [],
       relatedTo: normalizeRelatedIds(item.relatedTo, `insights.${index}.relatedTo`),
       enhancements: Array.isArray(item.enhancements)
         ? item.enhancements.filter((enhancement) => enhancement && allowedEnhancementTypes.has(enhancement.targetType) && String(enhancement.text || '').trim()).map((enhancement, enhancementIndex) => {
           const targetIds = normalizeRelatedIds(enhancement.targetIds ?? enhancement.relatedTo, `insights.${index}.enhancements.${enhancementIndex}.targetIds`);
-          return { targetType: enhancement.targetType, text: String(enhancement.text).trim(), ...(targetIds.length ? { targetIds } : {}) };
+          return { targetType: enhancement.targetType, text: String(enhancement.text).trim(), ...(targetIds.length ? { targetIds } : {}), ...(typeof enhancement.rationale === 'string' ? { rationale: enhancement.rationale.slice(0, 10000) } : {}) };
         })
         : [],
     }))
@@ -697,6 +700,7 @@ export function createEnterpriseActivityHandlers({ artifactRepository, modelExec
         mode: 'REQUIREMENTS_INSIGHTS',
         baseRequirements: envelope.requirements,
         baseRegistry: registry,
+        baseDecisions: envelope.decisions || {},
         babokIdentifierSet: identifierSet,
         inputRequirementsVersionId: input.inputArtifactId,
         insights,
