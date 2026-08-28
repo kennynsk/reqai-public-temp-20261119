@@ -3,6 +3,18 @@ import { expect, test } from 'vitest';
 import { assembleReview, reviewReducer, rebaseReview, readReviewDraft, clearReviewDrafts, DRAFT_TTL } from './review-state.js';
 import { roomBookingRegistry } from './room-booking.fixture.js';
 
+test('rebase merges independent GAP answers and omission entries without carrying approval', () => {
+  const content = roomBookingRegistry();
+  const base = { review: { schemaVersion: 1, gaps: {}, omissions: [] } };
+  const local = { review: { ...base.review, gaps: { 'GAP-001': { state: 'answered', answer: 'Мой ответ' } }, omissions: [{ id: 'OMISSION-local', text: 'Мой пропуск' }] } };
+  const remote = { review: { ...base.review, gaps: { 'GAP-002': { state: 'answered', answer: 'Другой ответ' } }, omissions: [{ id: 'OMISSION-remote', text: 'Другой пропуск' }], completeness: { checked: true, stale: false } } };
+  const result = rebaseReview({ content, decisions: local, drafts: {} }, content, content, base, remote);
+  expect(Object.keys(result.state.decisions.review.gaps)).toEqual(['GAP-002', 'GAP-001']);
+  expect(result.state.decisions.review.omissions).toHaveLength(2);
+  expect(result.state.decisions.review.completeness.stale).toBe(true);
+  expect(remote.review.completeness.stale).toBe(false);
+});
+
 test('assembles every pending field, including a composer, without mutating source', () => {
   const original = roomBookingRegistry();
   let state = { content: original, decisions: {}, drafts: {} };

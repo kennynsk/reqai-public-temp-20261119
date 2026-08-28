@@ -1,5 +1,15 @@
 # UX implementation — isolated worktree
 
+## Third checkpoint — explicit review decisions
+
+- `decisions.review.schemaVersion: 1` stores GAP answers/status/reason, omission references, manual completeness checks and acknowledgment of remaining issues. Review payloads are limited to 256 KiB; answers, reasons and record references are validated. Actor/time and content fingerprints are computed by the server, never trusted from browser input.
+- Answers leave GAPs open. Closing/reopening needs a reason. These decisions never rewrite the original model output or requirement wording. Current GAP/quality/omission issues must be acknowledged before finalization by the new client. Saving a final version is not semantic approval.
+- Available original text can be compared beside requirements. A missing obligation can become a manual requirement. Content changes invalidate completeness/acknowledgment; deletion of an omission's linked requirement makes that omission unresolved again.
+- Old clients omitting review fields preserve compatible inherited evidence, with stale checks after changes. Projection-only clients saving from BABOK bases now overlay BR/FR/NFR while retaining SR/TR/CON, analysis and sources, instead of discarding the full registry. Incompatible identifiers still fail contract validation. Three-way rebase merges independent GAP/omission decisions and invalidates approval after reconciliation.
+- Browser regression on the isolated synthetic task: load seven GAPs; answer GAP-001, observe dirty/disabled-next state; require a reason for closing; save and reload the exact answer/reason with server reviewer/time; reopen with a new reason and save. Cancel finalization, then explicitly retain all seven issues. Compare source against the deliberately incomplete registry, flag reopening, create FR-003, mark manual completeness, and save with an updated issue acknowledgment. This is deterministic fixture testing, not a real model run.
+- Validation: 70 client tests, client lint, 185 server tests passed (two optional database tests skipped in this run). Targeted service tests verify persistence/reload through a projection-only client and non-mutation of the base; reducer tests cover independent review decisions across clients.
+- No database migration is needed for review metadata; it lives in immutable version artifacts and existing decisions JSON. Rollback may leave the additive metadata intact. Do not delete version history. Exact proposal review, export and full acceptance remain pending.
+
 Base: `4771717`; branch: `codex/requirements-ux-improvements`. The original checkout remains on `codex/integrate-babok-requirements-skill`. No merge or archive is authorized yet.
 
 ## OpenSpec reconciliation

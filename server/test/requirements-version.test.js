@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { readFileSync } from 'node:fs';
+import { normalizeReviewMetadata } from '../src/services/review-metadata.js';
 
 import { RequirementsVersionRepository } from '../src/repositories/requirements-version-repository.js';
 import { createRequirementsVersionService } from '../src/services/requirements-version-service.js';
@@ -7,6 +9,29 @@ import { createEmptyBabokRegistry } from '../src/services/babok-requirements-con
 
 const auth = { tenantId: 'tenant-a', userId: 'user-a', roles: ['user'] };
 const config = { process: { siteId: 'dc-a' }, retention: { finalResultsDays: 180 }, jobs: { resultMaxBytes: 104857600 } };
+
+test('projection-only client retains BABOK analysis and review evidence through save and reload', async () => {
+  const registry = JSON.parse(readFileSync(new URL('./fixtures/babok-requirements-v1.complete.json', import.meta.url)));
+  const review = normalizeReviewMetadata({ supplied: { schemaVersion: 1, gaps: { 'GAP-001': { state: 'answered', answer: 'Уточнение' } }, completeness: { check: true } }, content: registry, allowedGaps: registry.analysis.GAP, contextId: 'primary-artifact', actorId: 'original-reviewer', now: new Date('2026-01-01') });
+  const base = { kind: 'REQUIREMENTS_VERSION', registry, decisions: { review }, businessContextArtifactId: 'primary-artifact' };
+  let stored;
+  const service = createRequirementsVersionService({ config,
+    jobRepository: { async findVisibleById() { return { id: 'job', type: 'DECOMPOSITION', status: 'SUCCEEDED', input_artifact_id: 'primary-artifact' }; } },
+    artifactRepository: { async metadata() { return {}; }, async readText({ artifactId }) { return JSON.stringify(artifactId === 'base' ? base : stored); }, async createText(value) { stored = JSON.parse(value.text); return { artifactId: 'new' }; } },
+    versionRepository: { async findVisibleById({ id }) { return { id, source_job_id: 'job', created_at: new Date() }; }, async create(value) { return { id: 'new', source_job_id: 'job', base_version_id: value.baseVersionId, created_at: new Date() }; } },
+  });
+  const requirements = Object.fromEntries(Object.entries({ business: 'BR', functional: 'FR', nonfunctional: 'NFR' }).map(([key, type]) => [key, registry.groups[type].map(({ id, text }) => ({ id, text }))]));
+  requirements.functional[0].text = 'Ручная правка старым клиентом';
+  await service.create({ auth, body: { sourceJobId: 'job', baseVersionId: 'base', requirements } });
+  const reloaded = await service.get({ auth, versionId: 'new' });
+  assert.equal(reloaded.registry.groups.FR[0].text, requirements.functional[0].text);
+  for (const type of ['SR', 'TR', 'CON']) assert.deepEqual(reloaded.registry.groups[type], registry.groups[type]);
+  assert.deepEqual(reloaded.registry.analysis, registry.analysis);
+  assert.deepEqual(reloaded.decisions.review.gaps, review.gaps);
+  assert.equal(reloaded.decisions.review.completeness.stale, true);
+  assert.equal(reloaded.decisions.review.completeness.actorUserId, 'original-reviewer');
+  assert.notEqual(base.registry.groups.FR[0].text, requirements.functional[0].text);
+});
 
 test('reviewed decomposition is persisted as an immutable requirements version', async () => {
   let artifactInput; let versionInput; let auditInput;

@@ -1,8 +1,8 @@
 import { useEffect } from 'react';
 import { DraftContext, SessionContext } from './review-context.js';
 const copy = (value) => JSON.parse(JSON.stringify(value));
-export function ReviewSessionProvider({ scope, jobId, baseVersionId, register, restoredState, compareRecovery, restoreRecovery, view, requestView, reservedIds, children }) {
-  return <SessionContext.Provider value={{ key: scope ? `reqai.reviewDraft:${scope}:${jobId}` : null, baseVersionId: baseVersionId || null, register, restoredState, compareRecovery, restoreRecovery, view, requestView, reservedIds }}>{children}</SessionContext.Provider>;
+export function ReviewSessionProvider({ scope, jobId, baseVersionId, register, restoredState, compareRecovery, restoreRecovery, view, requestView, reservedIds, businessContext, children }) {
+  return <SessionContext.Provider value={{ key: scope ? `reqai.reviewDraft:${scope}:${jobId}` : null, baseVersionId: baseVersionId || null, register, restoredState, compareRecovery, restoreRecovery, view, requestView, reservedIds, businessContext }}>{children}</SessionContext.Provider>;
 }
 export function ReviewDraftProvider({ review, submit, busy = false, children }) {
   useEffect(() => {

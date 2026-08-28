@@ -1,18 +1,14 @@
+import ReviewQuestions from './ReviewQuestions.jsx';
 import { MaterialCoverage, SourceEvidence } from './SourceEvidence.jsx';
 
 export function RecordLinks({ ids = [], onNavigate }) {
   return <span className="inline-flex flex-wrap gap-2">{ids.map((id) => <a key={id} href={`#record-${id}`} onClick={(event) => { if (onNavigate) { event.preventDefault(); onNavigate(id); } }} className="inline-block rounded bg-indigo-50 px-2 py-1 text-xs font-semibold text-indigo-700 underline underline-offset-2">{id}</a>)}</span>;
 }
 
-export default function RegistryAnalysis({ registry, section, onNavigate }) {
+export default function RegistryAnalysis({ registry, section, onNavigate, readOnly }) {
   const analysis = registry.analysis;
   return <div className="space-y-4">
-    {section === 'questions' && <section aria-label="Вопросы для уточнения" className="space-y-3">
-      <h2 className="text-lg font-bold">Вопросы для уточнения · {analysis.GAP.length}</h2>
-      <p className="text-sm text-slate-600">Это пробелы исходных данных, а не подтверждённые требования.</p>
-      {analysis.GAP.map((gap) => <article id={`record-${gap.id}`} tabIndex={-1} key={gap.id} className="scroll-mt-56 rounded-xl border border-amber-200 bg-white p-4"><h3 className="font-semibold">{gap.id} · {gap.text}</h3><div className="mt-2"><RecordLinks ids={gap.affectedIds} onNavigate={onNavigate} /></div>{gap.nextStep && <p className="my-2 text-sm">Следующий шаг: {gap.nextStep}</p>}{analysis.questions.filter((question) => question.gapId === gap.id).map((question) => <div key={question.id} className="my-3 rounded-lg bg-amber-50 p-3"><p className="text-xs text-amber-900">{({ P0: 'Критический', P1: 'Высокий', P2: 'Обычный' })[question.priority] || 'Приоритет не указан'} · {question.addressee}</p><p className="mt-1 text-sm">{question.text}</p></div>)}<details className="text-sm"><summary className="cursor-pointer p-2">Источник вопроса</summary><SourceEvidence source={gap.source} materials={registry.materials} /></details></article>)}
-      {!analysis.GAP.length && <p className="rounded-xl border bg-white p-4 text-sm text-slate-600">AI не сформировал вопросов. Это не заменяет ручную проверку полноты.</p>}
-    </section>}
+    {section === 'questions' && <ReviewQuestions registry={registry} onNavigate={onNavigate} readOnly={readOnly} />}
     {section === 'links' && <section aria-label="Связи требований" className="space-y-3"><h2 className="text-lg font-bold">Связи требований · {analysis.traceability.length}</h2>{analysis.traceability.map((link, index) => <article key={index} className="rounded-xl border bg-white p-4"><RecordLinks ids={[link.from, link.to]} onNavigate={onNavigate} /><p className="text-sm mt-2">{link.relation}</p><p className="text-xs text-slate-600 mt-1">{link.status}</p></article>)}{!analysis.traceability.length && <p className="text-sm text-slate-600">Отдельная схема связей не сформирована. Связанные записи доступны на карточках требований.</p>}</section>}
     <details className="rounded-xl border bg-white p-4"><summary className="cursor-pointer font-semibold text-sm p-1">Приложения: контекст, материалы и анализ</summary><div className="mt-4 space-y-4">
       {registry.summary?.text && <p className="text-sm whitespace-pre-wrap">{registry.summary.text}</p>}

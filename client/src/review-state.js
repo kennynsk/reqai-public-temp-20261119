@@ -1,11 +1,31 @@
 import { useContext, useEffect, useReducer, useState } from 'react';
 import { DraftContext, SessionContext } from './review-context.js';
 import { STRUCTURED_FIELDS, validateReviewContent } from './review-fields.js';
+import { invalidateReviewEvidence } from './review-metadata.js';
 
 const PREFIX = 'reqai.reviewDraft:';
 export const DRAFT_TTL = 24 * 60 * 60 * 1000;
 const copy = (value) => JSON.parse(JSON.stringify(value));
 const recordIds = (content) => Object.values(content.groups || content).filter(Array.isArray).flat().map((item) => item.id).filter(Boolean);
+
+function mergeDecisionChanges(base, local, remote, changes, path = '') {
+  if (JSON.stringify(base) === JSON.stringify(local)) return remote;
+  const object = (value) => value && typeof value === 'object' && !Array.isArray(value);
+  if (object(local) && (base == null || object(base)) && (remote == null || object(remote))) {
+    const result = { ...(remote || {}) };
+    for (const key of new Set([...Object.keys(base || {}), ...Object.keys(local)])) {
+      const merged = mergeDecisionChanges(base?.[key], local[key], remote?.[key], changes, path ? `${path}.${key}` : key);
+      if (merged === undefined) delete result[key]; else result[key] = merged;
+    }
+    return result;
+  }
+  if (path === 'review.omissions' && Array.isArray(local)) {
+    const keyed = (items = []) => Object.fromEntries(items.map((item) => [item.id, item]));
+    return Object.values(mergeDecisionChanges(keyed(base), keyed(local), keyed(remote), changes, `${path}.items`));
+  }
+  changes.push({ id: path, operation: 'Решение проверки', local: JSON.stringify(local) || 'Удалено', remote: JSON.stringify(remote) || 'Нет' });
+  return local === undefined ? undefined : copy(local);
+}
 
 export function clearReviewDrafts(storage = sessionStorage) {
   try { for (const key of Object.keys(storage)) if (key.startsWith(PREFIX)) storage.removeItem(key); } catch { /* storage can be disabled */ }
@@ -28,9 +48,9 @@ export function reviewReducer(state, action) {
   switch (action.type) {
     case 'content': {
       const content = typeof action.value === 'function' ? action.value(state.content) : action.value;
-      return { ...state, content, reservedIds: [...new Set([...(state.reservedIds || []), ...recordIds(state.content), ...recordIds(content)])] };
+      return { ...state, content, decisions: JSON.stringify(content) === JSON.stringify(state.content) ? state.decisions : invalidateReviewEvidence(state.decisions), reservedIds: [...new Set([...(state.reservedIds || []), ...recordIds(state.content), ...recordIds(content)])] };
     }
-    case 'field': return { ...state, drafts: { ...state.drafts, [action.key]: action.value } };
+    case 'field': return { ...state, decisions: action.value.text !== action.value.initialText || Object.keys(action.value.fields || {}).length ? invalidateReviewEvidence(state.decisions) : state.decisions, drafts: { ...state.drafts, [action.key]: action.value } };
     case 'clear': { const drafts = { ...state.drafts }; delete drafts[action.key]; return { ...state, drafts }; }
     case 'decisions': return { ...state, decisions: action.value };
     case 'restore': return action.value;
@@ -94,13 +114,8 @@ export function rebaseReview(state, base, remote, baseDecisions = {}, remoteDeci
     }
     drafts[key] = { ...draft, text: draft.text === draft.initialText && current ? current.text : draft.text, initialText: current?.text || draft.initialText };
   }
-  const decisions = { ...copy(remoteDecisions) };
-  for (const key of new Set([...Object.keys(baseDecisions), ...Object.keys(state.decisions)])) {
-    if (JSON.stringify(baseDecisions[key]) === JSON.stringify(state.decisions[key])) continue;
-    changes.push({ id: key, operation: 'Решение проверки', local: JSON.stringify(state.decisions[key]) || 'Удалено', remote: JSON.stringify(remoteDecisions[key]) || 'Нет' });
-    if (key in state.decisions) decisions[key] = copy(state.decisions[key]);
-    else delete decisions[key];
-  }
+  const mergedDecisions = mergeDecisionChanges(baseDecisions, state.decisions, remoteDecisions, changes);
+  const decisions = changes.length ? invalidateReviewEvidence(mergedDecisions) : mergedDecisions;
   return { state: { ...state, content, drafts, decisions, reservedIds: [...new Set([...(state.reservedIds || []), ...recordIds(base), ...recordIds(content)])] }, changes };
 }
 

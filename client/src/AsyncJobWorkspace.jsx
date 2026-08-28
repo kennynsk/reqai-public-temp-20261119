@@ -40,6 +40,8 @@ import RequirementTypeNav from './RequirementTypeNav.jsx';
 import HistoryDrawer from './HistoryDrawer.jsx';
 import TaskTitle from './TaskTitle.jsx';
 import ContextInput from './ContextInput.jsx';
+import CompletenessReview from './CompletenessReview.jsx';
+import { openReviewItems, updateReviewMetadata } from './review-metadata.js';
 import LegacyDeletionNotice from './LegacyDeletionNotice.jsx';
 import { useLegacyDeletion } from './use-legacy-deletion.js';
 import ResultSettings from './ResultSettings.jsx';
@@ -649,11 +651,13 @@ function BabokRegistryResult({ value, latestVersion, onSave, onStartResearch, on
 
   function addRequirement(type, text) {
     const id = stableBabokId(registry.groups[type], type, review.state.reservedIds);
+    setActiveType(type); setReviewSection('requirements');
     markEdited(id);
     setRegistry((current) => {
       const actualId = stableBabokId(current.groups[type], type, review.state.reservedIds);
       return withBabokCounts({ ...current, groups: { ...current.groups, [type]: [...current.groups[type], createBabokManualRecord(type, actualId, text, { sourceArtifactId: current.materials.primary.artifactId })] } });
     });
+    return id;
   }
 
   function saveRegistry(decisions = review.state.decisions) {
@@ -698,6 +702,7 @@ function BabokRegistryResult({ value, latestVersion, onSave, onStartResearch, on
       <div role="group" aria-label="Разделы проверки" className="flex flex-wrap gap-2">{[['requirements', 'Требования'], ['questions', 'Вопросы'], ['links', 'Связи']].map(([key, label]) => <button key={key} aria-pressed={reviewSection === key} onClick={() => setReviewSection(key)} className={`rounded-lg border px-4 py-2 text-sm font-semibold ${reviewSection === key ? 'bg-indigo-600 text-white' : 'bg-white text-slate-700'}`}>{label}{key === 'questions' ? ` · ${registry.analysis.GAP.length}` : ''}</button>)}</div>
       <p className="text-sm text-slate-600">Требований: {BABOK_REQUIREMENT_TYPES.reduce((total, type) => total + registry.groups[type].length, 0)} · Вопросов: {registry.analysis.GAP.length}{registry.scope.partial ? ' · Частичная обработка' : ''}</p>
       <div hidden={reviewSection !== 'requirements'} className="space-y-4">
+      {!readOnly && <CompletenessReview onNavigate={navigateRecord} onAddManual={addRequirement} />}
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div><h2 className="text-base font-bold text-slate-900">Типы требований</h2><p className="text-xs text-slate-500 mt-1">Выберите тип, чтобы сфокусироваться на его записях. Стабильные ID сохраняются при ревизиях.</p></div>
         <RequirementsLayoutToggle layout={layout} onChange={setLayout} />
@@ -720,7 +725,7 @@ function BabokRegistryResult({ value, latestVersion, onSave, onStartResearch, on
       </div>
       {layout === 'rows' && <p className="text-xs text-slate-500">Сейчас выбран тип {activeMeta[0]} · {activeMeta[1]}. Переключите вкладку, чтобы просмотреть другой тип.</p>}
       </div>
-      <RegistryAnalysis registry={registry} section={reviewSection} onNavigate={navigateRecord} />
+      <RegistryAnalysis registry={registry} section={reviewSection} onNavigate={navigateRecord} readOnly={readOnly} />
     </div></ReviewDraftProvider>
   );
 }
@@ -1006,7 +1011,7 @@ function FinalRequirementsEditor({ latestVersion, onSave, onShowInsights, onShow
     const assembled = assembleReview(review.state, (type, text, records) => makeLegacyRecord(type, text, records, review.state.reservedIds));
     setValidationError(assembled.error || null);
     if (assembled.error) { requestAnimationFrame(() => document.querySelector(`[aria-label="Текст требования ${assembled.error.id}"]`)?.focus()); return; }
-    return onSave({ requirements: assembled.content, baseVersionId: latestVersion.versionId, decisions: latestVersion.decisions || {} });
+    return onSave({ requirements: assembled.content, baseVersionId: latestVersion.versionId, decisions: assembled.decisions });
   }
   const [dirtyDrafts, setDirtyDrafts] = useState(() => new Set());
   const [layout, setLayout] = useRequirementsLayout();
@@ -1600,6 +1605,9 @@ export default function AsyncJobWorkspace() {
   const [restoredReviewState, setRestoredReviewState] = useState(null);
   const loadedResultJobIdRef = useRef(null);
   const [versionBusy, setVersionBusy] = useState(false);
+  const [finalReviewPrompt, setFinalReviewPrompt] = useState(null);
+  const finalReviewResolverRef = useRef(null);
+  const identityGenerationRef = useRef(0);
   const linkedResearchSubmissionRef = useRef(false);
   const [linkedResearchSubmitting, setLinkedResearchSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -1625,6 +1633,7 @@ export default function AsyncJobWorkspace() {
   const handleEditorDirty = useCallback((dirty) => { editorDirtyRef.current = dirty; }, []);
 
   const navigate = useCallback((id, { replace = false, confirmed = false } = {}) => {
+    if (saveInFlightRef.current && id !== routeJobIdRef.current) return false;
     if (!confirmed && editorDirtyRef.current && id !== routeJobIdRef.current) { setPendingNavigation({ id, replace }); return false; }
     const path = id ? `/tasks/${encodeURIComponent(id)}` : '/';
     const index = replace ? historyIndexRef.current : historyIndexRef.current + 1;
@@ -1640,11 +1649,11 @@ export default function AsyncJobWorkspace() {
     const onPopState = (event) => {
       if (restoringPopRef.current) { restoringPopRef.current = false; return; }
       const id = jobIdFromPath();
-      if (editorDirtyRef.current && id !== routeJobIdRef.current) {
+      if ((editorDirtyRef.current || saveInFlightRef.current) && id !== routeJobIdRef.current) {
         const delta = Number.isInteger(event.state?.reqaiIndex) ? event.state.reqaiIndex - historyIndexRef.current : null;
         if (delta) { restoringPopRef.current = true; window.history.go(-delta); }
         else window.history.pushState({ reqaiIndex: historyIndexRef.current }, '', routeJobIdRef.current ? `/tasks/${encodeURIComponent(routeJobIdRef.current)}` : '/');
-        setPendingNavigation({ id, historyDelta: delta }); return;
+        if (!saveInFlightRef.current) setPendingNavigation({ id, historyDelta: delta }); return;
       }
       if (Number.isInteger(event.state?.reqaiIndex)) historyIndexRef.current = event.state.reqaiIndex;
       routeJobIdRef.current = id; setRouteJobId(id);
@@ -1654,13 +1663,16 @@ export default function AsyncJobWorkspace() {
   }, []);
 
   useEffect(() => {
-    const warn = (event) => { if (editorDirtyRef.current) { event.preventDefault(); event.returnValue = ''; } };
+    const warn = (event) => { if (editorDirtyRef.current || saveInFlightRef.current) { event.preventDefault(); event.returnValue = ''; } };
     window.addEventListener('beforeunload', warn);
     return () => window.removeEventListener('beforeunload', warn);
   }, []);
 
   useEffect(() => {
     const changed = () => {
+      identityGenerationRef.current += 1;
+      finalReviewResolverRef.current?.(false); finalReviewResolverRef.current = null; setFinalReviewPrompt(null);
+      saveInFlightRef.current = false; setVersionBusy(false); saveRequestRef.current = null;
       clearReviewDrafts();
       editorDirtyRef.current = false;
       editorControllerRef.current = null;
@@ -1680,6 +1692,8 @@ export default function AsyncJobWorkspace() {
       window.removeEventListener('focus', check);
     };
   }, [navigate]);
+
+  useEffect(() => () => { finalReviewResolverRef.current?.(false); }, []);
 
   async function resolveNavigation(save) {
     if (save && !await editorControllerRef.current?.save?.()) return;
@@ -1985,14 +1999,25 @@ export default function AsyncJobWorkspace() {
     if (!result?.jobId || saveInFlightRef.current) return null;
     saveInFlightRef.current = true;
     const savingJobId = result.jobId;
+    const savingIdentity = identityGenerationRef.current;
     setVersionBusy(true);
     setError('');
     try {
+      if (result.type === 'RESEARCH' || decisions.skippedResearch === true) {
+        const issues = openReviewItems(nextRegistry || nextRequirements, decisions.review);
+        if (issues.length) {
+          const confirmed = await new Promise((resolve) => { finalReviewResolverRef.current = resolve; setFinalReviewPrompt({ issues, resolve }); });
+          finalReviewResolverRef.current = null;
+          if (!confirmed || routeJobIdRef.current !== savingJobId || savingIdentity !== identityGenerationRef.current) return null;
+          decisions = updateReviewMetadata(decisions, { acknowledgment: { confirm: true } });
+        } else decisions = updateReviewMetadata(decisions, {});
+      }
       const content = { sourceJobId: savingJobId, baseVersionId, decisions, expectedLatestVersionId: requirementsVersions[0]?.versionId || null, ...(nextRegistry ? { registry: nextRegistry, editedRecordIds } : { requirements: nextRequirements }) };
       const fingerprint = JSON.stringify(content);
       if (saveRequestRef.current?.fingerprint !== fingerprint) saveRequestRef.current = { fingerprint, id: crypto.randomUUID() };
       const payload = { ...content, clientMutationId: saveRequestRef.current.id };
       const saved = await enterpriseApi.saveRequirementsVersion(payload);
+      if (savingIdentity !== identityGenerationRef.current) return null;
       if (!saved?.versionId) throw new Error('Сервер не подтвердил сохранение версии. Повторите запрос.');
       if (routeJobIdRef.current !== savingJobId) return saved;
       editorControllerRef.current?.discard?.();
@@ -2004,14 +2029,14 @@ export default function AsyncJobWorkspace() {
       editorDirtyRef.current = false;
       return saved;
     } catch (cause) {
-      if (routeJobIdRef.current === savingJobId) {
+      if (savingIdentity === identityGenerationRef.current && routeJobIdRef.current === savingJobId) {
         setError(cause.code === 'REQUIREMENTS_VERSION_CONFLICT' ? 'На сервере появилась новая версия. Сравните её с вашими правками перед сохранением.' : userFacingError(cause));
         if (cause.code === 'REQUIREMENTS_VERSION_CONFLICT') {
           try { const versions = await loadRequirementsVersions(savingJobId); if (routeJobIdRef.current === savingJobId) setRemoteRequirementsVersions(versions); } catch { /* draft remains available; retry can reload the conflict */ }
         }
       }
       return null;
-    } finally { saveInFlightRef.current = false; setVersionBusy(false); }
+    } finally { if (savingIdentity === identityGenerationRef.current) { saveInFlightRef.current = false; setVersionBusy(false); } }
   }
 
   async function startResearchFromDecomposition({ requirementsVersionId }) {
@@ -2082,7 +2107,8 @@ export default function AsyncJobWorkspace() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {pendingNavigation && <UnsavedNavigationDialog busy={versionBusy} onSave={() => resolveNavigation(true)} onDiscard={() => resolveNavigation(false)} onStay={() => setPendingNavigation(null)} />}
+      {finalReviewPrompt && <ReviewDialog label="Открытые вопросы перед финализацией" onClose={() => { finalReviewPrompt.resolve(false); setFinalReviewPrompt(null); }}><h2 className="font-bold text-lg">В документе остаются вопросы</h2><p className="text-sm my-3">Сохранение финальной версии не означает, что все требования согласованы. Подтвердите, что сохраняете перечисленные вопросы открытыми. Они войдут в экспорт.</p><ul className="space-y-2">{finalReviewPrompt.issues.map((issue) => <li key={issue.id} className="rounded-lg border border-amber-200 p-3 text-sm">{issue.id}: {issue.text}</li>)}</ul><div className="flex gap-2 mt-4 flex-wrap"><button onClick={() => { finalReviewPrompt.resolve(false); setFinalReviewPrompt(null); }} className="p-3 rounded-lg border">Вернуться к проверке</button><button onClick={() => { finalReviewPrompt.resolve(true); setFinalReviewPrompt(null); }} className="p-3 rounded-lg bg-indigo-600 text-white">Сохранить с открытыми вопросами</button></div></ReviewDialog>}
+      {pendingNavigation && !finalReviewPrompt && <UnsavedNavigationDialog busy={versionBusy} onSave={() => resolveNavigation(true)} onDiscard={() => resolveNavigation(false)} onStay={() => setPendingNavigation(null)} />}
       {rebasePreview && <ReviewDialog label="Сравнение версий" onClose={() => setRebasePreview(null)}><h2 className="font-bold text-lg">Сравните правки с новой версией</h2><p>Перенос применит перечисленные локальные изменения поверх новой базы. Проверьте конфликты перед подтверждением.</p>{rebasePreview.changes.map((change, index) => <article key={index} className="my-3 border rounded-lg p-3"><h3>{change.id} · {change.operation}</h3><p>На сервере: {change.remote || 'Нет записи'}</p><p>Моя правка: {change.local || 'Удалить'}</p></article>)}<div className="flex flex-wrap gap-3"><button onClick={() => setRebasePreview(null)} className="p-3 border rounded-lg">Остаться с черновиком</button><button onClick={() => applyRemoteReview(true)} className="p-3 rounded-lg bg-indigo-600 text-white">Перенести мои правки</button><button onClick={() => applyRemoteReview(false)} className="p-3 text-red-700">Отбросить мои правки и загрузить</button></div></ReviewDialog>}
       <nav className="bg-white/95 backdrop-blur border-b border-gray-200 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4">
@@ -2140,7 +2166,7 @@ export default function AsyncJobWorkspace() {
         </main>
       )}
 
-      <HistoryDrawer key={actorScope || 'anonymous'} open={historyOpen && !pendingNavigation && !rebasePreview} onClose={closeHistory} activeJobId={jobId} onSelect={load} refreshKey={historyRefreshKey} />
+      <HistoryDrawer key={actorScope || 'anonymous'} open={historyOpen && !pendingNavigation && !rebasePreview && !finalReviewPrompt} onClose={closeHistory} activeJobId={jobId} onSelect={load} refreshKey={historyRefreshKey} />
       <DebugPanel open={debugOpen} onClose={() => setDebugOpen(false)} jobId={jobId} observations={sseObservations} refreshKey={debugRefreshKey} triggerRef={debugTriggerRef} onDownload={result?.resultArtifactId ? download : null} />
       {completionNotice && <section role="status" aria-label="Задача завершена" className="fixed right-5 bottom-5 z-[90] w-[min(24rem,calc(100vw-2.5rem))] rounded-2xl border border-slate-200 bg-white shadow-2xl p-4"><div className="flex items-start gap-3"><span className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${completionNotice.status === 'SUCCEEDED' ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500'}`}>{completionNotice.status === 'SUCCEEDED' ? <CheckCircle2 className="w-5 h-5" /> : <AlertTriangle className="w-5 h-5" />}</span><div className="min-w-0 flex-1"><p className="font-semibold text-slate-900">{completionNotice.status === 'SUCCEEDED' ? 'Задача готова' : STATUS_LABELS[completionNotice.status]}</p><p className="text-sm text-slate-500 mt-0.5">{MODE_LABELS[completionNotice.mode] || TYPE_LABELS[completionNotice.type]}</p><div className="flex gap-2 mt-3"><button onClick={() => { const id = completionNotice.jobId; setCompletionNotice(null); load(id); }} className="px-3 py-2 rounded-lg bg-indigo-600 text-white text-xs font-semibold">Открыть результат</button><button aria-label="Закрыть уведомление" onClick={() => setCompletionNotice(null)} className="px-3 py-2 rounded-lg border border-slate-200 text-slate-600 text-xs font-semibold">Закрыть</button></div></div></div></section>}
     </div>
@@ -2168,7 +2194,7 @@ function UnsavedNavigationDialog({ busy, onSave, onDiscard, onStay }) {
 function ResultPanel({ result, resultContent, latestVersion, businessContext, businessContextLoading, onSaveRequirements, onStartResearch, onSaveFinal, onDirtyChange, busy, researchBusy = false, actorScope, registerEditor, reservedIds, restoredReviewState, compareRecovery, restoreRecovery, editorEpoch, activeReviewView, requestReviewView }) {
   return (
     <section className="space-y-4">
-      <ReviewSessionProvider reservedIds={reservedIds} view={activeReviewView} requestView={requestReviewView} restoredState={restoredReviewState} compareRecovery={compareRecovery} restoreRecovery={restoreRecovery} scope={actorScope} jobId={result.jobId} baseVersionId={latestVersion?.versionId} register={registerEditor}><ResultView key={`${result.jobId}:${latestVersion?.versionId || 'base'}:${editorEpoch}`} content={resultContent || result.summary || ''} latestVersion={latestVersion} businessContext={businessContext} businessContextLoading={businessContextLoading} onSaveRequirements={onSaveRequirements} onStartResearch={onStartResearch} onSaveFinal={onSaveFinal} onDirtyChange={onDirtyChange} busy={busy} researchBusy={researchBusy} /></ReviewSessionProvider>
+      <ReviewSessionProvider businessContext={businessContext} reservedIds={reservedIds} view={activeReviewView} requestView={requestReviewView} restoredState={restoredReviewState} compareRecovery={compareRecovery} restoreRecovery={restoreRecovery} scope={actorScope} jobId={result.jobId} baseVersionId={latestVersion?.versionId} register={registerEditor}><ResultView key={`${result.jobId}:${latestVersion?.versionId || 'base'}:${editorEpoch}`} content={resultContent || result.summary || ''} latestVersion={latestVersion} businessContext={businessContext} businessContextLoading={businessContextLoading} onSaveRequirements={onSaveRequirements} onStartResearch={onStartResearch} onSaveFinal={onSaveFinal} onDirtyChange={onDirtyChange} busy={busy} researchBusy={researchBusy} /></ReviewSessionProvider>
     </section>
   );
 }

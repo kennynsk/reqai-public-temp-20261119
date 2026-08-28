@@ -23,7 +23,7 @@ vi.mock('./api/enterprise-api.js', () => ({
 }));
 
 import AsyncJobWorkspace from './AsyncJobWorkspace.jsx';
-import { roomBookingRegistry } from './room-booking.fixture.js';
+import { roomBookingBrief, roomBookingRegistry } from './room-booking.fixture.js';
 
 const storage = new Map();
 Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: {
@@ -110,9 +110,10 @@ test('reading a saved job preserves the unsent context draft and attachments', a
   expect(screen.getByText('draft.txt')).toBeInTheDocument();
 });
 
-async function openSavedRoomReview() {
+async function openSavedRoomReview({ source = false } = {}) {
   const registry = roomBookingRegistry();
-  const job = { jobId: 'rooms', type: 'DECOMPOSITION', mode: 'DECOMPOSITION', status: 'SUCCEEDED' };
+  const job = { jobId: 'rooms', type: 'DECOMPOSITION', mode: 'DECOMPOSITION', status: 'SUCCEEDED', ...(source ? { inputArtifactId: 'source' } : {}) };
+  if (source) mocks.downloadArtifact.mockResolvedValue({ text: async () => roomBookingBrief });
   window.history.replaceState({}, '', '/tasks/rooms');
   localStorage.setItem('reqai.requirementsLayout', 'rows');
   mocks.getJob.mockResolvedValue(job);
@@ -131,6 +132,53 @@ test('keeps an open BABOK draft across type switches', async () => {
   fireEvent.click(screen.getByRole('tab', { name: 'FR · Функциональные требования' }));
   fireEvent.click(screen.getByRole('tab', { name: 'BR · Бизнес-требования' }));
   expect(screen.getByRole('textbox', { name: 'Текст требования BR-001' })).toHaveValue('Сохранить мой черновик.');
+});
+
+test('GAP answer and closure join the shared draft without rewriting the requirement', async () => {
+  await openSavedRoomReview();
+  fireEvent.click(screen.getByRole('button', { name: 'Отмена', exact: true }));
+  fireEvent.click(screen.getByRole('button', { name: 'Вопросы · 7' }));
+  const answer = screen.getByRole('textbox', { name: 'Ответ на GAP-001' });
+  fireEvent.change(answer, { target: { value: 'Уведомлять по электронной почте.' } });
+  expect(screen.getByText('Дан ответ · ещё открыт')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Требования', exact: true }));
+  expect(screen.getByRole('button', { name: 'Перейти к финальной версии' })).toBeDisabled();
+  fireEvent.click(screen.getByRole('button', { name: 'Вопросы · 7' }));
+  expect(screen.getByRole('textbox', { name: 'Ответ на GAP-001' })).toHaveValue('Уведомлять по электронной почте.');
+  fireEvent.click(within(screen.getByRole('textbox', { name: 'Ответ на GAP-001' }).closest('article')).getByRole('button', { name: 'Закрыть вопрос с причиной' }));
+  expect(screen.getByRole('button', { name: 'Подтвердить решение' })).toBeDisabled();
+  fireEvent.change(screen.getByRole('textbox', { name: 'Причина решения' }), { target: { value: 'Подтверждено владельцем процесса' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Подтвердить решение' }));
+  mocks.saveRequirementsVersion.mockImplementation(async (payload) => ({ ...payload, versionId: 'gap-version', createdAt: new Date().toISOString() }));
+  fireEvent.click(screen.getByRole('button', { name: 'Сохранить изменения' }));
+  await waitFor(() => expect(mocks.saveRequirementsVersion).toHaveBeenCalled());
+  const payload = mocks.saveRequirementsVersion.mock.calls[0][0];
+  expect(payload.decisions.review.gaps['GAP-001']).toMatchObject({ state: 'closed', answer: 'Уведомлять по электронной почте.', reason: 'Подтверждено владельцем процесса' });
+  expect(payload.registry.groups.FR).toEqual(roomBookingRegistry().groups.FR);
+});
+
+test('source comparison flags missing reopening, adds a manual FR and invalidates completeness', async () => {
+  await openSavedRoomReview({ source: true });
+  fireEvent.click(screen.getByRole('button', { name: 'Отмена', exact: true }));
+  fireEvent.click(screen.getByText(/^Сверить полноту с исходной задачей/));
+  const check = await screen.findByRole('checkbox', { name: 'Я сверил доступный исходный текст с требованиями' });
+  await waitFor(() => expect(check).toBeEnabled());
+  fireEvent.click(check);
+  expect(check).toBeChecked();
+  fireEvent.click(screen.getByRole('button', { name: 'Зафиксировать пропуск' }));
+  fireEvent.change(screen.getByRole('textbox', { name: 'Пропущенное обязательство' }), { target: { value: 'Администратор повторно открывает комнату после обслуживания.' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Добавить пропуск в черновик' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Создать ручное требование' }));
+  const group = screen.getByRole('region', { name: 'Функциональные требования', exact: true });
+  expect(within(group).getByText('Администратор повторно открывает комнату после обслуживания.')).toBeInTheDocument();
+  expect(check).not.toBeChecked();
+  mocks.saveRequirementsVersion.mockImplementation(async (payload) => ({ ...payload, versionId: 'omission-version', createdAt: new Date().toISOString() }));
+  fireEvent.click(screen.getByRole('button', { name: 'Сохранить изменения' }));
+  await waitFor(() => expect(mocks.saveRequirementsVersion).toHaveBeenCalled());
+  const payload = mocks.saveRequirementsVersion.mock.calls[0][0];
+  expect(payload.registry.groups.FR).toHaveLength(3);
+  expect(payload.decisions.review.omissions[0].requirementIds).toEqual(['FR-003']);
+  expect(payload.decisions.review.completeness).toMatchObject({ check: false, stale: true });
 });
 
 test('does not advertise a pending BABOK draft as saved or eligible for research', async () => {
@@ -601,7 +649,7 @@ test('finishes requirements without AI research and switches category layout', a
   await waitFor(() => expect(mocks.saveRequirementsVersion).toHaveBeenCalledWith(expect.objectContaining({
     sourceJobId: 'j-skip',
     baseVersionId: 'reviewed-v1',
-    decisions: { skippedResearch: true },
+    decisions: expect.objectContaining({ skippedResearch: true }),
   })));
 
   expect(await screen.findByRole('heading', { name: 'Финальная версия требований' })).toBeInTheDocument();
@@ -864,7 +912,7 @@ test('restores requirements insights and applies explicit accepted enhancements'
   fireEvent.click(screen.getByRole('button', { name: 'К результатам AI-исследования' }));
   expect(screen.getByRole('button', { name: 'Принять улучшение: Система должна автоматически обрабатывать заявку' })).toHaveAttribute('aria-pressed', 'true');
   fireEvent.click(screen.getByRole('button', { name: 'Сохранить финальную версию' }));
-  await waitFor(() => expect(mocks.saveRequirementsVersion).toHaveBeenCalledWith(expect.objectContaining({ sourceJobId: 'ri1', baseVersionId: 'base-v2', decisions: { acceptedEnhancementKeys: ['i1:0'], rejectedEnhancementKeys: [] } })));
+  await waitFor(() => expect(mocks.saveRequirementsVersion).toHaveBeenCalledWith(expect.objectContaining({ sourceJobId: 'ri1', baseVersionId: 'base-v2', decisions: expect.objectContaining({ acceptedEnhancementKeys: ['i1:0'], rejectedEnhancementKeys: [] }) })));
   await waitFor(() => expectBusinessStage(4));
   expect(screen.getByRole('heading', { name: 'Финальная версия требований' })).toBeInTheDocument();
   const finalRequirements = screen.getByLabelText('Финальные требования по категориям');
@@ -878,7 +926,7 @@ test('restores requirements insights and applies explicit accepted enhancements'
   fireEvent.click(screen.getByRole('button', { name: 'Готово' }));
   expect(screen.getByRole('button', { name: 'Сохранить изменения' })).toBeEnabled();
   fireEvent.click(screen.getByRole('button', { name: 'Сохранить изменения' }));
-  await waitFor(() => expect(mocks.saveRequirementsVersion).toHaveBeenNthCalledWith(2, expect.objectContaining({ baseVersionId: 'final-v2', decisions: { acceptedEnhancementKeys: ['i1:0'], rejectedEnhancementKeys: [] } })));
+  await waitFor(() => expect(mocks.saveRequirementsVersion).toHaveBeenNthCalledWith(2, expect.objectContaining({ baseVersionId: 'final-v2', decisions: expect.objectContaining({ acceptedEnhancementKeys: ['i1:0'], rejectedEnhancementKeys: [] }) })));
   expect(await screen.findByText('Система должна автоматически обрабатывать заявку за минуту')).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Сохранить изменения' })).not.toBeInTheDocument();
 });
@@ -988,7 +1036,8 @@ test('reviews a BABOK registry by type, preserves evidence and saves a complete 
   expect(savedPayload.registry.groups.FR.some((item) => item.id === 'FR-002')).toBe(true);
   expect(await screen.findByRole('button', { name: 'Перейти к финальной версии' })).toBeEnabled();
   fireEvent.click(screen.getByRole('button', { name: 'Перейти к финальной версии' }));
-  await waitFor(() => expect(mocks.saveRequirementsVersion).toHaveBeenNthCalledWith(2, expect.objectContaining({ baseVersionId: 'babok-v1', decisions: { skippedResearch: true }, registry: expect.any(Object) })));
+  fireEvent.click(await screen.findByRole('button', { name: 'Сохранить с открытыми вопросами' }));
+  await waitFor(() => expect(mocks.saveRequirementsVersion).toHaveBeenNthCalledWith(2, expect.objectContaining({ baseVersionId: 'babok-v1', decisions: expect.objectContaining({ skippedResearch: true }), registry: expect.any(Object) })));
   expect(await screen.findByRole('heading', { name: 'Финальная версия требований' })).toBeInTheDocument();
   expect(screen.getByText('Система сохраняет историю статусов')).toBeInTheDocument();
 });
@@ -1017,7 +1066,8 @@ test('keeps BABOK target types and decision lineage in linked research', async (
   expect(within(card).getByText('Система хранит историю статусов заявки')).toBeVisible();
   fireEvent.click(within(card).getByRole('button', { name: 'Принять улучшение: Система хранит историю статусов заявки' }));
   fireEvent.click(screen.getByRole('button', { name: 'Сохранить финальную версию' }));
-  await waitFor(() => expect(mocks.saveRequirementsVersion).toHaveBeenCalledWith(expect.objectContaining({ baseVersionId: 'babok-base', decisions: { acceptedEnhancementKeys: ['babok-insight:0'], rejectedEnhancementKeys: [] }, registry: expect.any(Object) })));
+  fireEvent.click(await screen.findByRole('button', { name: 'Сохранить с открытыми вопросами' }));
+  await waitFor(() => expect(mocks.saveRequirementsVersion).toHaveBeenCalledWith(expect.objectContaining({ baseVersionId: 'babok-base', decisions: expect.objectContaining({ acceptedEnhancementKeys: ['babok-insight:0'], rejectedEnhancementKeys: [] }), registry: expect.any(Object) })));
   const saved = mocks.saveRequirementsVersion.mock.calls[0][0];
   expect(saved.registry.groups.FR).toEqual(expect.arrayContaining([expect.objectContaining({ researchEnhancementKey: 'babok-insight:0', fromResearch: true, relatedTo: ['FR-001'] })]));
   expect(await screen.findByRole('heading', { name: 'Финальная версия требований' })).toBeInTheDocument();

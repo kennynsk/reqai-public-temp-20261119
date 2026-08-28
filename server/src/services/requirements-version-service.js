@@ -1,6 +1,8 @@
 import { ApiError } from '../errors/api-error.js';
 import { canonicalSha256 } from '../prompts/prompt-utils.js';
 import { babokIdentifierSet, validateBabokRegistry } from './babok-requirements-contract.js';
+import { normalizeReviewMetadata } from './review-metadata.js';
+import { overlayLegacyReview } from './legacy-review-overlay.js';
 
 const PRIVILEGED = new Set(['tenant-admin', 'operator', 'auditor', 'system-admin']);
 const REQUIREMENT_GROUPS = ['business', 'functional', 'nonfunctional'];
@@ -107,6 +109,7 @@ export function createRequirementsVersionService({ config, jobRepository, artifa
 
       let base = null;
       if (body.baseVersionId) base = await visibleVersion(auth, body.baseVersionId);
+      if (base && sourceJob.type === 'DECOMPOSITION' && base.row.source_job_id !== sourceJob.id) throw new ApiError({ status: 409, code: 'REQUIREMENTS_VERSION_MISMATCH', message: 'The base version belongs to a different workflow' });
       if (sourceJob.type === 'RESEARCH') {
         const basedOnResearchInput = sourceJob.input_artifact_id === body.baseVersionId;
         const basedOnSameResearchRevision = base?.row.source_job_id === sourceJob.id
@@ -117,10 +120,19 @@ export function createRequirementsVersionService({ config, jobRepository, artifa
         }
       }
 
-      const registry = body.registry || body.babokRegistry ? normalizeRegistry(body.registry || body.babokRegistry) : null;
+      const registry = body.registry || body.babokRegistry ? normalizeRegistry(body.registry || body.babokRegistry) : base?.content.registry ? normalizeRegistry(overlayLegacyReview(base.content.registry, normalizeRequirements(body.requirements))) : null;
       const requirements = registry ? legacyProjection(registry) : normalizeRequirements(body.requirements);
       const now = clock();
-      const decisions = body.decisions && typeof body.decisions === 'object' && !Array.isArray(body.decisions) ? body.decisions : {};
+      const suppliedDecisions = body.decisions && typeof body.decisions === 'object' && !Array.isArray(body.decisions) ? body.decisions : {};
+      const decisions = { ...(base?.content.decisions || {}), ...suppliedDecisions };
+      const businessContextArtifactId = sourceJob.type === 'DECOMPOSITION' ? sourceJob.input_artifact_id : base?.content.businessContextArtifactId || null;
+      let analysisBase = base?.content.registry || null;
+      if (!analysisBase && suppliedDecisions.review && sourceJob.result_artifact_id) {
+        try { analysisBase = JSON.parse(await artifactRepository.readText({ tenantId: auth.tenantId, artifactId: sourceJob.result_artifact_id })); }
+        catch { throw new ApiError({ status: 409, code: 'REVIEW_SOURCE_UNAVAILABLE', message: 'Original review context is unavailable' }); }
+      }
+      const review = normalizeReviewMetadata({ supplied: suppliedDecisions.review, inherited: base?.content.decisions?.review, content: registry || requirements, allowedGaps: analysisBase?.analysis?.GAP || [], contextId: businessContextArtifactId, actorId: auth.userId, now, baseVersionId: base?.row.id, finalizing: sourceJob.type === 'RESEARCH' || decisions.skippedResearch === true });
+      if (review !== undefined) decisions.review = review;
       const manualDecisionMetadata = {
         actorUserId: auth.userId,
         recordedAt: now.toISOString(),
@@ -132,7 +144,7 @@ export function createRequirementsVersionService({ config, jobRepository, artifa
         kind: 'REQUIREMENTS_VERSION',
         sourceJobId: sourceJob.id,
         sourceJobType: sourceJob.type,
-        businessContextArtifactId: sourceJob.type === 'DECOMPOSITION' ? sourceJob.input_artifact_id : base?.content.businessContextArtifactId || null,
+        businessContextArtifactId,
         baseVersionId: base?.row.id || null,
         researchJobId: sourceJob.type === 'RESEARCH' ? sourceJob.id : null,
         requirements,
