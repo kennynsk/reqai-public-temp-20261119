@@ -46,14 +46,14 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
-test('context helpers preserve text until explicit insertion', async () => {
+test('context structure preserves text until explicit insertion', async () => {
   render(<AsyncJobWorkspace />);
   const context = screen.getByRole('textbox', { name: 'Бизнес-контекст' });
   fireEvent.change(context, { target: { value: 'Моя бизнес-задача' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Показать пример' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Структура описания' }));
   expect(context).toHaveValue('Моя бизнес-задача');
   fireEvent.click(screen.getByRole('button', { name: 'Добавить в конец' }));
-  expect(context.value).toMatch(/^Моя бизнес-задача\nНужна система/);
+  expect(context.value).toMatch(/^Моя бизнес-задача\n\nЦель:/);
 });
 
 test('material roles use integration API and retry only failed file uploads', async () => {

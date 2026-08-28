@@ -213,10 +213,10 @@ The system SHALL publish ordered durable lifecycle, linked-research and version 
 ## ADDED Requirements
 
 ### Requirement: Guided context and material input
-The context form SHALL offer an expanding text field, optional brief example and non-mandatory structure for goals, roles, behavior and constraints. Examples MUST NOT replace existing text without confirmation. Primary input, previous requirements and reference materials SHALL have distinct labels, limits and upload error states and retain their roles in submitted input.
+The context form SHALL offer an expanding text field and a non-mandatory structure for goals, roles, behavior and constraints. The structure helper MUST NOT replace existing text without confirmation. Primary input, previous requirements and reference materials SHALL have distinct labels, limits and upload error states and retain their roles in submitted input.
 
 #### Scenario: User has already entered a brief
-- **WHEN** the user opens the example or structure helper
+- **WHEN** the user opens the structure helper
 - **THEN** existing text is preserved until an explicit insertion or replacement decision
 
 #### Scenario: Baseline and reference are attached
