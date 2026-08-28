@@ -7,6 +7,7 @@ COPY server/package.json server/package.json
 RUN npm ci --ignore-scripts -w client
 RUN if [ "$TARGETARCH" = "arm64" ]; then npm install --ignore-scripts --no-save @rollup/rollup-linux-arm64-musl@4.55.1 @esbuild/linux-arm64@0.27.2; else npm install --ignore-scripts --no-save @rollup/rollup-linux-x64-musl@4.55.1 @esbuild/linux-x64@0.27.2; fi
 COPY client client
+COPY server/src/domain/research-evidence.js server/src/domain/research-evidence.js
 ARG VITE_ASYNC_PLATFORM_ENABLED=true
 ENV VITE_ASYNC_PLATFORM_ENABLED=$VITE_ASYNC_PLATFORM_ENABLED
 RUN npm -w client run build

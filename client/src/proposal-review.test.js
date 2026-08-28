@@ -49,3 +49,14 @@ test('legacy exact proposals retain edits without duplicates and warn without re
   expect(proposalWarnings(enhancement.text)).toHaveLength(2);
   expect(enhancement.text).toBe('Предложить уточнить каналы协作');
 });
+test('real GLM advisory wording is flagged without rewriting', () => {
+  expect(proposalWarnings('Предлагается зафиксировать в FR-003 семантику интервала')).toHaveLength(1);
+  expect(proposalWarnings('Предлагается дополнить BR-001 измеримым индикатором')).toHaveLength(1);
+  expect(proposalWarnings('Система отклоняет пересекающиеся брони.')).toEqual([]);
+});
+test('two proposals cannot silently overwrite the same target', () => {
+  const state = initial();
+  const first = applyProposal(state, { key: 'i1:0', targetType: 'FR', text: 'Правило A' }, { operation: 'replace', targetType: 'FR', targetId: 'FR-001', text: 'Правило A', fields: {} });
+  expect(() => applyProposal(first, { key: 'i2:0', targetType: 'FR', text: 'Правило B' }, { operation: 'replace', targetType: 'FR', targetId: 'FR-001', text: 'Правило B', fields: {} })).toThrow('другим AI-предложением');
+  expect(first.content.groups.FR[0].text).toBe('Правило A');
+});

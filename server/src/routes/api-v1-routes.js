@@ -8,6 +8,7 @@ import { isRetiredMode, SUPPORTED_CREATE_MODES } from '../domain/job-modes.js';
 import { streamJobEvents } from '../services/sse-service.js';
 import { renderBabokReport } from '../services/babok-report-renderer.js';
 import { modelCapabilities } from '../domain/model-capabilities.js';
+import { requirementsDocument, documentMarkdown, documentHtml } from '../services/requirements-document.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const DECOMPOSITION_MODES = new Set(['DECOMPOSITION']);
@@ -253,6 +254,21 @@ export function createApiV1Router({ config, services = {} }) {
 
   router.get('/api/v1/requirements/versions/:versionId', requireAnyRole('user', 'tenant-admin', 'operator', 'auditor', 'system-admin'), asyncRoute(async (req, res) => {
     res.json(await services.requirementsVersionService.get({ auth: req.auth, versionId: requireUuid(req.params.versionId, 'versionId') }));
+  }));
+
+  router.get('/api/v1/requirements/versions/:versionId/export', requireAnyRole('user', 'tenant-admin', 'operator', 'auditor', 'system-admin'), asyncRoute(async (req, res) => {
+    const format = req.query.format || 'markdown';
+    if (!['markdown', 'html', 'docx'].includes(format)) throw badRequest('VALIDATION_ERROR', 'Supported export formats: markdown, html, docx');
+    const version = await services.requirementsVersionService.get({ auth: req.auth, versionId: requireUuid(req.params.versionId, 'versionId') });
+    const model = requirementsDocument(version, version.title || 'Требования');
+    const extension = { markdown: 'md', html: 'html', docx: 'docx' }[format];
+    res.set('Cache-Control', 'private, no-store');
+    res.set('X-Content-Type-Options', 'nosniff');
+    res.set('Content-Disposition', `attachment; filename="requirements.${extension}"`);
+    if (format === 'docx') {
+      const { documentDocx } = await import('../services/requirements-docx.js');
+      res.type('application/vnd.openxmlformats-officedocument.wordprocessingml.document').send(await documentDocx(model));
+    } else res.type(format === 'html' ? 'text/html; charset=utf-8' : 'text/markdown; charset=utf-8').send(format === 'html' ? documentHtml(model) : documentMarkdown(model));
   }));
 
   router.get('/api/v1/jobs/:jobId/requirements/versions', requireAnyRole('user', 'tenant-admin', 'operator', 'auditor', 'system-admin'), asyncRoute(async (req, res) => {

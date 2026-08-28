@@ -336,6 +336,20 @@
         }
       }
     },
+    "/api/v1/requirements/versions/{versionId}/export": {
+      "get": {
+        "operationId": "exportRequirementsVersion",
+        "description": "Exports the authorized immutable version, never a filtered view or an unsaved draft. PDF is browser printing of HTML, not a server format.",
+        "parameters": [{ "$ref": "#/components/parameters/RequirementsVersionId" }, { "name": "format", "in": "query", "schema": { "type": "string", "enum": ["markdown", "html", "docx"], "default": "markdown" } }],
+        "responses": {
+          "200": { "description": "Downloadable saved-version document; private, no-store", "content": { "text/markdown": { "schema": { "type": "string" } }, "text/html": { "schema": { "type": "string" } }, "application/vnd.openxmlformats-officedocument.wordprocessingml.document": { "schema": { "type": "string", "format": "binary" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
     "/api/v1/jobs/{jobId}/requirements/versions": {
       "get": {
         "operationId": "listJobRequirementsVersions",
@@ -851,6 +865,27 @@
         },
         "additionalProperties": false
       },
+      "ReviewMetadata": {
+        "type": "object",
+        "required": ["schemaVersion"],
+        "description": "Additive review metadata, maximum serialized UTF-8 size 256 KiB. Omitted compatible fields inherit from the authorized base. New unknown fields are rejected; unchanged inherited extensions are preserved. Actor, time, fingerprints and source/research lineage are server-authoritative. Content changes invalidate previous completeness and issue acknowledgment.",
+        "properties": {
+          "schemaVersion": { "const": 1 },
+          "gaps": { "type": "object", "maxProperties": 500, "additionalProperties": { "type": "object", "required": ["state"], "properties": {
+            "state": { "enum": ["open", "answered", "closed"] },
+            "answer": { "type": "string", "maxLength": 20000 },
+            "reason": { "type": "string", "maxLength": 5000, "description": "Required for closing and reopening." },
+            "affectedIds": { "type": "array", "readOnly": true, "items": { "type": "string" } },
+            "actorUserId": { "type": "string", "readOnly": true },
+            "recordedAt": { "type": "string", "format": "date-time", "readOnly": true }
+          } } },
+          "omissions": { "type": "array", "maxItems": 200, "items": { "type": "object", "required": ["id", "text", "requirementIds"], "properties": { "id": { "type": "string", "pattern": "^OMISSION-[a-zA-Z0-9_-]{1,80}$" }, "text": { "type": "string", "maxLength": 5000 }, "requirementIds": { "type": "array", "maxItems": 100, "items": { "type": "string" } } } } },
+          "completeness": { "type": "object", "description": "Send check:true to record a new manual check; checked/stale/contentHash/actor/time are authoritative output.", "properties": { "check": { "type": "boolean" }, "note": { "type": "string", "maxLength": 5000 }, "checked": { "type": "boolean", "readOnly": true }, "stale": { "type": "boolean" } } },
+          "acknowledgment": { "type": "object", "description": "Send confirm:true after reviewing the current open issue list. New-client finalization with open issues requires a current acknowledgment. It is not semantic approval.", "properties": { "confirm": { "type": "boolean" }, "confirmed": { "type": "boolean", "readOnly": true }, "stale": { "type": "boolean" }, "issueIds": { "type": "array", "readOnly": true, "items": { "type": "string" } } } },
+          "proposals": { "type": "object", "maxProperties": 500, "description": "Stable insight-id:index keys. Values retain operation add/replace, targetType/targetId, originalText, before/after and decision accepted/rejected; reversal is retain-manual or restore-before. Exact new records, replacement snapshots and original wording are validated against authorized lineage; unchanged historical evidence survives later manual edits.", "additionalProperties": { "type": "object" } },
+          "citationChecks": { "type": "object", "maxProperties": 600, "description": "Stable insight-id:citation-index keys. The server resolves the original citation and rejects checked:true for unsafe/non-HTTP(S) URLs. No external request occurs.", "additionalProperties": { "type": "object", "required": ["checked"], "properties": { "checked": { "type": "boolean" }, "note": { "type": "string", "maxLength": 5000 } } } }
+        }
+      },
       "CreateRequirementsVersion": {
         "type": "object",
         "required": [
@@ -873,6 +908,7 @@
           },
           "decisions": {
             "type": "object",
+            "properties": { "review": { "$ref": "#/components/schemas/ReviewMetadata" } },
             "additionalProperties": true
           },
           "expectedLatestVersionId": {
@@ -959,6 +995,7 @@
           "createdAt"
         ],
         "properties": {
+          "title": { "type": "string", "maxLength": 120, "description": "Optional authorized workflow title used by saved-version exports." },
           "versionId": {
             "type": "string",
             "format": "uuid"
@@ -986,6 +1023,7 @@
           },
           "decisions": {
             "type": "object",
+            "properties": { "review": { "$ref": "#/components/schemas/ReviewMetadata" } },
             "additionalProperties": true
           },
           "createdAt": {

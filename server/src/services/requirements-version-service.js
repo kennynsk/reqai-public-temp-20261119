@@ -147,6 +147,7 @@ export function createRequirementsVersionService({ config, jobRepository, artifa
       const envelope = {
         schemaVersion: registry ? 2 : 1,
         kind: 'REQUIREMENTS_VERSION',
+        ...(sourceJob.title || base?.content.title ? { title: sourceJob.type === 'RESEARCH' ? base?.content.title || sourceJob.title : sourceJob.title || base?.content.title } : {}),
         sourceJobId: sourceJob.id,
         sourceJobType: sourceJob.type,
         businessContextArtifactId,
@@ -212,12 +213,12 @@ export function createRequirementsVersionService({ config, jobRepository, artifa
       });
       if (row.id !== artifact.artifactId) return service.get({ auth, versionId: row.id });
       await auditRepository?.record({ tenantId: auth.tenantId, actorId: auth.userId, actorRoles: auth.roles, action: 'requirements.version.create', targetType: 'requirements-version', targetId: row.id, requestId, sourceSite: config.process.siteId, metadata: { sourceJobId: sourceJob.id, baseVersionId: row.base_version_id, manualDecisionMetadata } });
-      return { versionId: row.id, sourceJobId: row.source_job_id, baseVersionId: row.base_version_id, researchJobId: row.research_job_id, requirements, ...(registry ? { registry, analysisContext: envelope.analysisContext, materialLineage: envelope.materialLineage, contentSchemaVersion: envelope.contentSchemaVersion } : {}), decisions: envelope.decisions, revision: envelope.revision, createdAt: new Date(row.created_at).toISOString() };
+      return { ...(envelope.title ? { title: envelope.title } : {}), versionId: row.id, sourceJobId: row.source_job_id, baseVersionId: row.base_version_id, researchJobId: row.research_job_id, requirements, ...(registry ? { registry, analysisContext: envelope.analysisContext, materialLineage: envelope.materialLineage, contentSchemaVersion: envelope.contentSchemaVersion } : {}), decisions: envelope.decisions, revision: envelope.revision, createdAt: new Date(row.created_at).toISOString() };
     },
 
     async get({ auth, versionId }) {
       const value = await visibleVersion(auth, versionId);
-      return { versionId: value.row.id, sourceJobId: value.row.source_job_id, baseVersionId: value.row.base_version_id, researchJobId: value.row.research_job_id, requirements: value.content.requirements, ...(value.content.registry ? { registry: value.content.registry, analysisContext: value.content.analysisContext || null, materialLineage: value.content.materialLineage || null, contentSchemaVersion: value.content.contentSchemaVersion || value.content.registry.schemaVersion } : {}), decisions: value.content.decisions || {}, revision: value.content.revision || null, createdAt: new Date(value.row.created_at).toISOString() };
+      return { ...(value.content.title ? { title: value.content.title } : {}), versionId: value.row.id, sourceJobId: value.row.source_job_id, baseVersionId: value.row.base_version_id, researchJobId: value.row.research_job_id, requirements: value.content.requirements, ...(value.content.registry ? { registry: value.content.registry, analysisContext: value.content.analysisContext || null, materialLineage: value.content.materialLineage || null, contentSchemaVersion: value.content.contentSchemaVersion || value.content.registry.schemaVersion } : {}), decisions: value.content.decisions || {}, revision: value.content.revision || null, createdAt: new Date(value.row.created_at).toISOString() };
     },
 
     async list({ auth, jobId }) {
@@ -225,7 +226,7 @@ export function createRequirementsVersionService({ config, jobRepository, artifa
       const rows = await versionRepository.listVisibleByJob({ tenantId: auth.tenantId, ownerUserId: ownerScope(auth), jobId });
       const items = await Promise.all(rows.map(async (row) => {
         const content = parseVersionContent(await artifactRepository.readText({ tenantId: auth.tenantId, artifactId: row.id }));
-        return { versionId: row.id, sourceJobId: row.source_job_id, baseVersionId: row.base_version_id, researchJobId: row.research_job_id, requirements: content.requirements, ...(content.registry ? { registry: content.registry, analysisContext: content.analysisContext || null, materialLineage: content.materialLineage || null, contentSchemaVersion: content.contentSchemaVersion || content.registry.schemaVersion } : {}), decisions: content.decisions || row.decisions || {}, revision: content.revision || null, createdAt: new Date(row.created_at).toISOString() };
+        return { ...(content.title ? { title: content.title } : {}), versionId: row.id, sourceJobId: row.source_job_id, baseVersionId: row.base_version_id, researchJobId: row.research_job_id, requirements: content.requirements, ...(content.registry ? { registry: content.registry, analysisContext: content.analysisContext || null, materialLineage: content.materialLineage || null, contentSchemaVersion: content.contentSchemaVersion || content.registry.schemaVersion } : {}), decisions: content.decisions || row.decisions || {}, revision: content.revision || null, createdAt: new Date(row.created_at).toISOString() };
       }));
       return { items };
     },

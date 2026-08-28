@@ -240,7 +240,7 @@ services:
   decomposition-worker:
     <<: *app-service
     env_file:
-      - path: .env.ux.local
+      - path: "${REQAI_UX_CREDENTIAL_FILE:-.env.ux.local}"
         required: false
     environment:
       <<: *app-environment
@@ -258,7 +258,7 @@ services:
   research-worker:
     <<: *app-service
     env_file:
-      - path: .env.ux.local
+      - path: "${REQAI_UX_CREDENTIAL_FILE:-.env.ux.local}"
         required: false
     environment:
       <<: *app-environment

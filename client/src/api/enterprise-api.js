@@ -40,6 +40,11 @@ export const enterpriseApi = {
   researchRequirements: (versionId, body = {}, idempotencyKey = crypto.randomUUID()) => request(`/api/v1/requirements/versions/${versionId}/research`, { method: 'POST', headers: { 'content-type': 'application/json', 'Idempotency-Key': idempotencyKey }, body: JSON.stringify(body) }),
   saveRequirementsVersion: (body) => request('/api/v1/requirements/versions', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }),
   getRequirementsVersion: (id) => request(`/api/v1/requirements/versions/${id}`),
+  async exportRequirementsVersion(id, format) {
+    const response = await fetch(`/api/v1/requirements/versions/${encodeURIComponent(id)}/export?format=${encodeURIComponent(format)}`, { headers: token() ? { Authorization: `Bearer ${token()}` } : {} });
+    if (!response.ok) throw new EnterpriseApiError(`HTTP ${response.status}`, { status: response.status });
+    return response.blob();
+  },
   listRequirementsVersions: (jobId) => request(`/api/v1/jobs/${jobId}/requirements/versions`),
   cancelJob: (id) => request(`/api/v1/jobs/${id}/cancel`, { method: 'POST' }),
   retryJob: (id, key = crypto.randomUUID()) => request(`/api/v1/jobs/${id}/retry`, { method: 'POST', headers: { 'Idempotency-Key': key } }),

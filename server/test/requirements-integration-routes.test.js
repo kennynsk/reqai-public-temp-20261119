@@ -5,6 +5,7 @@ import { createApp } from '../src/app.js';
 import { loadConfig } from '../src/config/env.js';
 import { createRequirementsIntegrationService } from '../src/services/requirements-integration-service.js';
 import { MockLlmProvider } from '../src/provider/mock-llm-provider.js';
+import { ApiError } from '../src/errors/api-error.js';
 
 const UUID = '00000000-0000-4000-8000-000000000001';
 
@@ -28,6 +29,23 @@ async function withServer(run, serviceOverrides = {}) {
 async function post(base, path, body, key = 'route-key-0000001') {
   return fetch(`${base}${path}`, { method: 'POST', headers: { 'content-type': 'application/json', 'idempotency-key': key }, body: JSON.stringify(body) });
 }
+
+test('saved-version exports authorize retrieval first and keep errors free of document content', () => withServer(async (base) => {
+  const response = await fetch(`${base}/api/v1/requirements/versions/${UUID}/export?format=html`);
+  assert.equal(response.status, 404);
+  assert.ok(!(await response.text()).includes('private document'));
+}, { requirementsVersionService: { async get({ auth, versionId }) { assert.ok(auth.tenantId); assert.ok(auth.userId); assert.equal(versionId, UUID); throw new ApiError({ status: 404, code: 'REQUIREMENTS_VERSION_NOT_FOUND', message: 'Version unavailable' }); } } }));
+
+test('saved-version export returns downloadable document without changing job-result endpoints', () => withServer(async (base) => {
+  for (const format of ['markdown', 'html', 'docx']) {
+    const response = await fetch(`${base}/api/v1/requirements/versions/${UUID}/export?format=${format}`);
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('cache-control'), 'private, no-store');
+    assert.match(response.headers.get('content-disposition'), /attachment/);
+    assert.ok((await response.arrayBuffer()).byteLength > 100);
+  }
+  assert.equal((await fetch(`${base}/api/v1/requirements/versions/${UUID}/export?format=pdf`)).status, 400);
+}, { requirementsVersionService: { async get() { return { versionId: UUID, createdAt: '2026-08-28', requirements: { business: [{ id: 'BT-1', text: 'Сохранённая цель' }], functional: [], nonfunctional: [] } }; } } }));
 
 test('domain routes return canonical asynchronous job references', () => withServer(async (base, accepted) => {
   for (const [path, body] of [

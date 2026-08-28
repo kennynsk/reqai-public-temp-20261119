@@ -12,6 +12,27 @@ body {
   margin: 0;
 }
 
+.reqai-workspace :is(button, summary, a, input[type="checkbox"]) {
+  min-width: 24px;
+  min-height: 24px;
+}
+
+.reqai-workspace a { display: inline-block; }
+
+.reqai-workspace :is(button, summary, a, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid #4338ca;
+  outline-offset: 3px;
+}
+
+.reqai-workspace :is(article, [role="dialog"]) {
+  overflow-wrap: anywhere;
+}
+
+/* Wrapped actions must not cover most of a short or zoomed viewport. */
+@media (max-height: 700px) {
+  .reqai-workspace main [class*="sticky"] { position: static; }
+}
+
 @keyframes reqai-progress-shimmer {
   0% { left: -35%; }
   100% { left: 105%; }

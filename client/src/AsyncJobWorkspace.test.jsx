@@ -588,7 +588,7 @@ test('saves reviewed decomposition and starts linked research inside requirement
   expect(screen.getByPlaceholderText('Опишите бизнес-задачу...')).toBeVisible();
   const researchButton = screen.getByRole('button', { name: 'Улучшить требования с помощью AI' });
   expect(researchButton).toBeDisabled();
-  expect(researchButton.closest('.sticky')).toHaveClass('top-16');
+  expect(researchButton.closest('[class*="sm:sticky"]')).toHaveClass('sm:top-16');
   expect(screen.queryByRole('tablist', { name: 'Категории требований' })).not.toBeInTheDocument();
   const businessColumn = screen.getByRole('region', { name: 'Бизнес-требования' });
   const functionalColumn = screen.getByRole('region', { name: 'Функциональные требования' });
@@ -638,7 +638,7 @@ test('finishes requirements without AI research and switches category layout', a
   await selectHistoryEntry('Подготовка требований');
 
   const categories = await screen.findByLabelText('Категории требований');
-  expect(categories).toHaveClass('xl:grid-cols-3');
+  expect(categories).toHaveClass('grid-cols-1');
   const layoutToggle = screen.getByRole('group', { name: 'Вид требований' });
   fireEvent.click(within(layoutToggle).getByRole('button', { name: 'По типам' }));
   expect(categories).toHaveClass('grid-cols-1');
@@ -1011,7 +1011,7 @@ test('reviews a BABOK registry by type, preserves evidence and saves a complete 
 
   render(<AsyncJobWorkspace />);
   await selectHistoryEntry('Подготовка требований');
-  expect(await screen.findByRole('heading', { name: 'Проверка реестра требований' })).toBeInTheDocument();
+  expect(await screen.findByRole('heading', { name: 'Проверка требований', level: 1 })).toBeInTheDocument();
   expect(screen.getByRole('tablist', { name: 'Типы требований' })).toBeInTheDocument();
   expect(screen.getByRole('tab', { name: /BR · Бизнес-требования/ })).toHaveTextContent('1');
   expect(screen.getByRole('region', { name: 'Функциональные требования' })).toBeInTheDocument();
@@ -1045,12 +1045,13 @@ test('reviews a BABOK registry by type, preserves evidence and saves a complete 
   expect(screen.getByText('Система сохраняет историю статусов')).toBeInTheDocument();
 });
 
-test('keeps BABOK target types and decision lineage in linked research', async () => {
+test.each([false, true])('keeps BABOK target types and original decision indices when filtering unsupported proposals: %s', async (unsupportedFirst) => {
   const baseRegistry = makeBabokRegistry();
+  const expectedKey = `babok-insight:${unsupportedFirst ? 1 : 0}`;
   const content = JSON.stringify({
     mode: 'REQUIREMENTS_INSIGHTS', baseRegistry, baseRequirements: { business: [], functional: [], nonfunctional: [] }, inputRequirementsVersionId: 'babok-base',
     babokIdentifierSet: ['BR-001', 'SR-001', 'FR-001', 'NFR-001', 'TR-001', 'CON-001'],
-    insights: [{ id: 'babok-insight', category: 'patterns', title: 'История статусов', summary: 'Прозрачность состояния снижает число повторных обращений.', detail: 'Практика полезна для процесса согласования.', applicability: 85, source_types: ['industry_report'], relatedTo: ['FR-001'], enhancements: [{ targetType: 'FR', targetIds: ['FR-001'], text: 'Система хранит историю статусов заявки' }] }],
+    insights: [{ id: 'babok-insight', category: 'patterns', title: 'История статусов', summary: 'Прозрачность состояния снижает число повторных обращений.', detail: 'Практика полезна для процесса согласования.', applicability: 85, source_types: ['industry_report'], relatedTo: ['FR-001'], enhancements: [...(unsupportedFirst ? [{ targetType: 'unsupported', text: 'Неподдерживаемое предложение' }] : []), { targetType: 'FR', targetIds: ['FR-001'], text: 'Система хранит историю статусов заявки' }] }],
   });
   const job = { jobId: 'babok-research', type: 'RESEARCH', mode: 'REQUIREMENTS_INSIGHTS', status: 'SUCCEEDED', outcome: 'COMPLETE', createdAt: new Date().toISOString() };
   mocks.listJobs.mockResolvedValue({ items: [job], nextCursor: null });
@@ -1069,11 +1070,16 @@ test('keeps BABOK target types and decision lineage in linked research', async (
   expect(within(card).getByText('Система хранит историю статусов заявки')).toBeVisible();
   fireEvent.click(within(card).getByRole('button', { name: 'Принять улучшение: Система хранит историю статусов заявки' }));
   fireEvent.click(screen.getByRole('button', { name: 'Принять точное изменение' }));
+  fireEvent.click(within(card).getByRole('link', { name: 'FR-001' }));
+  expect(await screen.findByRole('heading', { name: 'Требования, переданные в AI-исследование' })).toBeInTheDocument();
+  await waitFor(() => expect(document.getElementById('record-FR-001')).toHaveFocus());
+  fireEvent.click(screen.getByRole('button', { name: 'К результатам AI-исследования' }));
+  expect(await screen.findByText('Выбрано улучшений: 1')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Сохранить финальную версию' }));
   fireEvent.click(await screen.findByRole('button', { name: 'Сохранить с открытыми вопросами' }));
-  await waitFor(() => expect(mocks.saveRequirementsVersion).toHaveBeenCalledWith(expect.objectContaining({ baseVersionId: 'babok-base', decisions: expect.objectContaining({ acceptedEnhancementKeys: ['babok-insight:0'], rejectedEnhancementKeys: [] }), registry: expect.any(Object) })));
+  await waitFor(() => expect(mocks.saveRequirementsVersion).toHaveBeenCalledWith(expect.objectContaining({ baseVersionId: 'babok-base', decisions: expect.objectContaining({ acceptedEnhancementKeys: [expectedKey], rejectedEnhancementKeys: [] }), registry: expect.any(Object) })));
   const saved = mocks.saveRequirementsVersion.mock.calls[0][0];
-  expect(saved.registry.groups.FR).toEqual(expect.arrayContaining([expect.objectContaining({ researchEnhancementKey: 'babok-insight:0', fromResearch: true, relatedTo: ['FR-001'] })]));
+  expect(saved.registry.groups.FR).toEqual(expect.arrayContaining([expect.objectContaining({ researchEnhancementKey: expectedKey, fromResearch: true, relatedTo: ['FR-001'] })]));
   expect(await screen.findByRole('heading', { name: 'Финальная версия требований' })).toBeInTheDocument();
   expect(screen.getByText('Система хранит историю статусов заявки')).toBeInTheDocument();
 });

@@ -7,7 +7,13 @@ export default function ReviewDialog({ label, onClose, children }) {
   useEffect(() => {
     const previous = document.activeElement;
     const node = ref.current;
-    const focusable = () => [...node.querySelectorAll('button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [tabindex="0"]')].filter((item) => !item.closest('[hidden]'));
+    const focusable = () => [...node.querySelectorAll('button:not(:disabled), a[href], input:not(:disabled), textarea:not(:disabled), select:not(:disabled), summary, [tabindex="0"]')].filter((item) => {
+      if (item.closest('[hidden], [inert]') || item.tabIndex < 0) return false;
+      for (let parent = item.parentElement; parent && parent !== node; parent = parent.parentElement) {
+        if (parent.tagName === 'DETAILS' && !parent.open && !parent.querySelector(':scope > summary')?.contains(item)) return false;
+      }
+      return true;
+    });
     (focusable()[0] || node).focus();
     const keyboard = (event) => {
       if (event.key === 'Escape') { event.preventDefault(); close.current(); }

@@ -25,6 +25,7 @@ const requiredOperations = {
   'GET /api/v1/artifacts/{artifactId}': ['200', '401', '404'],
   'POST /api/v1/requirements/versions': ['201', '400', '401', '404', '409'],
   'GET /api/v1/requirements/versions/{versionId}': ['200', '401', '404'],
+  'GET /api/v1/requirements/versions/{versionId}/export': ['200', '400', '401', '404'],
   'GET /api/v1/jobs/{jobId}/requirements/versions': ['200', '401', '404'],
 };
 

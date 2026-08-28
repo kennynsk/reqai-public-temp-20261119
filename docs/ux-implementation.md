@@ -1,5 +1,11 @@
 # UX implementation — isolated worktree
 
+## Latest checkpoint — saved-version export and real GLM acceptance
+
+See [the acceptance report](ux-acceptance-2026-08-28.md) for current evidence, model settings, screenshots and explicit outstanding checks. Historical checkpoint counts below describe their own stage, not current completion.
+
+Version exports share one document model across Markdown, safe HTML and locally generated DOCX. Dirty export requires an explicit saved-version choice; prepared print links cannot silently outlive their selected version. The initial bundle is now approximately 423.8 kB after lazy-loading Markdown. The real GLM review/research/final/reload/export path passed; browser PDF printing and the complete responsive/keyboard/state matrix remain unverified. No merge/archive performed.
+
 ## Fourth checkpoint — exact research proposal review
 
 - Accept opens a review dialog, including from collapsed cards. Users choose add/replace, target type, explicit replacement target, exact wording and supported fields. Original wording, rationale (or its absence) and field-level before/after values remain visible. Target references never imply overwrite permission.
@@ -30,7 +36,7 @@ The current main frontend spec still describes three legacy categories. The impl
 
 Use `docker compose -p reqai-ux -f compose.ux.yaml up --build -d`. This file uses its own network and project-prefixed database/Kafka volumes. Exposed ports: frontend 58080, API 55178, PostgreSQL 55432, Kafka 59092, Temporal 57233, Temporal UI 58088, optional MCP 55180. Never run the default compose command from this worktree: its ports/network belong to the existing local stack.
 
-The default provider is mock for deterministic development. For a real run, supply credentials in the git-ignored `.env.ux.local` and explicitly set `LLM_PROVIDER_MODE=zai`; select `glm-5.3-flash` and low in the UI. Do not commit credentials or copy production data. Real-provider tests are separate from mock acceptance tests.
+The default provider is mock for deterministic development. For a real run, point `REQAI_UX_CREDENTIAL_FILE` to an existing credential file (default: git-ignored `.env.ux.local`) and explicitly set `LLM_PROVIDER_MODE=zai`; select `glm-5.3-flash` and low in the UI. Do not print or commit credentials or copy production data. Real-provider tests are separate from mock acceptance tests.
 
 To stop this stack, use `docker compose -p reqai-ux -f compose.ux.yaml stop`. Do not delete volumes on completion. The original stack is not stopped, migrated or rebuilt by these commands.
 
