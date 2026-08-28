@@ -22,6 +22,7 @@ vi.mock('./api/enterprise-api.js', () => ({
 }));
 
 import AsyncJobWorkspace from './AsyncJobWorkspace.jsx';
+import { roomBookingRegistry } from './room-booking.fixture.js';
 
 const storage = new Map();
 Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: {
@@ -34,6 +35,7 @@ Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: {
 beforeEach(() => {
   window.history.replaceState({}, '', '/');
   localStorage.clear();
+  sessionStorage.clear();
   vi.clearAllMocks();
   mocks.listJobs.mockResolvedValue({ items: [], nextCursor: null });
   mocks.listRequirementsVersions.mockResolvedValue({ items: [] });
@@ -42,6 +44,144 @@ beforeEach(() => {
   mocks.subscribe.mockResolvedValue();
 });
 afterEach(cleanup);
+
+async function openSavedRoomReview() {
+  const registry = roomBookingRegistry();
+  const job = { jobId: 'rooms', type: 'DECOMPOSITION', mode: 'DECOMPOSITION', status: 'SUCCEEDED' };
+  window.history.replaceState({}, '', '/tasks/rooms');
+  localStorage.setItem('reqai.requirementsLayout', 'rows');
+  mocks.getJob.mockResolvedValue(job);
+  mocks.getResult.mockResolvedValue({ ...job, resultArtifactId: 'rooms-result' });
+  mocks.getResultContent.mockResolvedValue(JSON.stringify(registry));
+  mocks.listRequirementsVersions.mockResolvedValue({ items: [{ versionId: 'rooms-v1', sourceJobId: 'rooms', registry, requirements: {}, decisions: {}, createdAt: '2026-08-28T10:00:00Z' }] });
+  render(<AsyncJobWorkspace />);
+  await screen.findByText('Сократить конфликты бронирования.');
+  fireEvent.click(screen.getByRole('button', { name: 'Действия для BR-001' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Редактировать' }));
+  fireEvent.change(screen.getByRole('textbox', { name: 'Текст требования BR-001' }), { target: { value: 'Сохранить мой черновик.' } });
+}
+
+test('keeps an open BABOK draft across type switches', async () => {
+  await openSavedRoomReview();
+  fireEvent.click(screen.getByRole('tab', { name: 'FR · Функциональные требования' }));
+  fireEvent.click(screen.getByRole('tab', { name: 'BR · Бизнес-требования' }));
+  expect(screen.getByRole('textbox', { name: 'Текст требования BR-001' })).toHaveValue('Сохранить мой черновик.');
+});
+
+test('does not advertise a pending BABOK draft as saved or eligible for research', async () => {
+  await openSavedRoomReview();
+  expect(screen.getByText('Есть несохранённые изменения')).toBeInTheDocument();
+  expect(screen.queryByText(/^Сохранено ·/)).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Улучшить требования с помощью AI' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Перейти к финальной версии' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Сохранить изменения' })).toBeEnabled();
+});
+
+test('global save includes an open card draft and retains it after failure', async () => {
+  mocks.saveRequirementsVersion.mockRejectedValue(new Error('Сеть недоступна'));
+  await openSavedRoomReview();
+  fireEvent.click(screen.getByRole('button', { name: 'Сохранить изменения' }));
+  await waitFor(() => expect(mocks.saveRequirementsVersion).toHaveBeenCalledWith(expect.objectContaining({
+    clientMutationId: expect.any(String), expectedLatestVersionId: 'rooms-v1',
+    registry: expect.objectContaining({ groups: expect.objectContaining({ BR: [expect.objectContaining({ text: 'Сохранить мой черновик.' })] }) }),
+  })));
+  await screen.findByText(/Сеть недоступна/);
+  expect(screen.getByRole('textbox', { name: 'Текст требования BR-001' })).toHaveValue('Сохранить мой черновик.');
+  fireEvent.click(screen.getByRole('button', { name: 'Сохранить изменения' }));
+  await waitFor(() => expect(mocks.saveRequirementsVersion).toHaveBeenCalledTimes(2));
+  expect(mocks.saveRequirementsVersion.mock.calls[1][0].clientMutationId).toBe(mocks.saveRequirementsVersion.mock.calls[0][0].clientMutationId);
+});
+
+test('guards new-task navigation while a card draft is pending', async () => {
+  await openSavedRoomReview();
+  fireEvent.click(screen.getByRole('button', { name: 'Новая задача' }));
+  expect(screen.getByRole('dialog', { name: 'Несохранённые изменения' })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Остаться' }));
+  expect(window.location.pathname).toBe('/tasks/rooms');
+  expect(screen.getByRole('textbox', { name: 'Текст требования BR-001' })).toHaveValue('Сохранить мой черновик.');
+});
+
+test('offers same-tab recovery after reload and clears it after a confirmed save', async () => {
+  mocks.getCapabilities.mockResolvedValue({ tenantId: 'tenant', userId: 'user', capabilities: { models: ['glm-5.3-flash'] } });
+  mocks.saveRequirementsVersion.mockImplementation(async (payload) => ({ ...payload, versionId: 'rooms-v2', createdAt: '2026-08-28T11:00:00Z' }));
+  await openSavedRoomReview();
+  const key = 'reqai.reviewDraft:["tenant","user"]:rooms';
+  await waitFor(() => expect(sessionStorage.getItem(key)).toContain('Сохранить мой черновик.'));
+  cleanup();
+  render(<AsyncJobWorkspace />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Восстановить черновик' }));
+  expect(screen.getByRole('textbox', { name: 'Текст требования BR-001' })).toHaveValue('Сохранить мой черновик.');
+  fireEvent.click(screen.getByRole('button', { name: 'Сохранить изменения' }));
+  await screen.findByText('Сохранить мой черновик.');
+  expect(sessionStorage.getItem(key)).toBeNull();
+});
+
+test('global validation reveals an invalid field hidden in another type', async () => {
+  await openSavedRoomReview();
+  fireEvent.change(screen.getByRole('textbox', { name: 'Текст требования BR-001' }), { target: { value: '   ' } });
+  fireEvent.click(screen.getByRole('tab', { name: 'FR · Функциональные требования' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Сохранить изменения' }));
+  expect(screen.getByRole('alert')).toHaveTextContent('Введите формулировку требования');
+  await waitFor(() => expect(screen.getByRole('textbox', { name: 'Текст требования BR-001' })).toHaveFocus());
+  expect(mocks.saveRequirementsVersion).not.toHaveBeenCalled();
+});
+
+test('shows storage failure without losing the in-memory draft', async () => {
+  mocks.getCapabilities.mockResolvedValue({ tenantId: 'tenant', userId: 'user', capabilities: {} });
+  vi.stubGlobal('sessionStorage', { getItem: () => null, removeItem: () => {}, setItem: () => { throw new DOMException('Full', 'QuotaExceededError'); } });
+  try {
+    await openSavedRoomReview();
+    expect(await screen.findByRole('alert')).toHaveTextContent('Браузер не позволяет сохранить черновик');
+    expect(screen.getByRole('textbox', { name: 'Текст требования BR-001' })).toHaveValue('Сохранить мой черновик.');
+  } finally { vi.unstubAllGlobals(); }
+});
+
+test('explicitly rebases a pending field onto a new server version', async () => {
+  await openSavedRoomReview();
+  const remote = roomBookingRegistry();
+  remote.groups.FR[0].text = 'Правка второго клиента';
+  mocks.listRequirementsVersions.mockResolvedValue({ items: [{ versionId: 'rooms-v2', registry: remote, requirements: {}, decisions: {}, sourceJobId: 'rooms', createdAt: '2026-08-28T11:00:00Z' }] });
+  const subscription = mocks.subscribe.mock.calls.find(([id]) => id === 'rooms')[1];
+  await act(() => subscription.onEvent({ jobId: 'rooms', eventType: 'requirements.version-created' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Загрузить новую версию' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Перенести мои правки' }));
+  expect(screen.getByRole('textbox', { name: 'Текст требования BR-001' })).toHaveValue('Сохранить мой черновик.');
+  fireEvent.click(screen.getByRole('tab', { name: 'FR · Функциональные требования' }));
+  expect(screen.getByText('Правка второго клиента')).toBeInTheDocument();
+  mocks.saveRequirementsVersion.mockRejectedValue(new Error('Test offline'));
+  fireEvent.click(screen.getByRole('button', { name: 'Сохранить изменения' }));
+  await waitFor(() => expect(mocks.saveRequirementsVersion).toHaveBeenCalledWith(expect.objectContaining({ expectedLatestVersionId: 'rooms-v2' })));
+});
+
+test('saves structured changes and original evidence together without closing the card', async () => {
+  await openSavedRoomReview();
+  fireEvent.change(screen.getByRole('textbox', { name: 'Критерий успеха BR-001' }), { target: { value: 'Не более двух конфликтов в месяц' } });
+  fireEvent.change(screen.getByRole('combobox', { name: 'Качество BR-001' }), { target: { value: 'Готово' } });
+  mocks.saveRequirementsVersion.mockRejectedValue(new Error('Test offline'));
+  fireEvent.click(screen.getByRole('button', { name: 'Сохранить изменения' }));
+  await waitFor(() => expect(mocks.saveRequirementsVersion).toHaveBeenCalled());
+  const record = mocks.saveRequirementsVersion.mock.calls[0][0].registry.groups.BR[0];
+  expect(record).toMatchObject({ text: 'Сохранить мой черновик.', successIndicator: 'Не более двух конфликтов в месяц', quality: 'Готово', source: roomBookingRegistry().groups.BR[0].source });
+});
+
+test('confirms deletion, supports undo, and does not reuse the deleted identifier', async () => {
+  await openSavedRoomReview();
+  fireEvent.click(screen.getByRole('button', { name: 'Отмена', exact: true }));
+  fireEvent.click(screen.getByRole('button', { name: 'Действия для BR-001' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Удалить', exact: true }));
+  expect(screen.getByRole('dialog', { name: 'Удаление требования' })).toHaveTextContent('BR-001');
+  fireEvent.click(screen.getByRole('button', { name: 'Подтвердить удаление' }));
+  expect(screen.queryByText('Сократить конфликты бронирования.')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Отменить удаление' }));
+  expect(screen.getByText('Сократить конфликты бронирования.')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Действия для BR-001' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Удалить', exact: true }));
+  fireEvent.click(screen.getByRole('button', { name: 'Подтвердить удаление' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Добавить требование' }));
+  fireEvent.change(screen.getByRole('textbox', { name: 'Новое требование: BR' }), { target: { value: 'Новая цель' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Добавить', exact: true }));
+  expect(screen.getByText('BR-002')).toBeInTheDocument();
+});
 
 async function openHistory() {
   fireEvent.click(await screen.findByRole('button', { name: 'История' }));
@@ -173,6 +313,7 @@ test('continues the overall percentage through an authoritative assembly milesto
   expect(screen.getByRole('listitem', { name: 'AI-анализ: выполняется' })).toBeInTheDocument();
 
   const assembly = { ...running, progress: 90, currentStep: 'assembly', message: 'Собираем требования по категориям', updatedAt: new Date(Date.now() - 30_000).toISOString() };
+  await waitFor(() => expect(onEvent).toBeTypeOf('function'));
   await act(() => onEvent({ jobId: running.jobId, eventType: 'job.progress', job: assembly }));
   expect(Number(progress.getAttribute('aria-valuenow'))).toBeGreaterThan(90);
   expect(Number(progress.getAttribute('aria-valuenow'))).toBeLessThan(95);
@@ -328,7 +469,7 @@ test('saves reviewed decomposition and starts linked research inside requirement
   fireEvent.click(within(businessColumn).getByRole('button', { name: 'Действия для BT-1' }));
   fireEvent.click(within(businessColumn).getByRole('button', { name: 'Редактировать' }));
   fireEvent.change(screen.getByLabelText('Текст требования BT-1'), { target: { value: 'Снизить срок обработки до одного дня' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Готово' }));
   expect(screen.getByRole('button', { name: 'Сохранить проверенную версию' })).toHaveClass('bg-indigo-600');
   expect(researchButton).not.toHaveClass('bg-emerald-600');
   fireEvent.click(screen.getByRole('button', { name: 'Сохранить проверенную версию' }));
@@ -413,11 +554,13 @@ test('receives remote versions on a completed job without overwriting local unsa
   expect(screen.getByText('Доступна новая сохранённая версия')).toBeInTheDocument();
 
   fireEvent.click(screen.getByRole('button', { name: 'Загрузить новую версию' }));
+  expect(screen.getByRole('dialog', { name: 'Сравнение версий' })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Отбросить мои правки и загрузить' }));
   expect(await screen.findByText('Версия из другой вкладки')).toBeInTheDocument();
   expect(screen.queryByText('Доступна новая сохранённая версия')).not.toBeInTheDocument();
 });
 
-test('routes a linked research event from the completed parent stream and rejects another job event', async () => {
+test('keeps the selected parent on a linked research event and follows only an explicit action', async () => {
   const requirementsValue = { business: [{ id: 'BT-1', text: 'Цель' }], functional: [], nonfunctional: [] };
   let onEvent;
   localStorage.setItem('reqai.viewedJob', 'parent-job');
@@ -435,6 +578,10 @@ test('routes a linked research event from the completed parent stream and reject
   expect(mocks.listRequirementsVersions).toHaveBeenCalledTimes(1);
 
   await act(() => onEvent({ eventType: 'linked-research.created', jobId: 'parent-job', linkedJobId: 'research-job' }));
+  expect(window.location.pathname).toBe('/tasks/parent-job');
+  expect(screen.getByText('Цель')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Открыть AI-исследование' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Отбросить и перейти' }));
   expect(await screen.findByRole('heading', { name: 'AI-исследование требований' })).toBeInTheDocument();
   expect(window.location.pathname).toBe('/tasks/research-job');
   expect(localStorage.getItem('reqai.viewedJob')).toBeNull();
@@ -641,7 +788,7 @@ test('restores requirements insights and applies explicit accepted enhancements'
   fireEvent.click(within(finalFunctional).getByRole('button', { name: 'Действия для FT-1' }));
   fireEvent.click(within(finalFunctional).getByRole('button', { name: 'Редактировать' }));
   fireEvent.change(screen.getByLabelText('Текст требования FT-1'), { target: { value: 'Система должна автоматически обрабатывать заявку за минуту' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Готово' }));
   expect(screen.getByRole('button', { name: 'Сохранить изменения' })).toBeEnabled();
   fireEvent.click(screen.getByRole('button', { name: 'Сохранить изменения' }));
   await waitFor(() => expect(mocks.saveRequirementsVersion).toHaveBeenNthCalledWith(2, expect.objectContaining({ baseVersionId: 'final-v2', decisions: { acceptedEnhancementKeys: ['i1:0'], rejectedEnhancementKeys: [] } })));
@@ -738,7 +885,7 @@ test('reviews a BABOK registry by type, preserves evidence and saves a complete 
   fireEvent.click(within(business).getByRole('button', { name: 'Действия для BR-001' }));
   fireEvent.click(within(business).getByRole('button', { name: 'Редактировать' }));
   fireEvent.change(screen.getByLabelText('Текст требования BR-001'), { target: { value: 'Сократить время согласования заявки' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Готово' }));
 
   const functional = screen.getByRole('region', { name: 'Функциональные требования' });
   fireEvent.click(within(functional).getByRole('button', { name: 'Добавить требование' }));

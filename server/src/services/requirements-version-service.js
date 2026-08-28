@@ -1,4 +1,5 @@
 import { ApiError } from '../errors/api-error.js';
+import { canonicalSha256 } from '../prompts/prompt-utils.js';
 import { babokIdentifierSet, validateBabokRegistry } from './babok-requirements-contract.js';
 
 const PRIVILEGED = new Set(['tenant-admin', 'operator', 'auditor', 'system-admin']);
@@ -86,11 +87,23 @@ export function createRequirementsVersionService({ config, jobRepository, artifa
     return { row, metadata, content };
   }
 
-  return {
+  const service = {
     async create({ auth, body, requestId }) {
       const sourceJob = await visibleJob(auth, body.sourceJobId);
       if (sourceJob.status !== 'SUCCEEDED') throw new ApiError({ status: 409, code: 'SOURCE_JOB_NOT_COMPLETE', message: 'Requirements can be saved only from a completed job' });
       if (!['DECOMPOSITION', 'RESEARCH'].includes(sourceJob.type)) throw new ApiError({ status: 409, code: 'INVALID_SOURCE_JOB', message: 'Unsupported requirements source job' });
+
+      const clientMutationId = body.clientMutationId ?? null;
+      if (clientMutationId !== null && (typeof clientMutationId !== 'string' || !/^[a-zA-Z0-9_-]{8,100}$/.test(clientMutationId))) throw new ApiError({ status: 400, code: 'VALIDATION_ERROR', message: 'Invalid save identity' });
+      if (body.expectedLatestVersionId !== undefined && body.expectedLatestVersionId !== null && (typeof body.expectedLatestVersionId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(body.expectedLatestVersionId))) throw new ApiError({ status: 400, code: 'VALIDATION_ERROR', message: 'Invalid expected version' });
+      const mutationHash = clientMutationId ? canonicalSha256(body) : null;
+      if (clientMutationId) {
+        const previous = await versionRepository.findMutation({ tenantId: auth.tenantId, ownerUserId: auth.userId, sourceJobId: sourceJob.id, clientMutationId });
+        if (previous) {
+          if (previous.mutation_hash !== mutationHash) throw new ApiError({ status: 409, code: 'VERSION_MUTATION_CONFLICT', message: 'Save identity was already used for different content' });
+          return service.get({ auth, versionId: previous.id });
+        }
+      }
 
       let base = null;
       if (body.baseVersionId) base = await visibleVersion(auth, body.baseVersionId);
@@ -166,6 +179,9 @@ export function createRequirementsVersionService({ config, jobRepository, artifa
         baseVersionId: base?.row.id || null,
         researchJobId: sourceJob.type === 'RESEARCH' ? sourceJob.id : null,
         decisions: envelope.decisions,
+        clientMutationId,
+        mutationHash,
+        expectedLatestVersionId: body.expectedLatestVersionId,
         event: {
           type: 'requirements.version-created',
           payload: {
@@ -177,6 +193,7 @@ export function createRequirementsVersionService({ config, jobRepository, artifa
           },
         },
       });
+      if (row.id !== artifact.artifactId) return service.get({ auth, versionId: row.id });
       await auditRepository?.record({ tenantId: auth.tenantId, actorId: auth.userId, actorRoles: auth.roles, action: 'requirements.version.create', targetType: 'requirements-version', targetId: row.id, requestId, sourceSite: config.process.siteId, metadata: { sourceJobId: sourceJob.id, baseVersionId: row.base_version_id, manualDecisionMetadata } });
       return { versionId: row.id, sourceJobId: row.source_job_id, baseVersionId: row.base_version_id, researchJobId: row.research_job_id, requirements, ...(registry ? { registry, analysisContext: envelope.analysisContext, materialLineage: envelope.materialLineage, contentSchemaVersion: envelope.contentSchemaVersion } : {}), decisions: envelope.decisions, revision: envelope.revision, createdAt: new Date(row.created_at).toISOString() };
     },
@@ -226,4 +243,5 @@ export function createRequirementsVersionService({ config, jobRepository, artifa
       });
     },
   };
+  return service;
 }

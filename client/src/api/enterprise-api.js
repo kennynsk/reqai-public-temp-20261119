@@ -1,4 +1,5 @@
 import { createSHA256 } from 'hash-wasm';
+import { readAccessToken } from './auth-session.js';
 
 export class EnterpriseApiError extends Error {
   constructor(message, { status, code, requestId, retryable, details } = {}) {
@@ -7,7 +8,7 @@ export class EnterpriseApiError extends Error {
   }
 }
 
-const token = () => localStorage.getItem('reqai.accessToken') || '';
+const token = readAccessToken;
 
 async function request(path, { method = 'GET', headers = {}, body, signal } = {}) {
   const response = await fetch(path, { method, headers: { ...(token() ? { Authorization: `Bearer ${token()}` } : {}), ...headers }, body, signal });
