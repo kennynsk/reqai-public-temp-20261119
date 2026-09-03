@@ -11,7 +11,7 @@ const USER_PROGRESS = Object.freeze({
   validate: { start: [5, 'validation', 'Проверяем исходные данные'], complete: [10, 'validation', 'Исходные данные проверены'] },
   'plan-chunks': { start: [10, 'preparation', 'Подготавливаем контекст для AI'], complete: [15, 'preparation', 'Контекст подготовлен'] },
   'decompose-chunk': { start: [20, 'model', 'AI формирует структуру требований'], complete: [20, 'model', 'AI формирует структуру требований'] },
-  'merge-decomposition': { start: [90, 'assembly', 'Собираем требования по категориям'], complete: [95, 'persistence', 'Сохраняем результат декомпозиции'] },
+  'merge-decomposition': { start: [70, 'assembly', 'Собираем требования по категориям'], complete: [90, 'persistence', 'Сохраняем результат декомпозиции'] },
   'requirements-insights': { start: [20, 'model', 'AI анализирует требования и формирует рекомендации'], complete: [90, 'assembly', 'Собираем карточки рекомендаций'] },
 });
 

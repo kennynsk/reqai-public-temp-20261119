@@ -3,6 +3,7 @@ import { DraftContext } from './review-context.js';
 import ReviewDialog from './ReviewDialog.jsx';
 import { SourceEvidence } from './SourceEvidence.jsx';
 import { updateReviewMetadata } from './review-metadata.js';
+import { RequirementPreviewLink } from './RequirementPreview.jsx';
 
 export default function ReviewQuestions({ registry, readOnly, onNavigate }) {
   const review = useContext(DraftContext);
@@ -22,7 +23,7 @@ export default function ReviewQuestions({ registry, readOnly, onNavigate }) {
     <label className="text-sm flex gap-2 items-center">Показывать вопросы<select aria-label="Статус вопросов" value={filter} onChange={(event) => setFilter(event.target.value)} className="rounded-lg border p-2"><option value="all">Все</option><option value="open">Открытые и с ответом</option><option value="closed">Закрытые</option></select></label>
     {gaps.map((gap) => { const state = states[gap.id] || { state: 'open', answer: '' }; return <article key={gap.id} id={`record-${gap.id}`} tabIndex={-1} className="scroll-mt-56 rounded-xl border border-amber-200 bg-white p-4">
       <div className="flex gap-3 justify-between flex-wrap"><h3 className="font-semibold">{gap.id} · {gap.text}</h3><span className="text-sm text-slate-600">{({ open: 'Открыт', answered: 'Дан ответ · ещё открыт', closed: 'Закрыт' })[state.state]}</span></div>
-      <div className="flex flex-wrap gap-2 my-2">{gap.affectedIds.map((id) => <a key={id} href={`#record-${id}`} onClick={(event) => { event.preventDefault(); onNavigate(id); }} className="text-sm p-1 text-indigo-700 underline">{id}</a>)}</div>
+      <div className="flex flex-wrap gap-2 my-2">{gap.affectedIds.map((id) => <RequirementPreviewLink key={id} id={id} onNavigate={onNavigate} className="text-sm p-1 text-indigo-700 underline" />)}</div>
       {gap.nextStep && <p className="text-sm my-2">Следующий шаг: {gap.nextStep}</p>}
       {registry.analysis.questions.filter((question) => question.gapId === gap.id).map((question) => <div key={question.id} id={`record-${question.id}`} tabIndex={-1} className="scroll-mt-56 my-3 rounded-lg bg-amber-50 p-3"><p className="text-xs text-amber-900">{({ P0: 'Критический', P1: 'Высокий', P2: 'Обычный' })[question.priority] || 'Приоритет не указан'} · {question.addressee}</p><p className="mt-1 text-sm">{question.text}</p></div>)}
       {!readOnly && <label className="block text-sm font-semibold mt-3">Ответ на {gap.id}<textarea aria-label={`Ответ на ${gap.id}`} maxLength={20000} rows={3} value={state.answer} disabled={state.state === 'closed'} onChange={(event) => change(gap.id, { answer: event.target.value, state: event.target.value.trim() ? 'answered' : 'open' })} className="mt-1 border rounded-lg p-3 block w-full font-normal" /></label>}

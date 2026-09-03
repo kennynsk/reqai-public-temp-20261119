@@ -54,6 +54,21 @@ test('checkpoint activities publish confirmed user-facing milestones without fab
   assert.match(progress[0].message, /AI анализирует/);
 });
 
+test('decomposition merge reserves the 70-to-90 range before persistence', async () => {
+  const progress = [];
+  const activities = createCheckpointedActivities({
+    siteId: 'dc-a', heartbeatFn() {},
+    handlers: { async mergeDecomposition() { return { artifactId: 'merged' }; } },
+    jobRepository: {
+      async findCheckpoint() { return null; },
+      async saveCheckpoint() {},
+      async updateProgress(value) { progress.push(value); return { job: value, replayed: false }; },
+    },
+  });
+  await activities.mergeDecomposition({ tenantId: 't', jobId: 'j' });
+  assert.deepEqual(progress.map(({ progress: value, currentStep }) => [value, currentStep]), [[70, 'assembly'], [90, 'persistence']]);
+});
+
 test('replayed checkpoint restores its completed milestone without executing the handler', async () => {
   const progress = [];
   const activities = createCheckpointedActivities({
@@ -66,7 +81,7 @@ test('replayed checkpoint restores its completed milestone without executing the
   });
   const result = await activities.mergeDecomposition({ tenantId: 't', jobId: 'j' });
   assert.equal(result.checkpointReplayed, true);
-  assert.deepEqual(progress.map(({ progress: value, currentStep }) => [value, currentStep]), [[95, 'persistence']]);
+  assert.deepEqual(progress.map(({ progress: value, currentStep }) => [value, currentStep]), [[90, 'persistence']]);
 });
 
 test('contract failures are checkpointed with a safe reason and marked non-retryable', async () => {

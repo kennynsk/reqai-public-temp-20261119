@@ -14,6 +14,8 @@ test('enterprise config parses documented defaults when async processing is disa
   assert.equal(config.llm.decompositionThinking, 'disabled');
   assert.equal(config.llm.decompositionOutputTokens['glm-5.3-flash'], 16000);
   assert.equal(config.jobs.inputMaxBytes, 104857600);
+  assert.equal(config.jobMetadataBackfill.batchSize, 100);
+  assert.equal(config.jobMetadataBackfill.intervalMs, 300000);
   assert.equal(config.prompts.policy['requirements-decomposition'].active, '2.2.0');
   assert.deepEqual(config.prompts.policy['requirements-decomposition'].released, ['1.0.0', '2.0.0', '2.1.0', '2.2.0']);
   assert.equal(config.prompts.policy['requirements-insights'].active, '2.0.0');
@@ -51,6 +53,19 @@ test('config validates cross-field and model-map rules', () => {
   assert.throws(
     () => loadConfig({ LLM_MODEL_PRIORITY: 'GC-Max,GC-Max' }, { loadFiles: false }),
     /distinct models/,
+  );
+});
+
+test('job metadata backfill settings support documented overrides and bounds', () => {
+  const config = loadConfig({
+    JOB_METADATA_BACKFILL_BATCH_SIZE: '25',
+    JOB_METADATA_BACKFILL_INTERVAL_MS: '60000',
+  }, { loadFiles: false });
+  assert.equal(config.jobMetadataBackfill.batchSize, 25);
+  assert.equal(config.jobMetadataBackfill.intervalMs, 60000);
+  assert.throws(
+    () => loadConfig({ JOB_METADATA_BACKFILL_INTERVAL_MS: '59999' }, { loadFiles: false }),
+    /JOB_METADATA_BACKFILL_INTERVAL_MS/,
   );
 });
 

@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
-import { expect, test } from 'vitest';
-import { assembleReview, reviewReducer, rebaseReview, readReviewDraft, clearReviewDrafts, DRAFT_TTL } from './review-state.js';
+import { act, renderHook } from '@testing-library/react';
+import { expect, test, vi } from 'vitest';
+import { SessionContext } from './review-context.js';
+import { assembleReview, reviewReducer, rebaseReview, readReviewDraft, clearReviewDrafts, DRAFT_TTL, useReviewState } from './review-state.js';
 import { roomBookingRegistry } from './room-booking.fixture.js';
 
 test('rebase merges independent GAP answers and omission entries without carrying approval', () => {
@@ -77,4 +79,62 @@ test('draft recovery enforces TTL and scoped cleanup', () => {
   clearReviewDrafts();
   expect(sessionStorage.getItem('reqai.reviewDraft:b')).toBeNull();
   expect(sessionStorage.getItem('unrelated')).toBe('keep');
+});
+
+test('covers reducer fallbacks, content functions, validation errors, and normalization', () => {
+  const state = { content: { FR: [] }, decisions: { keep: true }, drafts: {}, reservedIds: [] };
+  expect(reviewReducer(state, { type: 'unknown' })).toBe(state);
+  expect(reviewReducer(state, { type: 'decisions', value: { changed: true } }).decisions).toEqual({ changed: true });
+  expect(reviewReducer(state, { type: 'restore', value: { restored: true } })).toEqual({ restored: true });
+  expect(reviewReducer(state, { type: 'content', value: (value) => value }).decisions).toBe(state.decisions);
+
+  const invalid = assembleReview({ content: { NFR: [{ id: 'NFR-1', text: 'Шифрование' }] }, decisions: {}, drafts: {} });
+  expect(invalid.error).toMatchObject({ id: 'NFR-1', field: 'category' });
+  const normalized = assembleReview({ content: { FR: [] }, decisions: { ok: true }, drafts: {} }, undefined, (content) => ({ ...content, normalized: true }));
+  expect(normalized).toEqual({ content: { FR: [], normalized: true }, decisions: { ok: true } });
+});
+
+test('rebases deletions, local additions, field labels, skipped groups, and deleted decisions', () => {
+  const base = {
+    groups: {
+      BR: [{ id: 'BR-1', text: 'База' }, { id: 'BR-2', text: 'Удалить' }],
+      ignored: [{ id: 'I-1', text: 'Ignored' }],
+    },
+    context: [],
+    analysis: { GAP: [], HYP: [], TERM: [], traceability: [], delta: [] },
+  };
+  const remote = structuredClone(base);
+  remote.groups.BR.push({ id: 'BR-4', text: 'Серверная запись' });
+  const local = structuredClone(base);
+  local.groups.BR = [{ id: 'BR-1', text: 'Моя версия' }, { id: 'BR-3', text: 'Новая локальная запись' }];
+  local.groups.ignored = { not: 'an array' };
+  const result = rebaseReview({
+    content: local,
+    decisions: { review: { keep: 'local' } },
+    drafts: {
+      edited: { group: 'BR', id: 'BR-1', initialText: 'База', text: 'Моя версия', fields: { quality: 'Конфликтует', relatedIds: ['BR-3'], custom: 'значение' } },
+    },
+  }, base, remote, { review: { keep: 'base', removed: 'base-only' } }, { review: { keep: 'remote', removed: 'remote-only' } });
+
+  expect(result.state.content.groups.BR.map((record) => record.id)).toEqual(['BR-1', 'BR-4', 'BR-3']);
+  expect(result.state.content.groups.BR[0]).toMatchObject({ text: 'Моя версия' });
+  expect(result.state.drafts.edited.fields).toMatchObject({ quality: 'Конфликтует', relatedIds: ['BR-3'], custom: 'значение' });
+  expect(result.changes.some((change) => change.operation === 'Добавление')).toBe(true);
+  expect(result.changes.some((change) => change.id === 'BR-1 · Качество')).toBe(true);
+  expect(result.changes.some((change) => change.id === 'BR-1 · Дополнительное поле')).toBe(true);
+  expect(result.state.decisions.review).not.toHaveProperty('removed');
+});
+
+test('delegates recovery from a different editor to the session', () => {
+  const key = 'reqai.reviewDraft:tenant:job';
+  const restoreRecovery = vi.fn();
+  const content = { FR: [] };
+  sessionStorage.setItem(key, JSON.stringify({ schemaVersion: 1, updatedAt: Date.now(), state: { content, decisions: {}, drafts: {}, editor: 'research' } }));
+  const wrapper = ({ children }) => <SessionContext.Provider value={{ key, baseVersionId: 'v1', restoreRecovery }}>{children}</SessionContext.Provider>;
+  const { result } = renderHook(() => useReviewState(content, {}, { editor: 'requirements' }), { wrapper });
+
+  expect(result.current.recovery).toBeTruthy();
+  act(() => result.current.restore());
+  expect(restoreRecovery).toHaveBeenCalledWith(result.current.recovery);
+  sessionStorage.removeItem(key);
 });

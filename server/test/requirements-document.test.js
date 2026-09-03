@@ -37,6 +37,7 @@ test('DOCX contains long Cyrillic text, real headings and explicit page geometry
   assert.ok(xml.includes(longText));
   assert.match(xml, /w:w="12240"/);
   assert.match(xml, /w:left="1440"/);
+  assert.match(xml, /w:bottom="1800"/);
   assert.match(xml, /w:pStyle w:val="Heading1"/);
   assert.match(styles, /w:line="300"/);
   assert.ok(!xml.includes('private-version-uuid'));

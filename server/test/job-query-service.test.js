@@ -99,20 +99,24 @@ test('metadata is deterministic, bounded, and supports unavailable input', () =>
   assert.equal(initialJobMetadata({ name: 'brief.docx' }).title, 'brief.docx');
   assert.equal(initialJobMetadata({ type: 'RESEARCH', createdAt: '2026-01-01' }).title, 'AI-исследование · 2026-01-01');
   const metadata = initialJobMetadata({ text: 'x'.repeat(9000) });
-  assert.equal(metadata.title.length, 120);
+  assert.equal(metadata.title.length, 64);
   assert.equal(metadata.summary.length, 2000);
+  const longBrief = initialJobMetadata({ text: 'Организовать бронирование переговорных комнат для сотрудников компании без конфликтов и ручного согласования. Дополнительный контекст остаётся в выдержке.' });
+  assert.equal(longBrief.title, 'Организовать бронирование переговорных комнат для сотрудников');
+  assert.match(longBrief.summary, /Дополнительный контекст/);
 });
 
 test('grouped history binds cursor to search and filters without changing legacy response', async () => {
   const calls = [];
   const auth = { tenantId: 'a', userId: 'alice', roles: ['user'] };
   const service = createJobQueryService({ jobRepository: {
-    async listWorkflows(input) { calls.push(input); return { rows: [{ ...row, title: 'Комнаты', children: [row], metadata_revision: 2 }, row], indexingPending: true }; },
+    async listWorkflows(input) { calls.push(input); return { rows: [{ ...row, title: 'Комнаты', search_summary: 'Бронирование комнат без конфликтов', children: [row], metadata_revision: 2 }, row], indexingPending: true }; },
     async listVisible() { return [row]; },
   }, config: {} });
   const input = { auth, groupBy: 'workflow', q: ' комнаты ', type: 'RESEARCH', limit: 1 };
   const page = await service.list(input);
   assert.equal(page.items[0].title, 'Комнаты');
+  assert.equal(page.items[0].contextExcerpt, 'Бронирование комнат без конфликтов');
   assert.equal(page.items[0].children[0].title, 'Комнаты');
   assert.equal(page.indexingPending, true);
   assert.equal(calls[0].ownerUserId, 'alice');

@@ -1,7 +1,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: Persistent guided workflow
-The frontend SHALL present four stages: business context, requirements, optional AI research and final version. The indicator SHALL distinguish completed, current, available, skipped and unavailable stages. Processing completion, unsaved edits, saved review and saved final version SHALL have distinct labels; saving a document MUST NOT imply semantic approval.
+The frontend SHALL present four stages: business context, requirements, optional AI research and final version. The indicator SHALL distinguish completed, current, available, skipped and unavailable stages. Processing completion, unsaved edits, saved review and saved final version SHALL have distinct labels; saving a document MUST NOT imply semantic approval. At narrow widths a completed workflow SHALL use a compact stage summary so primary saved-result content precedes secondary settings and export controls.
 
 #### Scenario: New user starts with business context
 - **WHEN** no decomposition or saved requirements are selected
@@ -14,6 +14,10 @@ The frontend SHALL present four stages: business context, requirements, optional
 #### Scenario: Final requirements are saved
 - **WHEN** final requirements are persisted
 - **THEN** the final stage is complete, the version/date are shown, no instruction to save the already saved document remains, and reload restores it
+
+#### Scenario: Saved final version opens on a narrow viewport
+- **WHEN** a saved final version opens at 390 CSS pixels wide and 844 CSS pixels high
+- **THEN** the version state, coverage warning and primary review navigation appear before secondary settings/export detail, and completed-stage explanation does not consume a full viewport before the result
 
 #### Scenario: User skips optional AI research
 - **WHEN** a clean saved review is finalized directly
@@ -43,7 +47,7 @@ Recommended settings SHALL remain outside the primary action path behind a label
 - **THEN** historical settings are labelled separately and remain unchanged by editing the next-run controls
 
 ### Requirement: Requirements-focused review stage
-After successful decomposition, the generated registry SHALL be the dominant content. The context form SHALL collapse into an expandable summary without losing review edits. Requirements, questions and relationships SHALL have distinct discoverable review sections; analysis MUST NOT appear as confirmed requirements. The heading SHALL provide a sticky responsive save/action area, with optional research and direct finalization available only for a clean saved version.
+After successful decomposition, the generated registry SHALL be the dominant content. The context form SHALL collapse into an expandable summary without losing review edits. Requirements, questions and relationships SHALL have distinct discoverable review sections; analysis MUST NOT appear as confirmed requirements. The heading SHALL provide a sticky responsive save/action area, with optional research and direct finalization available only for a clean saved version. Secondary settings and export disclosures MUST NOT displace the primary review state and navigation on narrow screens.
 
 #### Scenario: User enters requirements review
 - **WHEN** decomposition completes
@@ -56,6 +60,10 @@ After successful decomposition, the generated registry SHALL be the dominant con
 #### Scenario: User reviews generated requirements
 - **WHEN** records are displayed
 - **THEN** save and next-step controls remain reachable without scrolling through all registry sections
+
+#### Scenario: Completed workflow prioritizes review content
+- **WHEN** the user opens requirements or a final saved version on a narrow screen
+- **THEN** task/version state, review sections and the first relevant review control precede expanded workflow explanation, settings and export actions in the visual reading order
 
 #### Scenario: Reviewed version has not been saved
 - **WHEN** there is no saved review or any pending field/decision edit
@@ -119,7 +127,7 @@ History SHALL use a dismissible side drawer with localized grouped workflow entr
 - **THEN** its canonical task and saved state load and the drawer closes
 
 ### Requirement: Focused desktop requirements editor
-The editor SHALL prioritize type-aware requirements with source context and the four-stage indicator. BABOK exposes BR, SR, FR, NFR, TR and CON; legacy results expose their supported categories. In «По типам», selection SHALL filter records; in «Все требования», selection SHALL move viewport and focus to the chosen section. The view choice SHALL persist and apply to review and final editors. All types and actions SHALL remain accessible at narrow widths.
+The editor SHALL prioritize type-aware requirements with source context and the four-stage indicator. BABOK exposes BR, SR, FR, NFR, TR and CON; legacy results expose their supported categories. In «По типам», selection SHALL filter records; in «Все требования», selection SHALL move viewport and focus to the chosen section. The view choice SHALL persist and apply to review and final editors. All types and actions SHALL remain accessible at narrow widths, and the tab presentation SHALL be used only while complete labels and counts fit without a persistent horizontal scrollbar.
 
 #### Scenario: User begins reviewing a decomposition
 - **WHEN** a completed decomposition is displayed
@@ -136,6 +144,10 @@ The editor SHALL prioritize type-aware requirements with source context and the 
 #### Scenario: User navigates all requirements
 - **WHEN** the user selects TR while «Все требования» is active
 - **THEN** TR remains among all displayed sections and viewport/focus move to its heading without losing any draft
+
+#### Scenario: Requirement types do not fit one desktop row
+- **WHEN** complete type labels and counts would overflow their available width at 839, 1224 or 1440 CSS pixels
+- **THEN** the workspace uses the compact labelled selector before clipping a type or exposing a persistent horizontal scrollbar, while preserving keyboard access and the selected type
 
 #### Scenario: User adds a requirement
 - **WHEN** Add requirement is activated for a type
@@ -165,7 +177,7 @@ The frontend SHALL display one localized primary processing status. Infrastructu
 - **THEN** the UI explains that comparison is unavailable without showing NOT_PROVIDED, hashes or artifact UUIDs
 
 ### Requirement: Responsive and accessible interaction
-Workflow controls, history, editors, disclosures and decisions SHALL be usable by keyboard and at narrow/desktop widths and 200 percent zoom. They SHALL expose meaningful names, selected/expanded states and visible focus. Modals SHALL receive and contain focus, close with Escape when safe, and return focus to the trigger. Controls MUST NOT rely solely on color; text contrast SHALL be at least 4.5:1 for normal text and 3:1 for large text, with interactive targets at least 24 by 24 CSS pixels.
+Workflow controls, history, editors, disclosures and decisions SHALL be usable by keyboard and at narrow/desktop widths and 200 percent zoom. They SHALL expose meaningful names, selected/expanded states and visible focus. Modals SHALL receive and contain focus, close with Escape when safe, and return focus to the trigger. Controls MUST NOT rely solely on color; text contrast SHALL be at least 4.5:1 for normal text and 3:1 for large text, necessary resting control boundaries and state indicators SHALL reach 3:1 against adjacent colors, visible focus SHALL reach 3:1, and interactive targets SHALL be at least 24 by 24 CSS pixels.
 
 #### Scenario: Narrow viewport
 - **WHEN** the workspace is tested at 390 or 839 CSS pixels wide
@@ -182,6 +194,10 @@ Workflow controls, history, editors, disclosures and decisions SHALL be usable b
 #### Scenario: Sticky actions overlap content
 - **WHEN** content scrolls beneath a sticky action area at 200 percent zoom
 - **THEN** focused controls and final rows can be scrolled fully into view and are not obscured
+
+#### Scenario: Resting controls remain identifiable
+- **WHEN** an enabled input, select, button or tab is not focused
+- **THEN** its required boundary or alternative state indicator remains distinguishable from the adjacent surface at 3:1 or better without relying only on color
 
 ### Requirement: Cross-client realtime synchronization
 The system SHALL publish ordered durable lifecycle, linked-research and version events. Viewing clients SHALL retain their job subscription after completion, resume after disconnect and reconcile saved state. Remote changes SHALL NOT replace unsaved edits or automatically change an explicitly selected task route. Linked research created elsewhere SHALL appear as an available navigation action.

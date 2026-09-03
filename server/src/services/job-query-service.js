@@ -86,7 +86,12 @@ export function createJobQueryService({ jobRepository, auditRepository, config }
       const rows = grouped?.rows || await jobRepository.listVisible(filters);
       const hasMore = rows.length > parsedLimit;
       const items = rows.slice(0, parsedLimit);
-      const withMetadata = (row) => ({ ...mapJob(row), title: row.title || initialJobMetadata({ type: row.type, createdAt: row.created_at }).title, metadataRevision: row.metadata_revision || 0 });
+      const withMetadata = (row) => ({
+        ...mapJob(row),
+        title: row.title || initialJobMetadata({ type: row.type, createdAt: row.created_at }).title,
+        contextExcerpt: row.search_summary || null,
+        metadataRevision: row.metadata_revision || 0,
+      });
       return { items: items.map((row) => grouped ? { ...withMetadata(row), children: (row.children || []).map((child) => ({ ...withMetadata(child), title: row.title || withMetadata(row).title })), savedVersions: row.saved_versions || [] } : mapJob(row)), nextCursor: hasMore ? encodeCursor(items.at(-1), queryKey) : null, ...(grouped ? { indexingPending: grouped.indexingPending } : {}) };
     },
 

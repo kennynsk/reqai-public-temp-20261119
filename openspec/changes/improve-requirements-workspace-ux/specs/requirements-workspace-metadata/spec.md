@@ -5,11 +5,15 @@ Make authorized business workflows recognizable and searchable across sessions w
 ## ADDED Requirements
 
 ### Requirement: Persistent human-readable workflow titles
-Each workflow SHALL display an editable title derived from context or the primary filename without an extra model call. Changes SHALL persist server-side independently of immutable source artifacts. Trimmed titles SHALL be 1 to 120 characters; invalid changes SHALL be rejected. Older workflows without usable context SHALL receive a localized type-and-date fallback.
+Each workflow SHALL display an editable title derived from context or the primary filename without an extra model call. The automatically generated title SHALL be a concise presentation value of at most 64 characters, normalized and trimmed at a word boundary, while a separate context excerpt MAY preserve additional identifying detail. User-edited trimmed titles SHALL be 1 to 120 characters. Changes SHALL persist server-side independently of immutable source artifacts; invalid changes SHALL be rejected. Older workflows without usable context SHALL receive a localized type-and-date fallback.
 
 #### Scenario: Room-booking task is created
 - **WHEN** a task is submitted with a room-booking brief
 - **THEN** history displays a meaningful context-derived title rather than only the generic workspace name
+
+#### Scenario: Long business brief becomes a history entry
+- **WHEN** the submitted context is longer than 64 characters or contains several sentences
+- **THEN** the automatic title ends at a word boundary within 64 characters, does not copy the entire brief, and history presents any additional excerpt separately without requiring the title to occupy more than two visual lines
 
 #### Scenario: Title is renamed and reopened elsewhere
 - **WHEN** the user renames a workflow and opens it in another authorized browser

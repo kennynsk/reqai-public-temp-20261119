@@ -1,6 +1,6 @@
 # Локальный enterprise-контур
 
-`compose.yaml` поднимает PostgreSQL, Kafka в KRaft-режиме, Temporal Server и Web UI, миграции, API, отдельные decomposition/research workers, event и maintenance workers, frontend, Prometheus и Grafana. Workflow workers по умолчанию используют реальный ZAI provider и получают `ZAI_BASE_URL`, `ZAI_API_KEY` и `ZAI_MODELS` из корневого `.env.dev`; LLM-секреты не передаются API, event и maintenance ролям.
+`compose.yaml` поднимает PostgreSQL, Kafka в KRaft-режиме, Temporal Server и Web UI, миграции, API, отдельные decomposition/research workers, event и maintenance workers, frontend, Prometheus и Grafana. `compose.dev.yaml` поверх него заменяет production-like процессы на dev-серверы с bind mounts: frontend работает через Vite HMR, backend и workers — через Node watch. Workflow workers по умолчанию используют реальный ZAI provider и получают `ZAI_BASE_URL`, `ZAI_API_KEY` и `ZAI_MODELS` из корневого `.env.dev`; LLM-секреты не передаются API, event и maintenance ролям.
 
 Для изолированных тестов mock включается явно через override `LLM_PROVIDER_MODE=mock`; основной локальный Compose не использует mock-модели. Каталог ZAI: `glm-5.3-flash,glm-5.3,glm-5.2,glm-5-turbo,glm-4.7,glm-4.7-flash`; приоритет: `glm-5.3-flash,glm-5.3,glm-5.2`. UI показывает весь каталог, а один шаг snapshot-ит не более трёх моделей для bounded fallback.
 
@@ -12,20 +12,20 @@
 npm run dev
 ```
 
-Это основной локальный entrypoint: он выполняет `docker compose up --build` в foreground и показывает общие логи. Для фонового режима:
+Это основной локальный entrypoint: он выполняет `docker compose -f compose.yaml -f compose.dev.yaml up --build` в foreground и показывает общие логи. Frontend доступен на `http://localhost:5177`; изменения в `client/` применяются через hot reload. Для фонового режима:
 
 ```bash
 npm run dev:detached
-docker compose ps -a
+docker compose -f compose.yaml -f compose.dev.yaml ps -a
 ```
 
-Прямой `docker compose up --build` эквивалентен `npm run dev`. Отдельного standalone launcher больше нет.
+Остановить dev-стек можно командой `npm run dev:stop`. Прямой `docker compose up --build` запускает базовый static/Nginx-вариант и не является HMR-режимом.
 
 Первый запуск загружает образы и может занять несколько минут. Одноразовые контейнеры `migrate`, `kafka-init` и `temporal-init` должны завершиться с кодом `0`; остальные сервисы должны быть `Up`/`healthy`.
 
 | Компонент | URL/порт |
 |---|---|
-| Frontend и `/api` proxy | http://localhost:8080 |
+| Frontend и `/api` proxy | http://localhost:5177 |
 | Backend API | http://localhost:5178 |
 | Temporal Web UI | http://localhost:8088 |
 | Prometheus | http://localhost:9090 |

@@ -1,0 +1,61 @@
+name: reqai-local
+
+x-dev-server: &dev-server
+  build:
+    context: .
+    dockerfile: server/Dockerfile.dev
+  command: ["npm", "-w", "server", "run", "dev"]
+  read_only: false
+  volumes:
+    - .:/app
+    - server-node-modules:/app/node_modules
+
+services:
+  reqai-api:
+    <<: *dev-server
+
+  event-worker:
+    <<: *dev-server
+
+  decomposition-worker:
+    <<: *dev-server
+
+  research-worker:
+    <<: *dev-server
+
+  maintenance-worker:
+    <<: *dev-server
+
+  mcp-gateway:
+    build:
+      context: .
+      dockerfile: mcp-gateway/Dockerfile.dev
+    command: ["npm", "-w", "mcp-gateway", "run", "dev"]
+    read_only: false
+    volumes:
+      - ./mcp-gateway:/app/mcp-gateway
+      - ./package.json:/app/package.json:ro
+      - ./package-lock.json:/app/package-lock.json:ro
+      - mcp-node-modules:/app/node_modules
+
+  frontend:
+    build:
+      context: .
+      dockerfile: client/Dockerfile.dev
+    command: ["npm", "-w", "client", "run", "dev", "--", "--host", "0.0.0.0"]
+    environment:
+      VITE_API_PROXY_TARGET: http://reqai-api:5178
+      VITE_USE_POLLING: "true"
+    ports: !override
+      - "5177:5177"
+    read_only: false
+    volumes:
+      - .:/app
+      - client-node-modules:/app/node_modules
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:5177/ >/dev/null"]
+
+volumes:
+  client-node-modules:
+  mcp-node-modules:
+  server-node-modules:

@@ -19,3 +19,13 @@ test('legacy deletion confirms affected links, reserves IDs and undo preserves o
   expect(result.current.review.content.business[0].text).toBe('Цель');
   expect(result.current.review.content.functional[0]).toMatchObject({ text: 'Другая правка', relatedTo: ['BT-1'] });
 });
+
+test('can dismiss a pending legacy deletion before confirming it', () => {
+  const initial = { business: [{ id: 'BT-1', text: 'Цель' }], functional: [], nonfunctional: [] };
+  const { result } = renderHook(() => { const review = useReviewState(initial); return { review, deletion: useLegacyDeletion(review) }; });
+  act(() => result.current.deletion.ask('business', 'BT-1'));
+  expect(result.current.deletion.pending).toMatchObject({ type: 'business', id: 'BT-1', affected: [] });
+  act(() => result.current.deletion.dismiss());
+  expect(result.current.deletion.pending).toBeNull();
+  expect(result.current.review.content.business).toHaveLength(1);
+});

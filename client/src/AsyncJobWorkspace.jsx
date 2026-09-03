@@ -15,13 +15,13 @@ import {
   ChevronUp,
   Columns3,
   Download,
-  ExternalLink,
   FileUp,
   History,
   Info,
   Loader2,
   Link2,
   List,
+  Layers3,
   MoreHorizontal,
   Pencil,
   Plus,
@@ -34,7 +34,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import { enterpriseApi, subscribeJobEvents } from './api/enterprise-api.js';
-import { EXECUTION_PHASES, executionPhaseIndex, focusMessageForJob, progressPresentationForJob } from './job-progress.js';
+import { EXECUTION_PHASES, executionPhaseIndex, focusMessageForJob, progressAriaText, progressPresentationForJob } from './job-progress.js';
 import { assembleReview, clearReviewDrafts, rebaseReview, useDraftField, useReviewState } from './review-state.js';
 import { SessionContext } from './review-context.js';
 import RegistryAnalysis, { RecordLinks } from './RegistryAnalysis.jsx';
@@ -53,6 +53,9 @@ import { readAccessToken } from './api/auth-session.js';
 import { CoverageWarning, SourceEvidence } from './SourceEvidence.jsx';
 import { STRUCTURED_FIELDS, QUALITY_OPTIONS } from './review-fields.js';
 import { ReviewDraftProvider, ReviewSessionProvider } from './ReviewDraftProvider.jsx';
+import ResearchInsightWorkspace from './ResearchInsightWorkspace.jsx';
+import { buildBabokRequirementIndex, buildLegacyRequirementIndex } from './research-review.js';
+import { RequirementPreviewProvider } from './RequirementPreview.jsx';
 
 const TERMINAL = new Set(['SUCCEEDED', 'FAILED', 'CANCELLED']);
 const SafeMarkdown = lazy(() => import('./SafeMarkdown.jsx'));
@@ -81,7 +84,7 @@ const REASONING_OPTIONS = [
 ];
 const INSIGHT_CATEGORY_META = {
   trends: { label: 'Тренды рынка', color: 'bg-emerald-100 text-emerald-700', active: 'bg-emerald-600 text-white', icon: TrendingUp },
-  patterns: { label: 'Архитектурные паттерны', color: 'bg-violet-100 text-violet-700', active: 'bg-violet-600 text-white', icon: Sparkles },
+  patterns: { label: 'Архитектурные паттерны', color: 'bg-violet-100 text-violet-700', active: 'bg-violet-600 text-white', icon: Layers3 },
   risks: { label: 'Риски', color: 'bg-orange-100 text-orange-700', active: 'bg-orange-600 text-white', icon: AlertTriangle },
   competitors: { label: 'Конкурентный анализ', color: 'bg-blue-100 text-blue-700', active: 'bg-blue-600 text-white', icon: Users },
   standards: { label: 'Стандарты и нормативы', color: 'bg-amber-100 text-amber-700', active: 'bg-amber-600 text-white', icon: BookOpen },
@@ -190,20 +193,34 @@ function WorkflowStepper({ currentStage = 1, completedStage = 0, skippedStages =
     ['AI-исследование', 'Необязательный шаг'],
     ['Финальная версия', 'Сохраните результат'],
   ];
+  const completedConnectorCount = Math.min(stages.length - 1, Math.max(0, completedStage));
+  const currentStageTitle = stages[currentStage - 1]?.[0];
   return (
-    <section aria-label="Прогресс подготовки требований" className="bg-white rounded-2xl border border-slate-200 px-4 py-4 md:px-5 mb-6">
-      <p className="text-xs font-bold uppercase tracking-wide text-indigo-600 mb-4">Этап {currentStage} из {stages.length}</p>
-      <ol aria-label="Этапы подготовки требований" className="grid grid-cols-2 gap-x-4 gap-y-3 md:grid-cols-4">
+    <section aria-label="Прогресс подготовки требований" className="mb-4 border-b border-slate-200 px-1 pb-3 md:px-2">
+      <div className="mb-2.5 flex items-baseline gap-3">
+        <p className="text-xs font-bold uppercase tracking-wide text-indigo-600">Этап {currentStage} из {stages.length}</p>
+        {currentStageTitle && <p className="text-sm font-semibold text-slate-900">{currentStageTitle}</p>}
+      </div>
+      <ol aria-label="Этапы подготовки требований" className="relative grid grid-cols-4 gap-0">
+        <li aria-hidden="true" className="pointer-events-none absolute left-[12.5%] right-[12.5%] top-3 h-px bg-slate-200" />
+        {completedConnectorCount > 0 && <li aria-hidden="true" className="pointer-events-none absolute left-[12.5%] top-3 h-px bg-emerald-300" style={{ width: `${(completedConnectorCount / (stages.length - 1)) * 75}%` }} />}
+        {completedConnectorCount > 0 && <li aria-hidden="true" className="pointer-events-none absolute left-[12.5%] top-3 hidden h-px bg-emerald-300 md:block" style={{ width: `${(completedConnectorCount / (stages.length - 1)) * 75}%` }} />}
         {stages.map(([title, subtitle], index) => {
           const number = index + 1;
           const skipped = skippedStages.includes(number);
           const complete = number <= completedStage && !skipped;
           const isCurrent = number === currentStage;
-          return <li key={title} aria-current={isCurrent ? 'step' : undefined} className="min-w-0 flex items-center gap-2">
-            <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0 ${isCurrent ? 'bg-indigo-600 text-white ring-4 ring-indigo-50' : complete ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-600'}`}>{complete && !isCurrent ? <Check className="w-3.5 h-3.5" /> : number}</span>
-            <span className="min-w-0">
-              <span className={`block text-xs font-semibold truncate ${isCurrent ? 'text-indigo-900' : complete ? 'text-emerald-800' : 'text-slate-500'}`}>{title}</span>
-              <span className="hidden xl:block text-[11px] text-slate-600 truncate mt-0.5">{skipped ? 'Пропущено' : subtitle}</span>
+          const circleTone = isCurrent
+            ? 'bg-indigo-600 text-white ring-2 ring-indigo-50'
+            : complete
+              ? 'bg-emerald-600 text-white'
+              : 'bg-slate-100 text-slate-600 ring-1 ring-inset ring-slate-200';
+          const labelTone = isCurrent ? 'text-indigo-900' : complete ? 'text-emerald-800' : 'text-slate-600';
+          return <li key={title} aria-current={isCurrent ? 'step' : undefined} className="relative z-10 flex min-w-0 flex-col items-center gap-1.5 text-center">
+            <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${circleTone}`}>{complete && !isCurrent ? <Check className="h-3.5 w-3.5" /> : number}</span>
+            <span className="min-w-0 max-w-full">
+              <span className={`hidden truncate text-xs font-semibold leading-4 sm:block ${labelTone}`}>{title}</span>
+              <span className="sr-only">{skipped ? 'Пропущено' : subtitle}</span>
             </span>
           </li>;
         })}
@@ -214,7 +231,7 @@ function WorkflowStepper({ currentStage = 1, completedStage = 0, skippedStages =
 
 function AiSettingsDisclosure({ model, children }) {
   return <details className="relative group">
-    <summary aria-label="Настройки AI" className="list-none cursor-pointer p-2 sm:px-3 sm:py-2 rounded-lg text-sm font-semibold text-gray-600 hover:bg-gray-100 flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">
+    <summary aria-label="Настройки AI" className="list-none cursor-pointer p-2 sm:px-3 sm:py-2 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-100 flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">
       <Settings2 className="w-4 h-4 text-indigo-500" />
       <span className="hidden sm:inline">Настройки AI</span>
       <span className="hidden lg:inline text-xs font-normal text-slate-600">{model} · рекомендуется</span>
@@ -590,6 +607,7 @@ function BabokRegistryResult({ value, latestVersion, onSave, onStartResearch, on
   const initialRegistry = babokRegistryFrom(value, latestVersion) || value;
   const review = useReviewState(initialRegistry, latestVersion?.decisions || {}, { readOnly });
   const { content: registry, setContent: setRegistry } = review;
+  const requirementIndex = useMemo(() => buildBabokRequirementIndex(registry, { requirementTypes: BABOK_REQUIREMENT_TYPES, analysisTypes: BABOK_ANALYSIS_TYPES }), [registry]);
   const [validationError, setValidationError] = useState(null);
   const [dirtyDrafts, setDirtyDrafts] = useState(() => new Set());
   const [editedRecordIds, setEditedRecordIds] = useState(() => new Set());
@@ -728,7 +746,9 @@ function BabokRegistryResult({ value, latestVersion, onSave, onStartResearch, on
       </div>
       {layout === 'rows' && <p className="text-xs text-slate-500">Сейчас выбран тип {activeMeta[0]} · {activeMeta[1]}. Переключите вкладку, чтобы просмотреть другой тип.</p>}
       </div>
-      <RegistryAnalysis registry={registry} section={reviewSection} onNavigate={navigateRecord} readOnly={readOnly} />
+      {reviewSection === 'questions' || reviewSection === 'links'
+        ? <RequirementPreviewProvider index={requirementIndex}><RegistryAnalysis registry={registry} section={reviewSection} onNavigate={navigateRecord} readOnly={readOnly} /></RequirementPreviewProvider>
+        : <RegistryAnalysis registry={registry} section={reviewSection} onNavigate={navigateRecord} readOnly={readOnly} />}
       <RecordFocus id={initialRecordId} />
     </div></ReviewDraftProvider>
   );
@@ -860,6 +880,7 @@ function displayEnhancementsForInsight(insight) {
     .map((enhancement) => ({
       ...enhancement,
       targetType: TARGET_TYPE_LABELS[enhancement.targetType] ? enhancement.targetType : 'functional',
+      targetIds: Array.isArray(enhancement.targetIds) ? enhancement.targetIds : (Array.isArray(enhancement.relatedTo) ? enhancement.relatedTo : []),
       text: enhancement.text.trim(),
     }));
   if (raw.length) return structured;
@@ -871,63 +892,49 @@ function displayEnhancementsForInsight(insight) {
 }
 
 function InsightEnhancementDecisionRow({ enhancement, decision, onDecision }) {
-  const [open, setOpen] = useState(false);
   const type = enhancement.targetType || 'functional';
   const label = TARGET_TYPE_LABELS[type] || TARGET_TYPE_LABELS.functional;
+  const targetIds = Array.isArray(enhancement.targetIds)
+    ? enhancement.targetIds
+    : (Array.isArray(enhancement.relatedTo) ? enhancement.relatedTo : []);
   const accepted = decision === 'accepted';
   const rejected = decision === 'rejected';
 
   return (
-    <div className={`rounded-lg border overflow-hidden transition-colors ${accepted ? 'border-emerald-300 bg-emerald-50/60' : rejected ? 'border-slate-300 bg-slate-50' : 'border-gray-200 bg-white'}`}>
-      <div className="flex items-stretch min-h-[2.5rem]">
+    <div className={`rounded-xl border p-4 transition-colors ${accepted ? 'border-emerald-300 bg-emerald-50/60' : rejected ? 'border-slate-300 bg-slate-50' : 'border-gray-200 bg-white'}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">Предлагаемое требование</p>
+          <p className="mt-1 text-sm font-semibold text-slate-900">{label}</p>
+        </div>
+        <span className={`shrink-0 rounded-full px-2 py-1 text-[11px] font-semibold ${accepted ? 'bg-emerald-100 text-emerald-700' : rejected ? 'bg-slate-200 text-slate-600' : 'bg-slate-100 text-slate-500'}`}>{accepted ? 'Принято' : rejected ? 'Отклонено' : 'На проверке'}</span>
+      </div>
+      {targetIds.length > 0 && <div className="mt-3 flex items-start gap-2 text-xs text-slate-500">
+        <Link2 aria-hidden="true" className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+        <span className="min-w-0"><span className="font-semibold text-slate-600">Затрагиваемые требования:</span>{' '}<RecordLinks ids={targetIds} /></span>
+      </div>}
+      <p className="mt-3 whitespace-pre-line break-words text-sm leading-relaxed text-slate-700">{enhancement.text}</p>
+      <div className="mt-4 flex flex-wrap gap-2">
         <button
           type="button"
           aria-label={`Принять улучшение: ${enhancement.text}`}
           aria-pressed={accepted}
           onClick={() => onDecision('accepted')}
           title={accepted ? 'Проверить принятое изменение' : 'Проверить перед принятием'}
-          className="flex items-center justify-center px-3 border-r border-gray-100 hover:bg-gray-50 shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-500"
+          className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${accepted ? 'border-emerald-600 bg-emerald-600 text-white' : TARGET_TYPE_COLORS[type] || TARGET_TYPE_COLORS.functional}`}
         >
-          {accepted ? <Check className="w-4 h-4 text-emerald-600" /> : <Plus className={`w-4 h-4 ${TARGET_TYPE_ICON_COLORS[type] || TARGET_TYPE_ICON_COLORS.functional}`} />}
+          {accepted ? <Check className="h-4 w-4" /> : <Plus className={`h-4 w-4 ${accepted ? '' : TARGET_TYPE_ICON_COLORS[type] || TARGET_TYPE_ICON_COLORS.functional}`} />}Принять
         </button>
         <button
           type="button"
-          aria-expanded={open}
-          aria-label={`${open ? 'Скрыть' : 'Показать'} предложение: ${label}`}
-          onClick={() => setOpen((current) => !current)}
-          className="flex-1 min-w-0 px-3 py-2 flex items-center gap-2 text-left text-sm hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500"
+          aria-label={`Отклонить улучшение: ${enhancement.text}`}
+          aria-pressed={rejected}
+          onClick={() => onDecision('rejected')}
+          className={`rounded-lg border px-3 py-2 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${rejected ? 'border-slate-700 bg-slate-700 text-white' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
         >
-          <span className="font-medium text-gray-800 truncate flex-1 min-w-0">{label}</span>
-          {accepted && <span className="text-[11px] font-semibold text-emerald-700">Принято</span>}
-          {rejected && <span className="text-[11px] font-semibold text-slate-500">Отклонено</span>}
-          {open ? <ChevronUp className="w-4 h-4 text-gray-600 shrink-0" /> : <ChevronDown className="w-4 h-4 text-gray-600 shrink-0" />}
+          Отклонить
         </button>
       </div>
-      {open && (
-        <div className="px-3 pb-3 pt-3 border-t border-gray-100">
-          <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-line">{enhancement.text}</p>
-          <div className="flex gap-2 mt-3 flex-wrap">
-            <button
-              type="button"
-              aria-label={`Подтвердить принятие улучшения: ${enhancement.text}`}
-              aria-pressed={accepted}
-              onClick={() => onDecision('accepted')}
-              className={`px-3 py-2 rounded-lg border text-xs font-semibold transition-colors ${accepted ? 'border-emerald-600 bg-emerald-600 text-white' : TARGET_TYPE_COLORS[type] || TARGET_TYPE_COLORS.functional}`}
-            >
-              Принять
-            </button>
-            <button
-              type="button"
-              aria-label={`Отклонить улучшение: ${enhancement.text}`}
-              aria-pressed={rejected}
-              onClick={() => onDecision('rejected')}
-              className={`px-3 py-2 rounded-lg border text-xs font-semibold transition-colors ${rejected ? 'border-slate-700 bg-slate-700 text-white' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
-            >
-              Отклонить
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -1006,6 +1013,26 @@ function OriginalBusinessContext({ value, loading = false, editable = false, chi
       </div>
     </details>
   );
+}
+
+function BusinessContextInputCard({ open, onOpenChange, running, summary, children }) {
+  const collapsible = Boolean(summary || running);
+  const expanded = !collapsible || open;
+  return <section className={`bg-white rounded-2xl border p-4 md:p-6 mb-6 ${running ? 'border-indigo-300' : 'border-slate-200'}`}>
+    <div className="flex items-start justify-between gap-4">
+      <div className="min-w-0">
+        <h2 className="text-balance text-lg md:text-xl font-bold text-slate-900 mb-1">Сформулируйте бизнес-задачу</h2>
+        <p className="text-pretty text-sm text-slate-500">Опишите цель, ограничения и ожидаемый результат обычным языком.</p>
+        {!expanded && summary && <p className="text-xs text-slate-600 truncate mt-3 max-w-3xl" title={summary}>{summary}</p>}
+        {running && <p className="text-xs font-semibold text-indigo-700 mt-3">Декомпозиция выполняется</p>}
+      </div>
+      {collapsible && <button type="button" aria-expanded={expanded} aria-controls="business-context-form" aria-label={expanded ? 'Свернуть форму бизнес-задачи' : 'Развернуть форму бизнес-задачи'} onClick={() => onOpenChange(!expanded)} className="shrink-0 inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">
+        <span className="hidden sm:inline">{expanded ? 'Свернуть' : 'Развернуть'}</span>
+        {expanded ? <ChevronUp className="w-4 h-4" aria-hidden="true" /> : <ChevronDown className="w-4 h-4" aria-hidden="true" />}
+      </button>}
+    </div>
+    {expanded && <div id="business-context-form" className="mt-4">{children}</div>}
+  </section>;
 }
 
 function FinalRequirementsEditor({ latestVersion, onSave, onShowInsights, onShowSource, onShowContext, onStartResearch, onDirtyChange, busy, researchBusy = false, researchSkipped = false }) {
@@ -1148,19 +1175,17 @@ function BabokSourceRegistrySnapshot({ registry, decisions, onBack, initialRecor
 }
 
 function BabokRequirementsInsightsResult({ value, latestVersion, businessContext, businessContextLoading, onSaveFinal, onDirtyChange, busy }) {
-  const baseRegistry = latestVersion?.registry || value.baseRegistry;
+  const baseRegistry = value.baseRegistry || latestVersion?.registry;
   const insights = Array.isArray(value.insights) ? value.insights : [];
   const enhancements = insights.flatMap((insight) => displayBabokEnhancementsForInsight(insight).map((enhancement, index) => ({ ...enhancement, key: `${insight.id}:${enhancement.sourceIndex ?? index}`, insightTitle: insight.title })));
   const savedAcceptedKeys = Array.isArray(latestVersion?.decisions?.acceptedEnhancementKeys) ? latestVersion.decisions.acceptedEnhancementKeys : [];
   const savedRejectedKeys = Array.isArray(latestVersion?.decisions?.rejectedEnhancementKeys) ? latestVersion.decisions.rejectedEnhancementKeys : [];
-  const [activeFilter, setActiveFilter] = useState('all');
-  const [sourceRecordId, setSourceRecordId] = useState(null);
   const session = useContext(SessionContext);
   const activeView = session?.view || (latestVersion?.versionId ? 'final' : 'insights');
   const setActiveView = (view) => session?.requestView(view, { preserveDraft: activeView !== 'final' && view !== 'final' });
   const review = useReviewState(latestVersion?.registry || latestVersion?.requirements || value.baseRegistry || value.baseRequirements, latestVersion?.decisions || value.baseDecisions || {}, { readOnly: activeView === 'final', editor: 'insights' });
   const decisions = Object.fromEntries([...(review.state.decisions.acceptedEnhancementKeys || []).map((key) => [key, 'accepted']), ...(review.state.decisions.rejectedEnhancementKeys || []).map((key) => [key, 'rejected'])]);
-  const visible = activeFilter === 'all' ? insights : insights.filter((item) => item.category === activeFilter);
+  const requirementIndex = useMemo(() => buildBabokRequirementIndex(value.baseRegistry, { requirementTypes: BABOK_REQUIREMENT_TYPES, analysisTypes: BABOK_ANALYSIS_TYPES }), [value.baseRegistry]);
   const hasDecisionChanges = review.dirty;
 
   useEffect(() => {
@@ -1171,7 +1196,7 @@ function BabokRequirementsInsightsResult({ value, latestVersion, businessContext
     return onSaveFinal({ registry: finalBabokRegistry(review.content, enhancements, decisions), baseVersionId: latestVersion?.versionId || value.inputRequirementsVersionId, decisions: { ...review.state.decisions, acceptedEnhancementKeys: enhancements.filter((item) => decisions[item.key] === 'accepted').map((item) => item.key), rejectedEnhancementKeys: enhancements.filter((item) => decisions[item.key] === 'rejected').map((item) => item.key) } });
   }
   if (!isBabokRegistry(baseRegistry)) return null;
-  if (activeView === 'source') return <ReviewDraftProvider review={review} submit={saveInsights} busy={busy}><BabokSourceRegistrySnapshot initialRecordId={sourceRecordId} registry={value.baseRegistry} decisions={value.baseDecisions} onBack={() => setActiveView('insights')} /></ReviewDraftProvider>;
+  if (activeView === 'source') return <ReviewDraftProvider review={review} submit={saveInsights} busy={busy}><BabokSourceRegistrySnapshot initialRecordId={null} registry={value.baseRegistry || baseRegistry} decisions={value.baseDecisions} onBack={() => setActiveView('insights')} /></ReviewDraftProvider>;
   if (activeView === 'context') return <ReviewDraftProvider review={review} submit={saveInsights} busy={busy}><SourceBusinessContextSnapshot value={businessContext} loading={businessContextLoading} onBack={() => setActiveView('insights')} /></ReviewDraftProvider>;
   if (activeView === 'final' && latestVersion?.versionId) return <BabokRegistryResult value={latestVersion.registry || baseRegistry} latestVersion={latestVersion} finalVersion onSave={onSaveFinal} onBack={() => setActiveView('insights')} onDirtyChange={onDirtyChange} busy={busy} title="Финальная версия требований" />;
 
@@ -1184,31 +1209,19 @@ function BabokRequirementsInsightsResult({ value, latestVersion, businessContext
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-5">
         <div className="flex items-start justify-between gap-4 flex-wrap"><div><div className="flex items-center gap-2"><Sparkles className="w-5 h-5 text-indigo-500" /><h1 className="text-xl font-bold text-gray-900">Результаты AI-исследования</h1></div><p className="text-sm text-gray-500 mt-2">Выберите полезные улучшения для финальной версии требований.</p></div><SourceDataMenu onShowContext={() => setActiveView('context')} onShowRequirements={() => setActiveView('source')} /></div>
       </div>
-      <div className="flex gap-2 overflow-x-auto pb-1"><button onClick={() => setActiveFilter('all')} className={`px-3 py-2 rounded-lg text-sm font-semibold whitespace-nowrap ${activeFilter === 'all' ? 'bg-indigo-600 text-white' : 'bg-white border border-gray-200 text-gray-600'}`}>Все результаты · {insights.length}</button>{Object.entries(INSIGHT_CATEGORY_META).map(([key, meta]) => { const count = insights.filter((item) => item.category === key).length; return count ? <button key={key} onClick={() => setActiveFilter(key)} className={`px-3 py-2 rounded-lg text-sm font-semibold whitespace-nowrap ${activeFilter === key ? meta.active : 'bg-white border border-gray-200 text-gray-600'}`}>{meta.label} · {count}</button> : null; })}</div>
-      <div role="region" aria-label="Карточки результатов AI-исследования" className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {visible.map((insight) => {
-          const meta = INSIGHT_CATEGORY_META[insight.category] || INSIGHT_CATEGORY_META.trends;
-          const CategoryIcon = meta.icon;
-          const insightEnhancements = displayBabokEnhancementsForInsight(insight);
-          const relatedTo = Array.isArray(insight.relatedTo) ? insight.relatedTo : [];
-          const sourceTypes = Array.isArray(insight.source_types) ? insight.source_types : [];
-          const proposalLabel = `${insightEnhancements.length} ${insightEnhancements.length === 1 ? 'предложение' : insightEnhancements.length > 1 && insightEnhancements.length < 5 ? 'предложения' : 'предложений'}`;
-          return <article key={insight.id} className="bg-white rounded-xl border border-gray-200 p-5 hover:shadow-md transition-shadow">
-            <div className="flex items-center justify-between gap-2"><span className="flex items-center gap-2 min-w-0"><CategoryIcon data-testid={`insight-category-icon-${insight.category}`} aria-hidden="true" className="w-4 h-4 text-gray-600 shrink-0" /><span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${meta.color}`}>{meta.label}</span></span><ApplicabilityBars value={insight.applicability} /></div>
-            <h3 className="font-bold text-gray-900 mt-3">{insight.title}</h3><p className="text-sm text-gray-500 mt-2 leading-relaxed">{insight.summary}</p>
-            <ResearchEvidence insight={insight} />
-            <details className="mt-3 group"><summary className="list-none text-sm font-semibold text-indigo-600 hover:text-indigo-700 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded flex items-center gap-1"><ChevronDown aria-hidden="true" className="w-3.5 h-3.5 group-open:hidden" /><ChevronUp aria-hidden="true" className="w-3.5 h-3.5 hidden group-open:block" /><span className="group-open:hidden">Подробнее{insightEnhancements.length ? ` · ${proposalLabel}` : ''}</span><span className="hidden group-open:inline">Свернуть</span></summary>
-              <div className="hidden group-open:block mt-3 pt-3 border-t border-gray-100">
-                {relatedTo.length > 0 && <div data-testid={`insight-relations-${insight.id}`} className="flex items-center gap-1.5 flex-wrap"><Link2 aria-hidden="true" className="w-3.5 h-3.5 text-gray-600 shrink-0" /><RecordLinks ids={relatedTo} onNavigate={(id) => { setSourceRecordId(id); setActiveView('source'); }} /></div>}
-                {insight.detail && <p className="text-sm text-gray-600 leading-relaxed mt-3">{insight.detail}</p>}
-                {sourceTypes.length > 0 && <div className="flex items-center gap-1.5 flex-wrap mt-3"><ExternalLink aria-hidden="true" className="w-3 h-3 text-gray-600 shrink-0" />{sourceTypes.map((source) => <span key={source} className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">{SOURCE_TYPE_LABELS[source] || source}</span>)}</div>}
-                {insightEnhancements.length > 0 && <div className="border-t border-gray-100 mt-4 pt-3 space-y-2">{insightEnhancements.map((enhancement, index) => { const key = `${insight.id}:${enhancement.sourceIndex ?? index}`; return <ProposalReview key={key} enhancement={{ ...enhancement, key, insightTitle: insight.title, rationale: enhancement.rationale || insight.rationale }} decision={decisions[key]}>{(onDecision) => <InsightEnhancementDecisionRow enhancement={enhancement} decision={decisions[key]} onDecision={onDecision} />}</ProposalReview>; })}</div>}
-              </div>
-            </details>
-          </article>;
-        })}
-      </div>
-      <div className="sticky bottom-3 bg-white rounded-xl shadow-lg border border-gray-200 p-4 flex items-center justify-between gap-4 flex-wrap"><p className="font-semibold text-gray-900">Выбрано улучшений: {acceptedKeys.length}</p><button disabled={busy} onClick={() => finalVersionSaved ? setActiveView('final') : saveInsights()} className="px-5 py-2.5 bg-indigo-600 text-white text-sm font-semibold rounded-xl hover:bg-indigo-700 disabled:bg-gray-300">{finalVersionSaved ? 'К финальным требованиям' : latestVersion ? 'Сохранить новую редакцию' : 'Сохранить финальную версию'}</button></div>
+      <ResearchInsightWorkspace
+        insights={insights}
+        categoryMeta={INSIGHT_CATEGORY_META}
+        sourceTypeLabels={SOURCE_TYPE_LABELS}
+        requirementIndex={requirementIndex}
+        getEnhancements={displayBabokEnhancementsForInsight}
+        renderEvidence={(insight) => <ResearchEvidence insight={insight} />}
+        renderEnhancement={(enhancement, insight) => <ProposalReview key={enhancement.key} enhancement={{ ...enhancement, insightTitle: insight.title, rationale: enhancement.rationale || insight.rationale }} decision={decisions[enhancement.key]}>{(onDecision) => <InsightEnhancementDecisionRow enhancement={enhancement} decision={decisions[enhancement.key]} onDecision={onDecision} />}</ProposalReview>}
+        selectedCount={acceptedKeys.length}
+        saveDisabled={busy}
+        onSave={() => finalVersionSaved ? setActiveView('final') : saveInsights()}
+        saveLabel={finalVersionSaved ? 'К финальным требованиям' : latestVersion ? 'Сохранить новую редакцию' : 'Сохранить финальную версию'}
+      />
     </section></ReviewDraftProvider>
   );
 }
@@ -1218,14 +1231,12 @@ function RequirementsInsightsResult({ value, latestVersion, businessContext, bus
   const enhancements = insights.flatMap((insight) => displayEnhancementsForInsight(insight).map((enhancement, index) => ({ ...enhancement, key: `${insight.id}:${enhancement.sourceIndex ?? index}`, insightTitle: insight.title })));
   const savedAcceptedKeys = Array.isArray(latestVersion?.decisions?.acceptedEnhancementKeys) ? latestVersion.decisions.acceptedEnhancementKeys : [];
   const savedRejectedKeys = Array.isArray(latestVersion?.decisions?.rejectedEnhancementKeys) ? latestVersion.decisions.rejectedEnhancementKeys : [];
-  const [activeFilter, setActiveFilter] = useState('all');
-  const [sourceRecordId, setSourceRecordId] = useState(null);
   const session = useContext(SessionContext);
   const activeView = session?.view || (latestVersion?.versionId ? 'final' : 'insights');
   const setActiveView = (view) => session?.requestView(view, { preserveDraft: activeView !== 'final' && view !== 'final' });
   const review = useReviewState(latestVersion?.registry || latestVersion?.requirements || value.baseRegistry || value.baseRequirements, latestVersion?.decisions || value.baseDecisions || {}, { readOnly: activeView === 'final', editor: 'insights' });
   const decisions = Object.fromEntries([...(review.state.decisions.acceptedEnhancementKeys || []).map((key) => [key, 'accepted']), ...(review.state.decisions.rejectedEnhancementKeys || []).map((key) => [key, 'rejected'])]);
-  const visible = activeFilter === 'all' ? insights : insights.filter((item) => item.category === activeFilter);
+  const requirementIndex = useMemo(() => buildLegacyRequirementIndex(value.baseRequirements), [value.baseRequirements]);
   const hasDecisionChanges = review.dirty;
 
   useEffect(() => {
@@ -1256,7 +1267,7 @@ function RequirementsInsightsResult({ value, latestVersion, businessContext, bus
     return onSaveFinal({ requirements: finalRequirements(), baseVersionId: latestVersion?.versionId || value.inputRequirementsVersionId, decisions: { ...review.state.decisions, acceptedEnhancementKeys: enhancements.filter((item) => decisions[item.key] === 'accepted').map((item) => item.key), rejectedEnhancementKeys: enhancements.filter((item) => decisions[item.key] === 'rejected').map((item) => item.key) } });
   }
   if (activeView === 'source') {
-    return <ReviewDraftProvider review={review} submit={saveInsights} busy={busy}><SourceRequirementsSnapshot initialRecordId={sourceRecordId} requirements={value.baseRequirements} onBack={() => setActiveView('insights')} /></ReviewDraftProvider>;
+    return <ReviewDraftProvider review={review} submit={saveInsights} busy={busy}><SourceRequirementsSnapshot initialRecordId={null} requirements={value.baseRequirements} onBack={() => setActiveView('insights')} /></ReviewDraftProvider>;
   }
 
   if (activeView === 'context') {
@@ -1276,32 +1287,19 @@ function RequirementsInsightsResult({ value, latestVersion, businessContext, bus
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-5">
         <div className="flex items-start justify-between gap-4 flex-wrap"><div><div className="flex items-center gap-2"><Sparkles className="w-5 h-5 text-indigo-500" /><h1 className="text-xl font-bold text-gray-900">Результаты AI-исследования</h1></div><p className="text-sm text-gray-500 mt-2">Выберите полезные улучшения для финальной версии требований.</p></div><SourceDataMenu onShowContext={() => setActiveView('context')} onShowRequirements={() => setActiveView('source')} /></div>
       </div>
-      <div className="flex gap-2 overflow-x-auto pb-1"><button onClick={() => setActiveFilter('all')} className={`px-3 py-2 rounded-lg text-sm font-semibold whitespace-nowrap ${activeFilter === 'all' ? 'bg-indigo-600 text-white' : 'bg-white border border-gray-200 text-gray-600'}`}>Все результаты · {insights.length}</button>{Object.entries(INSIGHT_CATEGORY_META).map(([key, meta]) => { const count = insights.filter((item) => item.category === key).length; return count ? <button key={key} onClick={() => setActiveFilter(key)} className={`px-3 py-2 rounded-lg text-sm font-semibold whitespace-nowrap ${activeFilter === key ? meta.active : 'bg-white border border-gray-200 text-gray-600'}`}>{meta.label} · {count}</button> : null; })}</div>
-      <div role="region" aria-label="Карточки результатов AI-исследования" className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {visible.map((insight) => {
-          const meta = INSIGHT_CATEGORY_META[insight.category] || INSIGHT_CATEGORY_META.trends;
-          const CategoryIcon = meta.icon;
-          const insightEnhancements = displayEnhancementsForInsight(insight);
-          const relatedTo = Array.isArray(insight.relatedTo) ? insight.relatedTo : [];
-          const sourceTypes = Array.isArray(insight.source_types) ? insight.source_types : [];
-          const proposalLabel = `${insightEnhancements.length} ${insightEnhancements.length === 1 ? 'предложение' : insightEnhancements.length > 1 && insightEnhancements.length < 5 ? 'предложения' : 'предложений'}`;
-          return <article key={insight.id} className="bg-white rounded-xl border border-gray-200 p-5 hover:shadow-md transition-shadow">
-            <div className="flex items-center justify-between gap-2"><span className="flex items-center gap-2 min-w-0"><CategoryIcon data-testid={`insight-category-icon-${insight.category}`} aria-hidden="true" className="w-4 h-4 text-gray-600 shrink-0" /><span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${meta.color}`}>{meta.label}</span></span><ApplicabilityBars value={insight.applicability} /></div>
-            <h3 className="font-bold text-gray-900 mt-3">{insight.title}</h3>
-            <p className="text-sm text-gray-500 mt-2 leading-relaxed">{insight.summary}</p>
-            <details className="mt-3 group">
-              <summary className="list-none text-sm font-semibold text-indigo-600 hover:text-indigo-700 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded flex items-center gap-1"><ChevronDown aria-hidden="true" className="w-3.5 h-3.5 group-open:hidden" /><ChevronUp aria-hidden="true" className="w-3.5 h-3.5 hidden group-open:block" /><span className="group-open:hidden">Подробнее{insightEnhancements.length ? ` · ${proposalLabel}` : ''}</span><span className="hidden group-open:inline">Свернуть</span></summary>
-              <div className="hidden group-open:block mt-3 pt-3 border-t border-gray-100">
-                {relatedTo.length > 0 && <div data-testid={`insight-relations-${insight.id}`} className="flex items-center gap-1.5 flex-wrap"><Link2 aria-hidden="true" className="w-3.5 h-3.5 text-gray-600 shrink-0" /><RecordLinks ids={relatedTo} onNavigate={(id) => { setSourceRecordId(id); setActiveView('source'); }} /></div>}
-                {insight.detail && <p className="text-sm text-gray-600 leading-relaxed mt-3">{insight.detail}</p>}
-                {sourceTypes.length > 0 && <div className="flex items-center gap-1.5 flex-wrap mt-3"><ExternalLink aria-hidden="true" className="w-3 h-3 text-gray-600 shrink-0" />{sourceTypes.map((source) => <span key={source} className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">{SOURCE_TYPE_LABELS[source] || source}</span>)}</div>}
-                {insightEnhancements.length > 0 && <div className="border-t border-gray-100 mt-4 pt-3 space-y-2">{insightEnhancements.map((enhancement, index) => { const key = `${insight.id}:${enhancement.sourceIndex ?? index}`; return <ProposalReview key={key} enhancement={{ ...enhancement, key, insightTitle: insight.title, rationale: enhancement.rationale || insight.rationale }} decision={decisions[key]}>{(onDecision) => <InsightEnhancementDecisionRow enhancement={enhancement} decision={decisions[key]} onDecision={onDecision} />}</ProposalReview>; })}</div>}
-              </div>
-            </details>
-          </article>;
-        })}
-      </div>
-      <div className="sticky bottom-3 bg-white rounded-xl shadow-lg border border-gray-200 p-4 flex items-center justify-between gap-4 flex-wrap"><p className="font-semibold text-gray-900">Выбрано улучшений: {acceptedKeys.length}</p><button disabled={busy} onClick={() => finalVersionSaved ? setActiveView('final') : saveInsights()} className="px-5 py-2.5 bg-indigo-600 text-white text-sm font-semibold rounded-xl hover:bg-indigo-700 disabled:bg-gray-300">{finalVersionSaved ? 'К финальным требованиям' : latestVersion ? 'Сохранить новую редакцию' : 'Сохранить финальную версию'}</button></div>
+      <ResearchInsightWorkspace
+        insights={insights}
+        categoryMeta={INSIGHT_CATEGORY_META}
+        sourceTypeLabels={SOURCE_TYPE_LABELS}
+        requirementIndex={requirementIndex}
+        getEnhancements={displayEnhancementsForInsight}
+        renderEvidence={(insight) => <ResearchEvidence insight={insight} />}
+        renderEnhancement={(enhancement, insight) => <ProposalReview key={enhancement.key} enhancement={{ ...enhancement, insightTitle: insight.title, rationale: enhancement.rationale || insight.rationale }} decision={decisions[enhancement.key]}>{(onDecision) => <InsightEnhancementDecisionRow enhancement={enhancement} decision={decisions[enhancement.key]} onDecision={onDecision} />}</ProposalReview>}
+        selectedCount={acceptedKeys.length}
+        saveDisabled={busy}
+        onSave={() => finalVersionSaved ? setActiveView('final') : saveInsights()}
+        saveLabel={finalVersionSaved ? 'К финальным требованиям' : latestVersion ? 'Сохранить новую редакцию' : 'Сохранить финальную версию'}
+      />
     </section></ReviewDraftProvider>
   );
 }
@@ -1324,22 +1322,23 @@ function ResultView({ content, latestVersion, businessContext, businessContextLo
 function ModelControls({ models, model, setModel, temperature, setTemperature, reasoning, setReasoning, capabilities }) {
   const levels = reasoningLevels(model, capabilities);
   const forcedReasoningModel = !levels.includes('disabled');
+  const controlClassName = 'reqai-control reqai-quiet-focus w-full h-10 px-3 border rounded-lg bg-white focus:border-indigo-400 focus:outline-none focus:ring-0';
   return (
     <div className="grid gap-3 md:grid-cols-2">
       <p className="md:col-span-2 text-sm text-slate-600">Настройки следующего запуска. Сохранённый результат не изменится.</p>
       <label className="block">
         <span className="text-sm font-semibold text-slate-700 mb-1.5 block">Модель</span>
-        <select value={model} onChange={(event) => setModel(event.target.value)} className="w-full h-10 px-3 border-2 border-slate-200 rounded-lg bg-white focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100">
+        <select value={model} onChange={(event) => setModel(event.target.value)} className={controlClassName}>
           {models.map((value) => <option key={value}>{value}</option>)}
         </select>
       </label>
       <label className="block">
         <span className="text-sm font-semibold text-slate-700 mb-1.5 block">Температура</span>
-        <input type="number" min="0" max="2" step="0.1" value={temperature} onChange={(event) => setTemperature(event.target.value)} className="w-full h-10 px-3 border-2 border-slate-200 rounded-lg bg-white focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+        <input type="number" min="0" max="2" step="0.1" value={temperature} onChange={(event) => setTemperature(event.target.value)} className={controlClassName} />
       </label>
       <label className="block md:col-span-2">
         <span className="text-sm font-semibold text-slate-700 mb-1.5 block">Reasoning</span>
-        <select aria-label="Reasoning" {...(forcedReasoningModel ? { 'aria-describedby': 'ai-reasoning-help' } : {})} value={reasoning} onChange={(event) => setReasoning(event.target.value)} className="w-full h-10 px-3 border-2 border-slate-200 rounded-lg bg-white focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100">
+        <select aria-label="Reasoning" {...(forcedReasoningModel ? { 'aria-describedby': 'ai-reasoning-help' } : {})} value={reasoning} onChange={(event) => setReasoning(event.target.value)} className={controlClassName}>
           {REASONING_OPTIONS.filter(([value]) => levels.includes(value)).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
         </select>
         {forcedReasoningModel && <span id="ai-reasoning-help" className="block text-xs text-slate-600 mt-1.5">Эта модель не поддерживает отключение reasoning. Минимальный уровень — низкий.</span>}
@@ -1379,8 +1378,9 @@ function ActiveJobPanel({ job, onCancel, onBackground }) {
   }, []);
   const startedAt = Date.parse(job.startedAt || job.createdAt || '') || now;
   const elapsedMs = Math.max(0, now - startedAt);
-  const { progress, stageLabel, visualProgress } = progressPresentationForJob(job, now);
+  const { progress, stageLabel, visualProgress, estimated } = progressPresentationForJob(job, now);
   const focusMessage = focusMessageForJob(job, now);
+  const progressText = progressAriaText({ progress, stageLabel, estimated });
   const title = job.type === 'DECOMPOSITION'
     ? 'Декомпозиция требований'
     : job.mode === 'REQUIREMENTS_INSIGHTS' ? 'AI-исследование требований' : MODE_LABELS[job.mode] || 'AI-задача';
@@ -1405,8 +1405,8 @@ function ActiveJobPanel({ job, onCancel, onBackground }) {
       </div>}
       <ExecutionTimeline job={job} />
       <div className="mt-5">
-        <div className="flex items-center justify-between gap-3 mb-2"><span className="flex items-center gap-1.5 text-xs font-semibold text-slate-500">Прогресс</span><span className="text-xs font-bold text-indigo-700">{progress}%{stageLabel ? ` · ${stageLabel}` : ''}</span></div>
-        <div role="progressbar" aria-label="Прогресс выполнения задачи" aria-valuemin="0" aria-valuemax="100" aria-valuenow={progress} aria-valuetext={`${progress} процентов подтверждено сервером`} className="relative h-3 rounded-full bg-slate-100 overflow-hidden">
+        <div className="flex items-center justify-between gap-3 mb-2"><span className="flex items-center gap-1.5 text-xs font-semibold text-slate-500">Прогресс{estimated && <span className="font-normal text-slate-400">· оценка</span>}</span><span className="text-xs font-bold text-indigo-700">{progress}%{stageLabel ? ` · ${stageLabel}` : ''}</span></div>
+        <div role="progressbar" aria-label="Прогресс выполнения задачи" aria-valuemin="0" aria-valuemax="100" aria-valuenow={progress} aria-valuetext={progressText} title={estimated ? 'Процент — ориентировочная оценка; переходы между этапами подтверждает сервер.' : 'Процент подтверждён сервером.'} className="relative h-3 rounded-full bg-slate-100 overflow-hidden">
           <span className="block h-full rounded-full bg-gradient-to-r from-indigo-500 to-indigo-600 transition-[width] duration-1000 ease-out" style={{ width: `${visualProgress}%` }} />
           <span className="reqai-progress-shimmer absolute inset-y-0 bg-gradient-to-r from-transparent via-white/75 to-transparent" aria-hidden="true" />
         </div>
@@ -1427,9 +1427,9 @@ function BackgroundJobIndicator({ job, onOpen }) {
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
   }, []);
-  const { progress, stageLabel } = progressPresentationForJob(job, now);
+  const { progress, stageLabel, estimated } = progressPresentationForJob(job, now);
   const accessibleStage = stageLabel ? `. Этап: ${stageLabel}` : '';
-  return <button aria-label={`Фоновая задача: ${job.message || STATUS_LABELS[job.status]}${accessibleStage}`} onClick={onOpen} className="px-3 py-2 rounded-lg text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"><Loader2 className="w-3.5 h-3.5 animate-spin" /><span className="hidden lg:inline">Задача в фоне</span><span>{progress}%</span></button>;
+  return <button aria-label={`Фоновая задача: ${job.message || STATUS_LABELS[job.status]}${accessibleStage}`} title={estimated ? 'Процент ориентировочный; этап подтверждается сервером.' : undefined} onClick={onOpen} className="px-3 py-2 rounded-lg text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"><Loader2 className="w-3.5 h-3.5 animate-spin" /><span className="hidden lg:inline">Задача в фоне</span><span>{progress}%</span></button>;
 }
 
 function JobStateCard({ job, onCancel }) {
@@ -1609,6 +1609,7 @@ export default function AsyncJobWorkspace() {
   const [linkedResearchSubmitting, setLinkedResearchSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [contextFormOpen, setContextFormOpen] = useState(() => !routeJobId);
   const [routeUnavailable, setRouteUnavailable] = useState(false);
   const [debugOpen, setDebugOpen] = useState(false);
   const [debugRefreshKey, setDebugRefreshKey] = useState(0);
@@ -1830,6 +1831,7 @@ export default function AsyncJobWorkspace() {
     setDebugOpen(false); setSseObservations([]); setRouteUnavailable(false); setError('');
     if (!routeJobId) {
       const draft = unsentContextRef.current;
+      setContextFormOpen(true);
       setRequirements(draft.text); setFile(draft.file); setBaselineFile(draft.baseline); setReferenceFiles(draft.references);
       setJob(null); setResult(null); setResultContent(''); setRequirementsVersions([]); setRemoteRequirementsVersions(null);
       setBusinessContextLoading(false);
@@ -1843,6 +1845,7 @@ export default function AsyncJobWorkspace() {
         const selected = await enterpriseApi.getJob(routeJobId, { signal: controller.signal });
         if (controller.signal.aborted || routeJobIdRef.current !== routeJobId) return;
         setJob(selected);
+        if (selected.type === 'DECOMPOSITION' && !TERMINAL.has(selected.status)) setContextFormOpen(false);
         if (selected.type === 'DECOMPOSITION' || selected.mode === 'REQUIREMENTS_INSIGHTS') {
           setRequirements('');
           setBusinessContextLoading(true);
@@ -1936,6 +1939,7 @@ export default function AsyncJobWorkspace() {
     if (editorDirtyRef.current) { setPendingNavigation({ submit: true }); return; }
     const input = file || new Blob([requirements], { type: 'text/plain; charset=utf-8' });
     if (!file && !requirements.trim()) return;
+    setContextFormOpen(false);
     setBusy(true);
     setError('');
     setUpload(0);
@@ -1958,7 +1962,10 @@ export default function AsyncJobWorkspace() {
       unsentContextRef.current = { text: '', file: null, baseline: null, references: [] }; setHasContextDraft(false);
       navigate(accepted.jobId);
       await refresh();
-    } catch (cause) { setError(cause.code ? userFacingError(cause) : cause.message || 'Не удалось запустить задачу. Повторите попытку.'); }
+    } catch (cause) {
+      if (!routeJobIdRef.current) setContextFormOpen(true);
+      setError(cause.code ? userFacingError(cause) : cause.message || 'Не удалось запустить задачу. Повторите попытку.');
+    }
     finally { setBusy(false); }
   }
 
@@ -1982,6 +1989,7 @@ export default function AsyncJobWorkspace() {
     if (editorDirtyRef.current) { setPendingNavigation({ id: null, newTask: true }); return; }
     unsentContextRef.current = { text: '', file: null, baseline: null, references: [] }; setHasContextDraft(false);
     navigate(null);
+    setContextFormOpen(true);
     setRequirements('');
     setFile(null); setBaselineFile(null); setReferenceFiles([]); uploadedMaterialsRef.current.clear(); setMaterialUploads(new Map());
     setUpload(0);
@@ -2076,6 +2084,10 @@ export default function AsyncJobWorkspace() {
   const progressingJob = job && ['ACCEPTED', 'QUEUED', 'RUNNING'].includes(job.status);
   const backgroundActive = backgroundJob && !TERMINAL.has(backgroundJob.status);
   const submissionBlocked = activeJob || backgroundActive;
+  const decompositionInProgress = busy || Boolean(job?.type === 'DECOMPOSITION' && activeJob);
+  useEffect(() => {
+    if (decompositionInProgress) setContextFormOpen(false);
+  }, [decompositionInProgress]);
   const cancelActiveJob = async () => {
     const id = job.jobId;
     try { await enterpriseApi.cancelJob(id); const next = await enterpriseApi.getJob(id); if (routeJobIdRef.current === id) setJob(next); }
@@ -2090,7 +2102,7 @@ export default function AsyncJobWorkspace() {
       setHasContextDraft(Boolean(draft.text.trim() || draft.file || draft.baseline || draft.references.length));
     }
   };
-  const commonInput = <ContextInput text={requirements} onText={(value) => changeContext('text', value, setRequirements)} file={file} onFile={(value) => changeContext('file', value, setFile)} baseline={baselineFile} onBaseline={(value) => changeContext('baseline', value, setBaselineFile)} references={referenceFiles} onReferences={(value) => changeContext('references', value, setReferenceFiles)} uploads={materialUploads} busy={busy} {...inputCapabilities} />;
+  const commonInput = <ContextInput text={requirements} onText={(value) => changeContext('text', value, setRequirements)} file={file} onFile={(value) => changeContext('file', value, setFile)} baseline={baselineFile} onBaseline={(value) => changeContext('baseline', value, setBaselineFile)} references={referenceFiles} onReferences={(value) => changeContext('references', value, setReferenceFiles)} uploads={materialUploads} busy={decompositionInProgress} {...inputCapabilities} />;
 
   const submitButton = (
     <button disabled={!canSubmit || busy || submissionBlocked} onClick={submit} className="w-full sm:w-auto text-white py-3 px-6 rounded-lg font-semibold disabled:bg-slate-300 disabled:cursor-not-allowed flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2">
@@ -2110,18 +2122,18 @@ export default function AsyncJobWorkspace() {
   </>;
 
   return (
-    <div className="reqai-workspace min-h-screen bg-gray-50">
+    <div className="reqai-workspace min-h-screen bg-[var(--reqai-canvas)]">
       {finalReviewPrompt && <ReviewDialog label="Открытые вопросы перед финализацией" onClose={() => { finalReviewPrompt.resolve(false); setFinalReviewPrompt(null); }}><h2 className="font-bold text-lg">В документе остаются вопросы</h2><p className="text-sm my-3">Сохранение финальной версии не означает, что все требования согласованы. Подтвердите, что сохраняете перечисленные вопросы открытыми. Они войдут в экспорт.</p><ul className="space-y-2">{finalReviewPrompt.issues.map((issue) => <li key={issue.id} className="rounded-lg border border-amber-200 p-3 text-sm">{issue.id}: {issue.text}</li>)}</ul><div className="flex gap-2 mt-4 flex-wrap"><button onClick={() => { finalReviewPrompt.resolve(false); setFinalReviewPrompt(null); }} className="p-3 rounded-lg border">Вернуться к проверке</button><button onClick={() => { finalReviewPrompt.resolve(true); setFinalReviewPrompt(null); }} className="p-3 rounded-lg bg-indigo-600 text-white">Сохранить с открытыми вопросами</button></div></ReviewDialog>}
       {pendingNavigation && !finalReviewPrompt && <UnsavedNavigationDialog busy={versionBusy} onSave={() => resolveNavigation(true)} onDiscard={() => resolveNavigation(false)} onStay={() => setPendingNavigation(null)} />}
       {rebasePreview && <ReviewDialog label="Сравнение версий" onClose={() => setRebasePreview(null)}><h2 className="font-bold text-lg">Сравните правки с новой версией</h2><p>Перенос применит перечисленные локальные изменения поверх новой базы. Проверьте конфликты перед подтверждением.</p>{rebasePreview.changes.map((change, index) => <article key={index} className="my-3 border rounded-lg p-3"><h3>{change.id} · {change.operation}</h3><p>На сервере: {change.remote || 'Нет записи'}</p><p>Моя правка: {change.local || 'Удалить'}</p></article>)}<div className="flex flex-wrap gap-3"><button onClick={() => setRebasePreview(null)} className="p-3 border rounded-lg">Остаться с черновиком</button><button onClick={() => applyRemoteReview(true)} className="p-3 rounded-lg bg-indigo-600 text-white">Перенести мои правки</button><button onClick={() => applyRemoteReview(false)} className="p-3 text-red-700">Отбросить мои правки и загрузить</button></div></ReviewDialog>}
-      <nav className="bg-white/95 backdrop-blur border-b border-gray-200 sticky top-0 z-50">
+      <nav className="bg-white/95 backdrop-blur border-b border-[var(--reqai-line)] sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4">
           <div className="flex items-center min-h-16 gap-3 sm:gap-6">
-            <span className="text-base font-extrabold text-gray-900 tracking-tight mr-auto sm:mr-3">ReqAI</span>
+            <span className="text-base font-extrabold text-slate-900 tracking-tight mr-auto sm:mr-3">ReqAI</span>
             <button onClick={() => startNewTask()} aria-current="page" className="h-16 px-1 text-sm font-semibold border-b-2 border-indigo-600 text-indigo-600 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">Подготовка требований</button>
             {job && TERMINAL.has(job.status) && <button aria-label="Новая задача" onClick={startNewTask} className="p-2 sm:px-3 sm:py-2 rounded-lg text-sm font-semibold text-indigo-600 hover:bg-indigo-50 flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"><Plus className="w-4 h-4" /><span className="hidden sm:inline">Новая задача</span></button>}
             {backgroundActive && <BackgroundJobIndicator job={backgroundJob} onOpen={() => load(backgroundJob.jobId)} />}
-            <button aria-label="История" onClick={() => setHistoryOpen(true)} className="p-2 sm:px-3 sm:py-2 rounded-lg text-sm font-semibold text-gray-600 hover:bg-gray-100 flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"><History className="w-4 h-4" /><span className="hidden sm:inline">История</span></button>
+            <button aria-label="История" onClick={() => setHistoryOpen(true)} className="p-2 sm:px-3 sm:py-2 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-100 flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"><History className="w-4 h-4" /><span className="hidden sm:inline">История</span></button>
             <AiSettingsDisclosure model={model}><ModelControls capabilities={modelSettings} models={models} model={model} setModel={(value) => { setModel(value); setReasoning(effectiveReasoning(value, reasoning, modelSettings)); }} temperature={temperature} setTemperature={setTemperature} reasoning={reasoning} setReasoning={setReasoning} /></AiSettingsDisclosure>
             <button ref={debugTriggerRef} aria-label="Debug" title={job ? 'Debug' : 'Debug станет доступен после запуска задачи'} disabled={!job} onClick={() => setDebugOpen(true)} className="ml-auto p-2 rounded-lg text-slate-600 hover:text-slate-600 hover:bg-slate-100 disabled:text-slate-300 disabled:hover:bg-transparent disabled:cursor-not-allowed flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"><Bug className="w-4 h-4" /></button>
           </div>
@@ -2139,25 +2151,21 @@ export default function AsyncJobWorkspace() {
           {job?.title && <section aria-label="Название задачи" className="mb-4"><TaskTitle key={job.jobId} job={job} onUpdated={(metadata) => { setJob((current) => current && [current.jobId, current.metadataJobId].includes(metadata.jobId) ? ({ ...current, title: metadata.title, metadataRevision: metadata.metadataRevision }) : current); setHistoryRefreshKey((key) => key + 1); }} /></section>}
           {job && hasContextDraft && <button onClick={() => navigate(null)} className="mb-4 p-2 border rounded-lg text-sm text-indigo-700">К черновику новой задачи</button>}
           {(contextComplete || activeLinkedResearch || (linkedResearch && result)) && <WorkflowStepper currentStage={currentStage} completedStage={completedStage} skippedStages={directFinalReady ? [3] : []} />}
-          {result && <ResultSettings result={result} />}
-          {result && identityReady && <VersionExport key={`${result.jobId}:${authEpoch}`} version={requirementsVersions[0]} isDirty={() => editorDirtyRef.current} onSave={() => editorControllerRef.current?.save?.()} />}
           {showReadOnlyBusinessContext && <section className="bg-white rounded-2xl border border-slate-200 mb-5 overflow-hidden"><OriginalBusinessContext value={requirements} loading={businessContextLoading} /></section>}
           {activeLinkedResearch && !contextComplete ? <div className="mb-5"><ActiveJobPanel job={job} onCancel={cancelActiveJob} onBackground={continueInBackground} /></div> : contextComplete && !directFinalReady ? <section className="bg-white rounded-2xl border border-slate-200 mb-5 overflow-hidden">
             <OriginalBusinessContext value={requirements} loading={businessContextLoading} editable>
               <div>
-                <h2 className="text-lg md:text-xl font-bold text-gray-900 mb-1">Изменить бизнес-задачу</h2>
-                <p className="text-sm text-slate-500 mb-4">После изменений запустите декомпозицию повторно.</p>
+                <h2 className="text-balance text-lg md:text-xl font-bold text-slate-900 mb-1">Изменить бизнес-задачу</h2>
+                <p className="text-pretty text-sm text-slate-500 mb-4">После изменений запустите декомпозицию повторно.</p>
                 {contextFormBody}
               </div>
             </OriginalBusinessContext>
           </section> : (linkedResearch && result) || directFinalReady ? null : <>
-            <div className="mb-6"><h1 className="text-2xl md:text-3xl font-bold text-gray-900">Подготовка требований</h1></div>
+            <div className="mb-6"><h1 className="text-balance text-2xl md:text-3xl font-bold text-slate-900">Подготовка требований</h1></div>
             <WorkflowStepper currentStage={currentStage} completedStage={completedStage} skippedStages={directFinalReady ? [3] : []} />
-            <section className="bg-white rounded-2xl shadow-sm border border-gray-200 p-4 md:p-6 mb-6">
-              <h2 className="text-lg md:text-xl font-bold text-gray-900 mb-1">Сформулируйте бизнес-задачу</h2>
-              <p className="text-sm text-slate-500 mb-4">Опишите цель, ограничения и ожидаемый результат обычным языком.</p>
+            <BusinessContextInputCard open={contextFormOpen} onOpenChange={setContextFormOpen} running={decompositionInProgress} summary={file?.name || requirements.trim()}>
               {contextFormBody}
-            </section>
+            </BusinessContextInputCard>
           </>}
           {error && <div role="alert" className="mb-6 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg p-3 whitespace-pre-wrap">{error}</div>}
           <div className="space-y-6">
@@ -2166,6 +2174,8 @@ export default function AsyncJobWorkspace() {
             {progressingJob && !activeLinkedResearch && <ActiveJobPanel job={job} onCancel={cancelActiveJob} onBackground={continueInBackground} />}
             <JobStateCard job={job} onCancel={cancelActiveJob} />
             {result && identityReady && <ResultPanel reservedIds={requirementsVersions.flatMap((version) => Object.values(version.registry?.groups || version.requirements || {}).filter(Array.isArray).flat().map((record) => record.id))} editorEpoch={editorEpoch} activeReviewView={activeReviewView} requestReviewView={requestReviewView} restoredReviewState={restoredReviewState} compareRecovery={compareRecovery} restoreRecovery={restoreRecovery} actorScope={actorScope} registerEditor={registerEditor} result={result} resultContent={resultContent} latestVersion={requirementsVersions[0] || null} businessContext={requirements} businessContextLoading={businessContextLoading} onSaveRequirements={saveRequirementsVersion} onStartResearch={startResearchFromDecomposition} onSaveFinal={saveRequirementsVersion} onDirtyChange={handleEditorDirty} busy={versionBusy} researchBusy={linkedResearchBusy} />}
+            {result && <ResultSettings result={result} />}
+            {result && identityReady && <VersionExport key={`${result.jobId}:${authEpoch}`} version={requirementsVersions[0]} isDirty={() => editorDirtyRef.current} onSave={() => editorControllerRef.current?.save?.()} />}
           </div>
         </main>
       )}
@@ -2176,6 +2186,69 @@ export default function AsyncJobWorkspace() {
     </div>
   );
 }
+
+// These pure building blocks are exported so their compatibility rules can be
+// tested independently from the long-running workspace lifecycle.
+/* eslint-disable react-refresh/only-export-components */
+export {
+  safeJson,
+  primaryStatus,
+  userFacingError,
+  failureMessage,
+  jobIdFromPath,
+  formatDuration,
+  collectRequirements,
+  cloneJson,
+  isBabokRegistry,
+  babokRegistryFrom,
+  babokRegistryCounts,
+  withBabokCounts,
+  stableBabokId,
+  babokManualCitation,
+  createBabokManualRecord,
+  removeBabokRecord,
+  babokRecordDetails,
+  makeLegacyRecord,
+  displayEnhancementsForInsight,
+  inferTargetTypeFromInsightCategory,
+  displayBabokEnhancementsForInsight,
+  babokRegistryIds,
+  addBabokResearchRecord,
+  finalBabokRegistry,
+  formatElapsed,
+  WorkflowStepper,
+  AiSettingsDisclosure,
+  Markdown,
+  EditableRequirementCard,
+  BabokRequirementCard,
+  BabokAddRequirementForm,
+  AddRequirementForm,
+  RequirementsLayoutToggle,
+  BabokRegistryResult,
+  DecompositionResult,
+  ApplicabilityBars,
+  InsightEnhancementDecisionRow,
+  SourceRequirementsSnapshot,
+  SourceBusinessContextSnapshot,
+  SourceDataMenu,
+  OriginalBusinessContext,
+  BusinessContextInputCard,
+  FinalRequirementsEditor,
+  BabokSourceRegistrySnapshot,
+  BabokRequirementsInsightsResult,
+  RequirementsInsightsResult,
+  ResultView,
+  ModelControls,
+  ExecutionTimeline,
+  ActiveJobPanel,
+  BackgroundJobIndicator,
+  JobStateCard,
+  DebugPanel,
+  ArchivedLegacyResult,
+  UnsavedNavigationDialog,
+  ResultPanel,
+};
+/* eslint-enable react-refresh/only-export-components */
 
 function UnsavedNavigationDialog({ busy, onSave, onDiscard, onStay }) {
   const dialog = useRef(null);

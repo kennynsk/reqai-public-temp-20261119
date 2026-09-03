@@ -12,6 +12,41 @@ body {
   margin: 0;
 }
 
+.reqai-workspace {
+  --reqai-neutral-50: #f8fafc;
+  --reqai-neutral-100: #f1f5f9;
+  --reqai-neutral-500: #64748b;
+  --reqai-neutral-700: #334155;
+  --reqai-neutral-900: #0f172a;
+  --reqai-canvas: #f6f7fb;
+  --reqai-panel: #ffffff;
+  --reqai-panel-muted: #f8f9fd;
+  --reqai-line: #d7dbe8;
+  --reqai-line-strong: #b9bfd2;
+  --reqai-ink: #172033;
+  --reqai-muted: #5f6b80;
+  --reqai-primary-600: #4f46e5;
+  --reqai-primary-700: #4338ca;
+  --reqai-primary-900: #29215f;
+  --reqai-control-border: #64748b;
+  --reqai-focus: #4338ca;
+  --reqai-success: #047857;
+  --reqai-warning: #b45309;
+  --reqai-space-1: 4px;
+  --reqai-space-2: 8px;
+  --reqai-space-3: 12px;
+  --reqai-space-4: 16px;
+  --reqai-space-6: 24px;
+  --reqai-space-8: 32px;
+  --reqai-space-12: 48px;
+  --reqai-space-16: 64px;
+  --reqai-elevation-raised: 0 8px 24px rgb(15 23 42 / 0.12);
+  --reqai-elevation-overlay: 0 24px 64px rgb(15 23 42 / 0.24);
+}
+
+.reqai-control { border-color: var(--reqai-control-border); }
+.reqai-elevation-overlay { box-shadow: var(--reqai-elevation-overlay); }
+
 .reqai-workspace :is(button, summary, a, input[type="checkbox"]) {
   min-width: 24px;
   min-height: 24px;
@@ -24,8 +59,139 @@ body {
   outline-offset: 3px;
 }
 
+.reqai-workspace .reqai-quiet-focus:focus-visible {
+  outline: 1px solid var(--reqai-primary-600);
+  outline-offset: 1px;
+}
+
 .reqai-workspace :is(article, [role="dialog"]) {
+  min-width: 0;
   overflow-wrap: anywhere;
+}
+
+.reqai-research-copy {
+  min-width: 0;
+  max-width: 75ch;
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+
+.reqai-preview-link {
+  min-height: 28px;
+  border: 1px solid #c7d2fe;
+  border-radius: 8px;
+  padding: 4px 9px;
+  background: #eef2ff;
+  color: #4338ca;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 18px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.reqai-preview-link:hover {
+  background: #e0e7ff;
+}
+
+.reqai-requirement-preview {
+  box-sizing: border-box;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #334155;
+  box-shadow: 0 24px 64px rgb(15 23 42 / 0.24);
+}
+
+.reqai-requirement-preview :is(button, a) {
+  min-width: 24px;
+  min-height: 24px;
+}
+
+.reqai-requirement-preview :is(button, a):focus-visible {
+  outline: 2px solid #4338ca;
+  outline-offset: 2px;
+}
+
+@media (max-width: 1023px) {
+  .reqai-research-selector {
+    max-height: min(18rem, 36vh);
+    overflow-y: auto;
+  }
+}
+
+.reqai-title-clamp,
+.reqai-excerpt-clamp {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+}
+
+.reqai-title-clamp { -webkit-line-clamp: 2; }
+.reqai-excerpt-clamp { -webkit-line-clamp: 2; }
+
+.reqai-proposal-diff {
+  min-width: 0;
+  border-block: 1px solid #cbd5e1;
+}
+
+.reqai-proposal-diff__head,
+.reqai-proposal-diff__row {
+  display: grid;
+  grid-template-columns: minmax(8rem, 0.7fr) minmax(12rem, 1fr) minmax(14rem, 1.3fr);
+  gap: var(--reqai-space-3);
+  min-width: 0;
+}
+
+.reqai-proposal-diff__head {
+  padding: var(--reqai-space-2);
+  color: var(--reqai-neutral-700);
+  font-weight: 600;
+}
+
+.reqai-proposal-diff__row {
+  border-top: 1px solid #cbd5e1;
+  padding: var(--reqai-space-2);
+}
+
+.reqai-proposal-diff__cell {
+  min-width: 0;
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+
+.reqai-proposal-diff__mobile-label { display: none; }
+
+@media (max-width: 639px) {
+  .reqai-proposal-diff {
+    border: 0;
+  }
+
+  .reqai-proposal-diff__head { display: none; }
+
+  .reqai-proposal-diff__row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--reqai-space-3);
+    border: 1px solid #cbd5e1;
+    border-radius: 12px;
+    padding: var(--reqai-space-3);
+  }
+
+  .reqai-proposal-diff__row + .reqai-proposal-diff__row {
+    margin-top: var(--reqai-space-3);
+  }
+
+  .reqai-proposal-diff__cell {
+    display: grid;
+    grid-template-columns: minmax(4.5rem, auto) minmax(0, 1fr);
+    gap: var(--reqai-space-2);
+  }
+
+  .reqai-proposal-diff__mobile-label {
+    display: inline;
+    color: var(--reqai-neutral-500);
+    font-weight: 600;
+  }
 }
 
 /* Wrapped actions must not cover most of a short or zoomed viewport. */

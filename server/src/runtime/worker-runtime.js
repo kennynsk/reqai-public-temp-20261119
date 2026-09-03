@@ -41,12 +41,68 @@ function lifecycleShell(config) {
   };
 }
 
-export async function startWorkerRuntime(config, { ConnectionClass = NativeConnection, WorkerClass = Worker, activitiesFactory = null } = {}) {
+export async function startWorkerRuntime(config, {
+  ConnectionClass = NativeConnection,
+  WorkerClass = Worker,
+  activitiesFactory = null,
+  healthServerFactory = startWorkerHealthServer,
+  databasePoolFactory = createDatabasePool,
+  RetentionRepositoryClass = RetentionRepository,
+  JobRepositoryClass = JobRepository,
+  setIntervalFn = setInterval,
+  clearIntervalFn = clearInterval,
+} = {}) {
   if (config.process.role === 'maintenance-worker') {
-    const health = await startWorkerHealthServer(config);
-    const pool=createDatabasePool(config);const retention=new RetentionRepository(pool,{schema:config.database.schema,artifactSchema:config.database.artifactSchema});let stopping=false,inFlight=Promise.resolve();
-    const poll=()=>{if(stopping)return;inFlight=inFlight.then(()=>retention.cleanup({tenantId:config.tenancy.defaultTenantId,batchSize:config.retention.cleanupBatchSize,siteId:config.process.siteId})).then(ids=>logEvent('info','retention.batch.completed',{count:ids.length})).catch(error=>logEvent('error','retention.batch.failed',{errorType:error?.name||'Error'}));};poll();const timer=setInterval(poll,config.retention.intervalMs);
-    return{role:config.process.role,async stop(){stopping=true;health.beginDrain();clearInterval(timer);await inFlight;await health.close();await pool.end();},forceStop(){stopping=true;health.beginDrain();clearInterval(timer);health.close().catch(()=>{});pool.end().catch(()=>{});}};
+    const health = await healthServerFactory(config);
+    const pool = databasePoolFactory(config);
+    const retention = new RetentionRepositoryClass(pool, { schema: config.database.schema, artifactSchema: config.database.artifactSchema });
+    const jobRepository = new JobRepositoryClass(pool, { schema: config.database.schema, artifactSchema: config.database.artifactSchema });
+    const metadataBackfill = config.jobMetadataBackfill || {
+      batchSize: Math.min(config.retention.cleanupBatchSize, 100),
+      intervalMs: config.retention.intervalMs,
+    };
+    let stopping = false;
+    let inFlight = Promise.resolve();
+    const enqueue = (work, onSuccess, failureEvent) => {
+      if (stopping) return;
+      inFlight = inFlight.then(work).then(onSuccess).catch((error) => {
+        logEvent('error', failureEvent, { errorType: error?.name || 'Error' });
+      });
+    };
+    const pollBackfill = () => enqueue(
+      () => jobRepository.backfillMetadata({ tenantId: config.tenancy.defaultTenantId, limit: metadataBackfill.batchSize }),
+      (count) => logEvent('info', 'job.metadata.backfill.completed', { count }),
+      'job.metadata.backfill.failed',
+    );
+    const pollRetention = () => enqueue(
+      () => retention.cleanup({ tenantId: config.tenancy.defaultTenantId, batchSize: config.retention.cleanupBatchSize, siteId: config.process.siteId }),
+      (ids) => logEvent('info', 'retention.batch.completed', { count: ids.length }),
+      'retention.batch.failed',
+    );
+    pollBackfill();
+    pollRetention();
+    const metadataTimer = setIntervalFn(pollBackfill, metadataBackfill.intervalMs);
+    const retentionTimer = setIntervalFn(pollRetention, config.retention.intervalMs);
+    return {
+      role: config.process.role,
+      async stop() {
+        stopping = true;
+        health.beginDrain();
+        clearIntervalFn(metadataTimer);
+        clearIntervalFn(retentionTimer);
+        await inFlight;
+        await health.close();
+        await pool.end();
+      },
+      forceStop() {
+        stopping = true;
+        health.beginDrain();
+        clearIntervalFn(metadataTimer);
+        clearIntervalFn(retentionTimer);
+        health.close().catch(() => {});
+        pool.end().catch(() => {});
+      },
+    };
   }
   if (config.process.role === 'event-worker') {
     const pool = createDatabasePool(config);

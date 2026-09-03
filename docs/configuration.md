@@ -198,6 +198,17 @@ Trace metadata uses `expires_at` and is removed in bounded tenant-scoped mainten
 Referenced diagnostic artifacts follow the existing raw-response/full-prompt retention classes;
 after content expiry, the timeline remains useful and reports the detail as expired or not recorded.
 
+### History search metadata
+
+Legacy jobs created before migration 011 are indexed by the maintenance worker in bounded,
+tenant-scoped batches. The worker runs one batch at startup and repeats it on the configured
+cadence; the manual backfill script remains available for an immediate one-off repair.
+
+| Variable | Default | Validation | Owner |
+|---|---:|---|---|
+| `JOB_METADATA_BACKFILL_INTERVAL_MS` | `300000` | 60,000–86,400,000 | ConfigMap |
+| `JOB_METADATA_BACKFILL_BATCH_SIZE` | `100` | 1–500 | ConfigMap |
+
 ## Effective configuration and snapshots
 
 The API exposes only a privileged, redacted diagnostic view. It reports source, parsed value for non-secrets and whether each secret is configured, never the secret value. Every job snapshots model order, attempts, deadlines, chunking parameters and relevant feature flags so a redeploy cannot change an in-flight workflow.

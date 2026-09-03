@@ -35,7 +35,7 @@ ZAI_MODELS=glm-5.3-flash,glm-5.3,glm-5.2,glm-5-turbo,glm-4.7,glm-4.7-flash
 LLM_MODEL_PRIORITY=glm-5.3-flash,glm-5.3,glm-5.2
 ```
 
-Откройте `http://localhost:8080`. `npm run dev` запускает frontend, API, decomposition/research workers, PostgreSQL, Kafka и Temporal через Docker Compose. Фоновый режим: `npm run dev:detached`. Полная инструкция — [docs/local-development.md](docs/local-development.md), каталог переменных — [docs/configuration.md](docs/configuration.md).
+Откройте `http://localhost:5177`. `npm run dev` запускает полный enterprise-стек через Docker Compose, а frontend работает через Vite с hot reload. Изменения backend и workers подхватываются Node watch. Фоновый режим: `npm run dev:detached`; остановка: `npm run dev:stop`. Полная инструкция — [docs/local-development.md](docs/local-development.md), каталог переменных — [docs/configuration.md](docs/configuration.md).
 
 ## MCP
 
@@ -50,8 +50,8 @@ Endpoint `http://localhost:5180/mcp` предоставляет пять инс�
 ## Production
 
 ```bash
-npm run build
-npm run start
+npm run build:prod
+npm run start:prod
 ```
 
 Production использует `.env.prod`; сервер может раздавать собранный frontend из `client/dist`. Machine-readable REST-контракт находится в [OpenAPI v1](docs/api/openapi.v1.json).

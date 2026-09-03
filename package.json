@@ -8,10 +8,13 @@
     "mcp-gateway"
   ],
   "scripts": {
-    "dev": "docker compose up --build",
-    "dev:detached": "docker compose up --build -d",
-    "build": "npm -w client run build",
-    "start": "NODE_ENV=production npm -w server run start",
+    "dev": "docker compose -f compose.yaml -f compose.dev.yaml up --build",
+    "dev:detached": "docker compose -f compose.yaml -f compose.dev.yaml up --build -d",
+    "dev:stop": "docker compose -f compose.yaml -f compose.dev.yaml down",
+    "build": "npm run build:prod",
+    "build:prod": "npm -w client run build",
+    "start": "npm run start:prod",
+    "start:prod": "NODE_ENV=production npm -w server run start",
     "start:mcp": "npm -w mcp-gateway run start",
     "test:mcp": "npm -w mcp-gateway run test",
     "fix:links": "node scripts/fix-workspace-links.mjs",

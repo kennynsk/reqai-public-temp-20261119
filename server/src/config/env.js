@@ -369,6 +369,10 @@ export function loadConfig(env = process.env, { loadFiles = env === process.env 
       cleanupBatchSize: integer(env, 'RETENTION_CLEANUP_BATCH_SIZE', 500, { min: 1, max: 10_000 }),
       intervalMs: integer(env, 'RETENTION_CLEANUP_INTERVAL_MS', 3600000, { min: 60000, max: 86400000 }),
     },
+    jobMetadataBackfill: {
+      batchSize: integer(env, 'JOB_METADATA_BACKFILL_BATCH_SIZE', 100, { min: 1, max: 500 }),
+      intervalMs: integer(env, 'JOB_METADATA_BACKFILL_INTERVAL_MS', 300000, { min: 60000, max: 86400000 }),
+    },
     slo: {
       availabilityPercent: number(env, 'SLO_AVAILABILITY_PERCENT', 99.5, { min: 0, max: 100 }),
       apiP95Ms: integer(env, 'SLO_API_P95_MS', 500, { min: 1 }),

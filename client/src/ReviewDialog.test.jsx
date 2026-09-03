@@ -14,5 +14,17 @@ test('dialog traps focus including links, ignores closed details, and restores i
   fireEvent.keyDown(first, { key: 'Tab', shiftKey: true }); expect(last).toHaveFocus();
   fireEvent.keyDown(last, { key: 'Tab' }); expect(first).toHaveFocus();
   fireEvent.keyDown(first, { key: 'Escape' }); expect(close).toHaveBeenCalledOnce();
+  const dialog = screen.getByRole('dialog', { name: 'Проверка' });
+  dialog.focus();
+  fireEvent.keyDown(dialog, { key: 'Tab', shiftKey: true }); expect(last).toHaveFocus();
   result.unmount(); expect(trigger).toHaveFocus(); trigger.remove();
+});
+
+test('ignores hidden and negative-tab-index nodes and keeps focus inside an empty dialog', () => {
+  const result = render(<ReviewDialog label="Пустой диалог" onClose={vi.fn()}><div hidden><button>Скрытая кнопка</button></div><button tabIndex={-1}>Недоступная кнопка</button></ReviewDialog>);
+  const dialog = screen.getByRole('dialog', { name: 'Пустой диалог' });
+  expect(dialog).toHaveFocus();
+  fireEvent.keyDown(dialog, { key: 'Tab' });
+  expect(dialog).toHaveFocus();
+  result.unmount();
 });
