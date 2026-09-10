@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -21,7 +22,24 @@ test('both MCP starts complete through ReqAI REST and the mock provider', async 
   const jobs = new Map();
   let sequence = 100;
   const nextUuid = () => `00000000-0000-4000-8000-${String(++sequence).padStart(12, '0')}`;
+  const artifacts = new Map();
+  const artifactRepository = {
+    async upload({ readable, expectedSha256, contentType }) {
+      const chunks = []; for await (const chunk of readable) chunks.push(chunk);
+      const content = Buffer.concat(chunks);
+      assert.equal(createHash('sha256').update(content).digest('hex'), expectedSha256);
+      const row = { id: nextUuid(), sha256: expectedSha256, content_type: contentType, size_bytes: content.length, created_at: iso(), content };
+      artifacts.set(row.id, row); return row;
+    },
+    async metadata({ artifactId }) { return artifacts.get(artifactId) || { id: VERSION_ID, sha256: 'a'.repeat(64), content_type: 'text/markdown', size_bytes: Buffer.byteLength('# BABOK report') }; },
+    async streamTo({ writable }) { writable.end('# BABOK report'); },
+  };
   const jobService = {
+    async cancel({ jobId }) {
+      const job = jobs.get(jobId);
+      jobs.set(jobId, { ...job, status: 'CANCELLED' });
+      return { job: { id: jobId, input_artifact_id: job.inputArtifactId, type: job.type, status: 'CANCELLED', configuration_snapshot: { featureMode: job.mode }, created_at: iso(), updated_at: iso() } };
+    },
     async create({ body }) {
       const jobId = nextUuid();
       const row = { jobId, parentJobId: body.parentJobId || null, inputArtifactId: body.inputArtifactId, type: body.type, mode: body.options.mode, status: 'ACCEPTED', outcome: null, progress: 0, currentStep: null, message: null, resultArtifactId: null, createdAt: iso(), startedAt: null, completedAt: null, updatedAt: iso() };
@@ -38,7 +56,7 @@ test('both MCP starts complete through ReqAI REST and the mock provider', async 
     config: backendConfig,
     jobService,
     uuid: nextUuid,
-    artifactRepository: { metadata: async () => ({ id: VERSION_ID, sha256: 'a'.repeat(64) }) },
+    artifactRepository,
     requirementsVersionService: { resolveResearchSource: async ({ versionId }) => ({ inputArtifactId: versionId, parentJobId: VERSION_ID, inputSha256: 'b'.repeat(64) }) },
   });
   const jobQueryService = {
@@ -49,11 +67,11 @@ test('both MCP starts complete through ReqAI REST and the mock provider', async 
     },
   };
 
-  const { app } = createApp({ config: backendConfig, services: { requirementsIntegrationService, jobQueryService } });
+  const { app } = createApp({ config: backendConfig, services: { requirementsIntegrationService, jobQueryService, jobService, artifactRepository } });
   const backend = app.listen(0, '127.0.0.1');
   await new Promise((resolve) => backend.once('listening', resolve));
   const backendUrl = `http://127.0.0.1:${backend.address().port}`;
-  const gatewayConfig = { enabled: true, production: false, bodyLimitBytes: 1_100_000, responseLimitBytes: 262_144, maxConcurrency: 8, path: '/mcp', allowedHosts: [], buildVersion: '1.0.0', schemaVersion: '2.1.0', host: '127.0.0.1', port: 0, backendUrl, backendTimeoutMs: 1000, authTimeoutMs: 1000 };
+  const gatewayConfig = { enabled: true, production: false, bodyLimitBytes: 1_100_000, responseLimitBytes: 262_144, maxConcurrency: 8, path: '/mcp', allowedHosts: [], buildVersion: '1.0.0', schemaVersion: '2.2.0', host: '127.0.0.1', port: 0, backendUrl, backendTimeoutMs: 1000, authTimeoutMs: 1000 };
   const gateway = createHttpRuntime({ config: gatewayConfig, client: createReqAiClient({ config: gatewayConfig }), metrics: createMetrics() });
   gateway.setBackendReady(true);
   await gateway.listen();
@@ -61,8 +79,12 @@ test('both MCP starts complete through ReqAI REST and the mock provider', async 
   const transport = new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${gateway.server.address().port}/mcp`), { requestInit: { headers: { authorization: 'Bearer mock-human' } } });
   await mcp.connect(transport);
   try {
+    const uploaded = await mcp.callTool({ name: 'upload_artifact', arguments: { content: 'Требования к заявке' } });
+    assert.equal(uploaded.isError, undefined);
+    const artifactId = uploaded.structuredContent.artifactId;
+    assert.equal(artifacts.get(artifactId).content.toString(), 'Требования к заявке');
     const starts = [
-      ['decompose_requirements', { idempotencyKey: 'mock-decompose-0001', businessContext: 'Задача' }],
+      ['decompose_requirements', { idempotencyKey: 'mock-decompose-0001', inputArtifactId: artifactId }],
       ['research_requirements', { idempotencyKey: 'mock-version-research', versionId: VERSION_ID }],
     ];
     for (const [name, args] of starts) {
@@ -74,7 +96,14 @@ test('both MCP starts complete through ReqAI REST and the mock provider', async 
       assert.equal(status.structuredContent.status, 'SUCCEEDED');
       assert.equal(result.structuredContent.outcome, 'COMPLETE');
       assert.match(result.structuredContent.resultContentUrl, /\/api\/v1\/jobs\//);
+      const content = await mcp.callTool({ name: 'get_task_result_content', arguments: { jobId: accepted.structuredContent.jobId, format: 'raw' } });
+      assert.equal(content.structuredContent.content, '# BABOK report');
     }
+    const pendingId = nextUuid();
+    jobs.set(pendingId, { jobId: pendingId, inputArtifactId: artifactId, type: 'DECOMPOSITION', mode: 'DECOMPOSITION', status: 'RUNNING' });
+    const cancelled = await mcp.callTool({ name: 'cancel_task', arguments: { jobId: pendingId } });
+    assert.equal(cancelled.structuredContent.status, 'CANCELLED');
+    assert.equal(jobs.get(pendingId).status, 'CANCELLED');
   } finally {
     await mcp.close();
     await gateway.close();

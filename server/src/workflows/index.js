@@ -83,7 +83,8 @@ export async function decompositionWorkflow(input) {
     }
     assertDeadline(input);
     const merged = await activities.mergeDecomposition({ ...input, sectionArtifactIds: successful.map((section) => section.artifactId), failedChunks });
-    return activities.finalizeSucceeded({ ...input, resultArtifactId: merged.artifactId, successfulUnits: successful.length, failedUnits: failedChunks.length });
+    const textDraft = patched('babok-text-draft-outcome-v1') && merged.textDraft === true;
+    return activities.finalizeSucceeded({ ...input, resultArtifactId: merged.artifactId, successfulUnits: successful.length, failedUnits: failedChunks.length, ...(textDraft ? { textDraft: true } : {}) });
   });
 }
 

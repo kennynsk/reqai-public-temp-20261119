@@ -16,6 +16,12 @@ test('answers remain open, closing/reopening needs reason and actors are authori
   assert.throws(() => normalizeReviewMetadata({ ...input, inherited: closed, supplied: { schemaVersion: 1, gaps: { 'GAP-001': { state: 'open', answer: 'UTC', reason: '' } } } }), { code: 'INVALID_REVIEW_METADATA' });
 });
 
+test('resolved closure requires a closed state and a non-empty answer', () => {
+  const checks = { schemaVersion: 1, gapRequirements: { 'GAP-001': { 'FR-001': { state: 'incorporated' } } } };
+  assert.throws(() => normalizeReviewMetadata({ ...input, supplied: { ...checks, gaps: { 'GAP-001': { state: 'answered', answer: 'UTC', closureKind: 'resolved' } } } }), { code: 'INVALID_REVIEW_METADATA' });
+  assert.throws(() => normalizeReviewMetadata({ ...input, supplied: { ...checks, gaps: { 'GAP-001': { state: 'closed', answer: '', closureKind: 'resolved', reason: 'Проверено' } } } }), { code: 'INVALID_REVIEW_METADATA' });
+});
+
 test('old clients preserve decisions while content changes invalidate evidence', () => {
   const reviewed = normalizeReviewMetadata({ ...input, supplied: { schemaVersion: 1, completeness: { check: true }, acknowledgment: { confirm: true } }, finalizing: true });
   const unchanged = normalizeReviewMetadata({ ...input, inherited: reviewed });

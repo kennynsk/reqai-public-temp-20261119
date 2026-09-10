@@ -135,6 +135,7 @@ export default function ResearchInsightWorkspace({
             <div className="border-t border-slate-200 px-4 pb-4">{renderEvidence(selected)}</div>
           </details>}
 
+          {selected.enhancements.length === 0 && <p className="mt-5 border-t border-slate-100 pt-5 text-sm text-slate-500">В этом результате AI не предложил готовых требований для добавления в реестр.</p>}
           {selected.enhancements.length > 0 && <div className="mt-5 space-y-3 border-t border-slate-100 pt-5">
             <div><h3 className="text-base font-bold text-slate-900">Предлагаемые изменения</h3><p className="mt-1 text-sm text-slate-500">Проверьте формулировки перед добавлением в черновик требований.</p></div>
             {selected.enhancements.map((enhancement, index) => renderEnhancement(enhancement, selected, index))}
@@ -144,9 +145,9 @@ export default function ResearchInsightWorkspace({
         </article>}
       </div>
 
-      <div className="reqai-research-save sticky bottom-3 z-20 flex items-center justify-between gap-4 rounded-xl border border-slate-200 bg-white/95 p-4 shadow-lg backdrop-blur flex-wrap">
+      <div className="reqai-research-save flex items-center justify-between gap-4 border-t border-slate-200 pt-4 flex-wrap">
         <p className="font-semibold text-slate-900">Выбрано улучшений: {selectedCount}</p>
-        <button type="button" disabled={saveDisabled} onClick={onSave} className="w-full rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-300 sm:w-auto">{saveLabel}</button>
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto"><button type="button" disabled={saveDisabled} onClick={onSave} className="w-full rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-300 sm:w-auto">{saveLabel}</button></div>
       </div>
     </section>
   </RequirementPreviewProvider>;

@@ -183,12 +183,14 @@ describe('AsyncJobWorkspace presentational branches', () => {
     const value = {
       mode: 'REQUIREMENTS_INSIGHTS',
       baseRegistry: registry,
-      insights: [{ id: 'babok-insight', category: 'patterns', title: 'Паттерн', summary: 'Добавить контроль', detail: 'Подробное описание', relatedTo: ['BR-001'], source_types: ['open_standard'], enhancements: [{ targetType: 'FR', targetIds: ['BR-001'], text: 'Новая функция', rationale: 'Связать с целью' }] }],
+      insights: [{ id: 'babok-insight', category: 'patterns', title: 'Паттерн', summary: 'Добавить контроль', detail: 'Подробное описание', relatedTo: ['BR-001'], source_types: ['open_standard'], enhancements: [{ targetType: 'FR', targetIds: ['BR-001'], text: 'Новая функция', rationale: 'Связать с целью', confirmationConditions: 'Согласовать нормативные сроки' }] }],
     };
     const callbacks = { save: vi.fn(), dirty: vi.fn(), requestView: vi.fn() };
     const latestVersion = { versionId: null, registry, decisions: {} };
     render(<SessionContext.Provider value={{ view: 'insights', requestView: callbacks.requestView }}><BabokRequirementsInsightsResult value={value} latestVersion={latestVersion} businessContext="Контекст" onSaveFinal={callbacks.save} onDirtyChange={callbacks.dirty} /></SessionContext.Provider>);
+    expect(screen.getByText('Согласовать нормативные сроки')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Принять улучшение: Новая функция' }));
+    expect(screen.getByRole('textbox', { name: 'Итоговая формулировка' })).toHaveValue('Новая функция');
     fireEvent.click(screen.getByRole('button', { name: 'Принять точное изменение' }));
     fireEvent.click(screen.getByRole('button', { name: 'Сохранить новую редакцию' }));
     expect(callbacks.save).toHaveBeenCalledWith(expect.objectContaining({ registry: expect.objectContaining({ groups: expect.objectContaining({ FR: expect.arrayContaining([expect.objectContaining({ text: 'Новая функция', researchEnhancementKey: 'babok-insight:0' })]) }) }) }));
@@ -380,7 +382,7 @@ describe('AsyncJobWorkspace presentational branches', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Действия для BT-1' }));
     fireEvent.click(screen.getByRole('button', { name: 'Редактировать' }));
     fireEvent.change(screen.getByRole('textbox', { name: 'Текст требования BT-1' }), { target: { value: '   ' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Сохранить проверенную версию' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить требования' }));
     expect(screen.getByRole('alert')).toHaveTextContent('Введите формулировку требования');
     fireEvent.click(screen.getByRole('button', { name: 'Отмена' }));
     const business = screen.getByRole('region', { name: 'Бизнес-требования' });
@@ -388,10 +390,11 @@ describe('AsyncJobWorkspace presentational branches', () => {
     fireEvent.change(within(business).getByRole('textbox', { name: 'Новое требование: Бизнес-требования' }), { target: { value: 'Новая цель' } });
     fireEvent.click(screen.getByRole('button', { name: 'Добавить', exact: true }));
     expect(screen.getByText('Новая цель')).toBeInTheDocument();
+    fireEvent.change(screen.getByRole('combobox', { name: 'Тип требований' }), { target: { value: 'functional' } });
     const functional = screen.getByRole('region', { name: 'Функциональные требования' });
     fireEvent.click(within(functional).getByRole('button', { name: 'Добавить требование' }));
     fireEvent.change(within(functional).getByRole('textbox', { name: 'Новое требование: Функциональные требования' }), { target: { value: 'Черновая функция' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Сохранить проверенную версию' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить требования' }));
     expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ baseVersionId: null, requirements: expect.objectContaining({ business: expect.arrayContaining([expect.objectContaining({ text: 'Новая цель' })]), functional: expect.arrayContaining([expect.objectContaining({ text: 'Черновая функция' })]) }) }));
     expect(screen.getByRole('button', { name: 'Улучшить требования с помощью AI' })).toBeDisabled();
     expect(onStartResearch).not.toHaveBeenCalled();
@@ -443,9 +446,10 @@ describe('AsyncJobWorkspace presentational branches', () => {
     const functional = screen.getByRole('region', { name: 'Функциональные требования' });
     fireEvent.click(within(functional).getAllByRole('link', { name: 'BR-001' })[0]);
     await waitFor(() => expect(document.getElementById('record-BR-001')).toHaveFocus());
+    fireEvent.change(screen.getByRole('combobox', { name: 'Тип требований' }), { target: { value: 'all' } });
     const clarification = screen.getByRole('checkbox', { name: 'Нужно уточнить' });
     fireEvent.click(clarification);
-    expect(within(functional).getByText('Нет сформированных требований')).toBeInTheDocument();
+    expect(within(screen.getByRole('region', { name: 'Функциональные требования' })).getByText('Нет сформированных требований')).toBeInTheDocument();
     fireEvent.click(clarification);
 
     const business = screen.getByRole('region', { name: 'Бизнес-требования' });
@@ -457,6 +461,7 @@ describe('AsyncJobWorkspace presentational branches', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Отменить удаление' }));
     expect(screen.getByText('Сократить конфликты бронирования.')).toBeInTheDocument();
 
+    fireEvent.change(screen.getByRole('combobox', { name: 'Тип требований' }), { target: { value: 'SR' } });
     const stakeholders = screen.getByRole('region', { name: 'Требования заинтересованных сторон' });
     fireEvent.click(within(stakeholders).getByRole('button', { name: 'Добавить требование' }));
     fireEvent.change(within(stakeholders).getByRole('textbox', { name: 'Новое требование: SR' }), { target: { value: 'Черновая роль' } });
@@ -508,8 +513,8 @@ describe('AsyncJobWorkspace presentational branches', () => {
     const requirements = { business: [{ id: 'BT-1', text: 'Цель' }], functional: [{ id: 'FT-1', text: 'Функция' }], nonfunctional: [] };
     const onStartResearch = vi.fn();
     render(<DecompositionResult value={{ mode: 'DECOMPOSITION', requirements }} latestVersion={{ versionId: 'legacy-v1', requirements, decisions: {}, createdAt: new Date().toISOString() }} onSave={vi.fn()} onStartResearch={onStartResearch} onDirtyChange={vi.fn()} />);
-    fireEvent.click(screen.getByRole('tab', { name: /functional · Функциональные требования/ }));
-    await waitFor(() => expect(screen.getByRole('region', { name: 'Функциональные требования' })).toHaveFocus());
+    fireEvent.change(screen.getByRole('combobox', { name: 'Тип требований' }), { target: { value: 'functional' } });
+    expect(screen.getByRole('combobox', { name: 'Тип требований' })).toHaveValue('functional');
     fireEvent.click(screen.getByRole('button', { name: 'Улучшить требования с помощью AI' }));
     expect(onStartResearch).toHaveBeenCalledWith({ requirementsVersionId: 'legacy-v1' });
   });
@@ -772,4 +777,13 @@ describe('AsyncJobWorkspace presentational branches', () => {
     expect(callbacks.stay).toHaveBeenCalledTimes(1);
     expect(screen.getByRole('button', { name: 'Сохранить и перейти' })).toBeDisabled();
   });
+});
+
+ test.each([undefined, []])('does not manufacture BABOK requirements from analysis when enhancements are %s', (enhancements) => {
+  const registry = roomBookingRegistry();
+  const value = { mode: 'REQUIREMENTS_INSIGHTS', baseRegistry: registry, insights: [{ id: 'analysis-only', category: 'trends', title: 'Отраслевая практика', summary: 'Банки консолидируют программы', enhancements }] };
+  render(<SessionContext.Provider value={{ view: 'insights', requestView: vi.fn() }}><BabokRequirementsInsightsResult value={value} latestVersion={{ registry, decisions: {} }} onSaveFinal={vi.fn()} onDirtyChange={vi.fn()} /></SessionContext.Provider>);
+  expect(screen.getByText('Банки консолидируют программы')).toBeVisible();
+  expect(screen.getByText('В этом результате AI не предложил готовых требований для добавления в реестр.')).toBeVisible();
+  expect(screen.queryByRole('button', { name: /Принять улучшение:/ })).not.toBeInTheDocument();
 });

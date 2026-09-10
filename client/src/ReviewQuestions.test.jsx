@@ -48,7 +48,8 @@ test('edits answers, shows priorities, navigates links, and records open/close d
   const registry = makeRegistry();
   render(<DraftContext.Provider value={makeReview(dispatch)}><ReviewQuestions registry={registry} onNavigate={onNavigate} /></DraftContext.Provider>);
 
-  expect(screen.getByRole('heading', { name: 'Вопросы для уточнения · 3' })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: 'Вопросы для уточнения · 4' })).toBeInTheDocument();
+  expect(screen.getByText(/Пробелов: 3/)).toBeInTheDocument();
   expect(screen.getByText('Открыт')).toBeInTheDocument();
   expect(screen.getByText('Дан ответ · ещё открыт')).toBeInTheDocument();
   expect(screen.getByText('Закрыт')).toBeInTheDocument();
@@ -67,12 +68,12 @@ test('edits answers, shows priorities, navigates links, and records open/close d
   expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: 'decisions' }));
   expect(within(screen.getByText('GAP-CLOSED · Закрытый вопрос').closest('article')).getByRole('textbox')).toBeDisabled();
 
-  fireEvent.click(within(openArticle).getByRole('button', { name: 'Закрыть вопрос с причиной' }));
+  fireEvent.click(within(openArticle).getByRole('button', { name: 'Закрыть без изменения требований…' }));
   const decisionDialog = screen.getByRole('dialog', { name: 'Решение по вопросу' });
   const confirm = within(decisionDialog).getByRole('button', { name: 'Подтвердить решение' });
   expect(confirm).toBeDisabled();
   fireEvent.keyDown(decisionDialog, { key: 'Escape' });
-  fireEvent.click(within(openArticle).getByRole('button', { name: 'Закрыть вопрос с причиной' }));
+  fireEvent.click(within(openArticle).getByRole('button', { name: 'Закрыть без изменения требований…' }));
   const reopenedDecisionDialog = screen.getByRole('dialog', { name: 'Решение по вопросу' });
   fireEvent.change(within(reopenedDecisionDialog).getByRole('textbox', { name: 'Причина решения' }), { target: { value: 'Согласовано с владельцем' } });
   fireEvent.click(within(reopenedDecisionDialog).getByRole('button', { name: 'Подтвердить решение' }));
@@ -87,8 +88,8 @@ test('edits answers, shows priorities, navigates links, and records open/close d
 
   fireEvent.click(screen.getAllByText('Источник вопроса')[0]);
   expect(screen.getByText('Кто отвечает?')).toBeInTheDocument();
-  fireEvent.click(screen.getAllByText('Источник вопроса')[1]);
-  expect(screen.getAllByText('Источник не указан').length).toBeGreaterThanOrEqual(1);
+  expect(within(screen.getByText('GAP-ANSWERED · Вопрос с ответом').closest('article')).queryByText('Источник вопроса')).not.toBeInTheDocument();
+  expect(screen.queryByText('Источник не указан')).not.toBeInTheDocument();
 });
 
 test('filters closed and open questions and renders read-only answers', () => {
@@ -107,7 +108,7 @@ test('filters closed and open questions and renders read-only answers', () => {
   render(<DraftContext.Provider value={review}><ReviewQuestions registry={registry} readOnly onNavigate={vi.fn()} /></DraftContext.Provider>);
   expect(screen.getByText('Ответ: Ответ владельца')).toBeInTheDocument();
   expect(screen.queryByRole('textbox', { name: 'Ответ на GAP-ANSWERED' })).not.toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: 'Закрыть вопрос с причиной' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Закрыть без изменения требований…' })).not.toBeInTheDocument();
 });
 
 test('shows a safe empty state when there are no questions', () => {

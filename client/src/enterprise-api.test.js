@@ -2,7 +2,7 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import { createHash } from 'node:crypto';
 
-import { EnterpriseApiError, digestFile, enterpriseApi, normalizeJobEvent, subscribeJobEvents } from './api/enterprise-api.js';
+import { EnterpriseApiError, digestFile, enterpriseApi, normalizeJobEvent, subscribeJobEvents, subscribeRequirementDiscussionEvents } from './api/enterprise-api.js';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -13,6 +13,30 @@ function eventResponse(block) {
     body: { getReader: () => ({ read: async () => delivered ? { done: true } : (delivered = true, { done: false, value: new TextEncoder().encode(block) }) }) },
   };
 }
+
+test('discussion SSE parses typed events, sends the cursor and reconciles after a disconnect', async () => {
+  vi.stubGlobal('localStorage', { getItem: () => 'discussion-token' });
+  const controller = new AbortController();
+  const calls = [];
+  const observations = [];
+  let stream = 0;
+  vi.stubGlobal('fetch', vi.fn(async (path, options = {}) => {
+    if (String(path).endsWith('/events')) {
+      calls.push(options.headers['Last-Event-ID']);
+      stream += 1;
+      return eventResponse(`id: ${stream}\nevent: ${stream === 1 ? 'attempt.started' : 'message.completed'}\ndata: {"attemptId":"a-${stream}"}\n\n`);
+    }
+    return { ok: true, status: 200, json: async () => ({ discussionId: 'd1', messages: [] }) };
+  }));
+  await subscribeRequirementDiscussionEvents('job/1', 'GAP 1', {
+    signal: controller.signal,
+    reconnectDelayMs: 0,
+    onObservation: async (observation) => observations.push(observation.type),
+    onEvent: async (event) => { if (event.type === 'message.completed') controller.abort(); },
+  });
+  expect(calls).toEqual(['0', '1']);
+  expect(observations).toEqual(['connect', 'connected', 'reconcile', 'reconnect', 'connected']);
+});
 
 test('SSE reconnects from the last delivered sequence and reconciles between connections', async () => {
   vi.stubGlobal('localStorage', { getItem: () => null });

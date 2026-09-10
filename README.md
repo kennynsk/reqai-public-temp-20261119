@@ -55,3 +55,5 @@ npm run start:prod
 ```
 
 Production использует `.env.prod`; сервер может раздавать собранный frontend из `client/dist`. Machine-readable REST-контракт находится в [OpenAPI v1](docs/api/openapi.v1.json).
+
+Исполнение оригинального BABOK-скилла, формат отчёта и реальная GLM-проверка описаны в [документации](docs/babok-skill-execution.md).

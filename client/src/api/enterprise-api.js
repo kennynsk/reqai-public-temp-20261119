@@ -46,6 +46,12 @@ export const enterpriseApi = {
     return response.blob();
   },
   listRequirementsVersions: (jobId) => request(`/api/v1/jobs/${jobId}/requirements/versions`),
+  openRequirementDiscussion: (jobId, anchorId, body = {}, options = {}) => request(`/api/v1/jobs/${encodeURIComponent(jobId)}/discussions`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...body, anchorId }), signal: options.signal }),
+  getRequirementDiscussion: (jobId, anchorId, options = {}) => request(`/api/v1/jobs/${encodeURIComponent(jobId)}/discussions/${encodeURIComponent(anchorId)}`, options),
+  sendRequirementDiscussionMessage: (jobId, anchorId, body, idempotencyKey = crypto.randomUUID()) => request(`/api/v1/jobs/${encodeURIComponent(jobId)}/discussions/${encodeURIComponent(anchorId)}/messages`, { method: 'POST', headers: { 'content-type': 'application/json', 'Idempotency-Key': idempotencyKey }, body: JSON.stringify({ ...body, clientMessageId: body?.clientMessageId || idempotencyKey }) }),
+  retryRequirementDiscussion: (jobId, attemptId) => request(`/api/v1/jobs/${encodeURIComponent(jobId)}/discussions/attempts/${encodeURIComponent(attemptId)}/retry`, { method: 'POST' }),
+  cancelRequirementDiscussion: (jobId, attemptId) => request(`/api/v1/jobs/${encodeURIComponent(jobId)}/discussions/attempts/${encodeURIComponent(attemptId)}/cancel`, { method: 'POST' }),
+  subscribeRequirementDiscussionEvents: (jobId, anchorId, options = {}) => subscribeRequirementDiscussionEvents(jobId, anchorId, options),
   cancelJob: (id) => request(`/api/v1/jobs/${id}/cancel`, { method: 'POST' }),
   retryJob: (id, key = crypto.randomUUID()) => request(`/api/v1/jobs/${id}/retry`, { method: 'POST', headers: { 'Idempotency-Key': key } }),
   uploadArtifact(file, onProgress) {
@@ -122,6 +128,50 @@ export async function subscribeJobEvents(jobId, { lastEventId = 0, signal, onEve
           await onObservation?.({ type: 'reconcile', jobId, cursor, timestamp: new Date().toISOString() });
           await onEvent?.({ type: 'reconcile', jobId, job });
         } catch { /* retry on next cycle */ }
+      }
+    }
+  }
+}
+
+export async function subscribeRequirementDiscussionEvents(jobId, anchorId, { lastEventId = 0, signal, onEvent, onObservation, reconnectDelayMs = 1500 } = {}) {
+  const controller = signal ? null : new AbortController();
+  const activeSignal = signal || controller.signal;
+  let cursor = Number(lastEventId) || 0;
+  while (!activeSignal.aborted) {
+    try {
+      await onObservation?.({ type: cursor ? 'reconnect' : 'connect', jobId, anchorId, cursor, timestamp: new Date().toISOString() });
+      const response = await fetch(`/api/v1/jobs/${encodeURIComponent(jobId)}/discussions/${encodeURIComponent(anchorId)}/events`, { headers: { Accept: 'text/event-stream', 'Last-Event-ID': String(cursor), ...(token() ? { Authorization: `Bearer ${token()}` } : {}) }, signal: activeSignal });
+      if (!response.ok) throw new Error(`SSE HTTP ${response.status}`);
+      await onObservation?.({ type: 'connected', jobId, anchorId, cursor, timestamp: new Date().toISOString() });
+      const reader = response.body?.getReader?.();
+      if (!reader) throw new Error('SSE response has no readable body');
+      const decoder = new TextDecoder(); let buffer = '';
+      while (!activeSignal.aborted) {
+        const { done, value } = await reader.read(); if (done) break;
+        buffer += decoder.decode(value, { stream: true }); let end;
+        while ((end = buffer.indexOf('\n\n')) >= 0) {
+          const block = buffer.slice(0, end); buffer = buffer.slice(end + 2);
+          const id = block.match(/^id: (.+)$/m)?.[1]; const type = block.match(/^event: (.+)$/m)?.[1] || 'message'; const data = block.match(/^data: (.+)$/m)?.[1];
+          if (id) cursor = Number(id) || cursor;
+          if (!data) continue;
+          let parsed;
+          try { parsed = JSON.parse(data); }
+          catch (error) { await onObservation?.({ type: 'parse-error', jobId, anchorId, cursor, errorType: error?.name || 'Error', timestamp: new Date().toISOString() }); continue; }
+          try { await onEvent?.({ id: cursor, type, data: parsed }); }
+          catch (error) { await onObservation?.({ type: 'event-handler-error', jobId, anchorId, cursor, errorType: error?.name || 'Error', timestamp: new Date().toISOString() }); throw error; }
+        }
+      }
+    } catch (error) {
+      if (activeSignal.aborted) return;
+      await onObservation?.({ type: 'disconnected', jobId, anchorId, cursor, errorType: error?.name || 'Error', timestamp: new Date().toISOString() });
+    } finally {
+      if (!activeSignal.aborted) {
+        await onObservation?.({ type: 'reconcile', jobId, anchorId, cursor, timestamp: new Date().toISOString() });
+        try {
+          const value = await enterpriseApi.getRequirementDiscussion(jobId, anchorId, { signal: activeSignal });
+          await onEvent?.({ id: cursor, type: 'reconcile', data: value });
+        } catch { /* retry on the next connection */ }
+        await new Promise((resolve) => { const timer = setTimeout(resolve, Math.max(0, Number(reconnectDelayMs) || 0)); activeSignal.addEventListener('abort', () => { clearTimeout(timer); resolve(); }, { once: true }); });
       }
     }
   }

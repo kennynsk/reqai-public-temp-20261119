@@ -37,6 +37,15 @@ export const researchRequirementsInput = z.strictObject({
   ...execution,
 });
 
+export const uploadArtifactInput = z.strictObject({
+  content: z.string().min(1).max(262_144).refine((value) => Buffer.byteLength(value, 'utf8') <= 262_144, { message: 'content must not exceed 262144 UTF-8 bytes' }),
+  contentType: z.enum(['text/plain', 'text/markdown', 'application/json']).optional().default('text/plain'),
+});
+export const artifactOutput = z.strictObject({
+  artifactId: uuid, size: z.number().int().nonnegative(), sha256: z.string().regex(/^[a-f0-9]{64}$/),
+  contentType: z.string(), createdAt: z.string(),
+});
+
 export const taskInput = z.strictObject({ jobId: uuid });
 
 const nullableString = z.string().nullable();
@@ -126,5 +135,7 @@ export const TOOL_DEFINITIONS = Object.freeze({
   research_requirements: { inputSchema: researchRequirementsInput, outputSchema: toolOutput(acceptedJobOutput), successSchema: acceptedJobOutput, description: 'Start asynchronous research for an immutable requirements version.' },
   get_task_status: { inputSchema: taskInput, outputSchema: toolOutput(taskStatusOutput), successSchema: taskStatusOutput, description: 'Read canonical ReqAI task status.' },
   get_task_result: { inputSchema: taskInput, outputSchema: toolOutput(taskResultOutput), successSchema: taskResultOutput, description: 'Read canonical ReqAI task result metadata.' },
+  upload_artifact: { inputSchema: uploadArtifactInput, outputSchema: toolOutput(artifactOutput), successSchema: artifactOutput, description: 'Upload UTF-8 text, Markdown or JSON material (up to 256 KiB). Returns artifactId for primary, baseline or reference input. Pass content, never a local path or URL. Repeating an upload may create another artifact.' },
+  cancel_task: { inputSchema: taskInput, outputSchema: toolOutput(taskStatusOutput), successSchema: taskStatusOutput, description: 'Request cancellation of a task. Poll get_task_status until terminal; cancellation may race with completion and does not undo provider usage.' },
   get_task_result_content: { inputSchema: taskResultContentInput, outputSchema: toolOutput(taskResultContentOutput), successSchema: taskResultContentOutput, description: 'Read the full human-readable result content after a task succeeds.' },
 });

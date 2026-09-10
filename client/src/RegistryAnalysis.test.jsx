@@ -82,3 +82,14 @@ test('shows conclusions, material coverage and fallback text for analysis record
   expect(plainLink).toHaveAttribute('href', '#record-BR-001');
   fireEvent.click(plainLink);
 });
+
+test('baseline identifiers are displayed without linking to unrelated current records', () => {
+  const registry = roomBookingRegistry();
+  registry.analysis.delta = [{ id: 'DELTA-001', baselineId: 'FR-999', newId: 'FR-001', kind: 'изменено', comment: 'Изменён состав данных.' }];
+  render(<RegistryAnalysis registry={registry} section="requirements" readOnly />);
+  fireEvent.click(screen.getByText('Приложения: контекст, материалы и анализ'));
+  fireEvent.click(screen.getByText('Сравнение с базовым набором · 1'));
+  expect(screen.getByText('В базовом наборе: FR-999')).toBeInTheDocument();
+  expect(screen.queryByRole('link', { name: 'FR-999' })).not.toBeInTheDocument();
+  expect(screen.getByRole('link', { name: 'FR-001' })).toHaveAttribute('href', '#record-FR-001');
+});

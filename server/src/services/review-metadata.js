@@ -8,6 +8,96 @@ const object = (value) => value && typeof value === 'object' && !Array.isArray(v
 const cleanText = (value, maximum, name) => { if (value == null) return ''; if (typeof value !== 'string' || value.length > maximum) fail(`${name} is invalid`); return value.trim(); };
 const copy = (value) => structuredClone(value);
 const same = (left, right) => canonicalSha256(left) === canonicalSha256(right);
+const DISCUSSION_REQUIREMENT_FIELDS = {
+  BR: new Set(['text', 'successIndicator']),
+  SR: new Set(['text', 'role']),
+  FR: new Set(['text']),
+  NFR: new Set(['text', 'category', 'scope', 'verificationMethod']),
+  TR: new Set(['text', 'completionCriterion']),
+  CON: new Set(['text', 'obligation', 'scope']),
+};
+
+function recordsFromContent(content) {
+  return Object.values(content?.groups || content || {})
+    .filter(Array.isArray)
+    .flat()
+    .filter((record) => record && typeof record.id === 'string');
+}
+
+function linkedRequirements(content, gap) {
+  const records = recordsFromContent(content);
+  const ids = new Set(records.map((record) => record.id));
+  const linked = new Set(Array.isArray(gap?.affectedIds) ? gap.affectedIds : []);
+  for (const record of records) {
+    const related = [...(record.relatedIds || []), ...(record.relatedTo || [])];
+    if (related.includes(gap.id)) linked.add(record.id);
+  }
+  return {
+    ids: [...linked],
+    unresolved: [...linked].filter((id) => !ids.has(id)),
+    records: new Map(records.map((record) => [record.id, record])),
+  };
+}
+
+function confirmationBasis({ gap, answer, record }) {
+  return {
+    questionHash: canonicalSha256({ id: gap.id, text: String(gap.text || '').trim() }),
+    answerHash: canonicalSha256(String(answer || '').trim()),
+    requirementHash: canonicalSha256(record || { id: null, missing: true }),
+  };
+}
+
+function checkIsCurrent(check, basis) {
+  return Boolean(check)
+    && check.stale !== true
+    && check.questionHash === basis.questionHash
+    && check.answerHash === basis.answerHash
+    && check.requirementHash === basis.requirementHash;
+}
+
+function normalizeDiscussionProposals({ supplied, inherited = {}, content, stamp, baseVersionId = null }) {
+  if (!object(supplied) || Object.keys(supplied).length > 500) fail('Invalid discussion proposal receipt map');
+  const records = new Map(recordsFromContent(content).map((record) => [record.id, record]));
+  const result = copy(inherited || {});
+  for (const [proposalId, value] of Object.entries(supplied)) {
+    if (!/^[A-Za-z0-9._:-]{8,160}$/.test(proposalId) || !object(value)) fail('Invalid discussion proposal receipt');
+    if (value.proposalId !== undefined && value.proposalId !== proposalId) fail('Discussion proposal identity does not match its receipt key');
+    const prior = inherited?.[proposalId];
+    if (prior && same(prior, value)) { result[proposalId] = copy(prior); continue; }
+    if (!['accepted', 'rejected'].includes(value.decision)) fail('Discussion proposal receipt must be accepted or rejected');
+    if (!Array.isArray(value.changes) || value.changes.length < (value.decision === 'accepted' ? 1 : 0) || value.changes.length > 20) fail('Invalid discussion proposal changes');
+    const changes = value.changes.map((change) => {
+      if (!object(change) || typeof change.targetId !== 'string' || !records.has(change.targetId) || !object(change.before) || !object(change.after)) fail('Discussion proposal target is outside the current requirements');
+      const type = String(change.targetId).split('-', 1)[0];
+      const allowed = DISCUSSION_REQUIREMENT_FIELDS[type];
+      if (!allowed) fail('Discussion proposal target must be a requirement');
+      const fields = Object.keys(change.after);
+      if (!fields.length || fields.some((field) => !allowed.has(field))) fail('Discussion proposal contains an unsupported field');
+      if (fields.some((field) => typeof change.after[field] !== 'string' || change.after[field].length > 20_000)) fail('Discussion proposal field is invalid');
+      const before = Object.fromEntries(fields.map((field) => [field, change.before[field] ?? '']));
+      if (change.beforeHash !== undefined && change.beforeHash !== canonicalSha256(before)) fail('Discussion proposal base hash is invalid');
+      const current = records.get(change.targetId);
+      if (value.decision === 'accepted' && fields.some((field) => String(current[field] ?? '') !== String(change.after[field] ?? ''))) fail('Accepted discussion proposal does not match the saved requirement');
+      return { targetId: change.targetId, targetType: type, before, after: Object.fromEntries(fields.map((field) => [field, String(change.after[field]).trim()])), beforeHash: canonicalSha256(before), ...(change.rationale ? { rationale: cleanText(change.rationale, 5000, 'Discussion proposal rationale') } : {}) };
+    });
+    const baseHash = canonicalSha256(changes.map(({ targetId, beforeHash }) => ({ targetId, beforeHash })));
+    if (value.baseHash !== undefined && value.baseHash !== baseHash) fail('Discussion proposal hash does not match its changes');
+    let gapBases;
+    if (value.gapBases !== undefined) {
+      if (!object(value.gapBases) || Object.keys(value.gapBases).length > 500) fail('Invalid discussion proposal GAP bases');
+      gapBases = Object.fromEntries(Object.entries(value.gapBases).map(([gapId, basis]) => {
+        if (!/^GAP-[A-Za-z0-9_-]{1,96}$/.test(gapId) || !object(basis)) fail('Invalid discussion proposal GAP basis');
+        const question = cleanText(basis.question, 20000, 'Discussion proposal GAP question');
+        const answer = cleanText(basis.answer, 20000, 'Discussion proposal GAP answer');
+        return [gapId, { question, answer }];
+      }));
+    }
+    const proposalBaseVersionId = value.baseVersionId == null ? undefined : cleanText(value.baseVersionId, 128, 'Discussion proposal base version');
+    if (proposalBaseVersionId && baseVersionId && proposalBaseVersionId !== baseVersionId) fail('Discussion proposal base version does not match the saved version');
+    result[proposalId] = { proposalId, decision: value.decision, changes, baseHash, ...(proposalBaseVersionId ? { baseVersionId: proposalBaseVersionId } : {}), ...(gapBases ? { gapBases } : {}), ...(value.discarded === true ? { discarded: true } : {}), ...stamp };
+  }
+  return result;
+}
 
 export function reviewIssues(content, gaps = {}) {
   const records = Object.values(content?.groups || content || {}).filter(Array.isArray).flat();
@@ -22,7 +112,7 @@ export function normalizeReviewMetadata({ supplied, inherited, content, allowedG
   if (supplied !== undefined && (!object(supplied) || supplied.schemaVersion !== 1 || Buffer.byteLength(JSON.stringify(supplied), 'utf8') > 262144)) fail('review must use schemaVersion 1 and fit in 256 KiB');
   const previous = object(inherited) ? inherited : {};
   const input = supplied || {};
-  const allowedFields = new Set(['schemaVersion', 'gaps', 'omissions', 'completeness', 'acknowledgment', 'proposals', 'citationChecks']);
+  const allowedFields = new Set(['schemaVersion', 'gaps', 'gapRequirements', 'omissions', 'completeness', 'acknowledgment', 'proposals', 'citationChecks', 'discussionProposals']);
   if (Object.keys(input).some((key) => !allowedFields.has(key) && (!(key in previous) || !same(input[key], previous[key])))) fail('Unknown review field');
   const stamp = { actorUserId: actorId, recordedAt: now.toISOString() };
   const records = Object.values(content?.groups || content || {}).filter(Array.isArray).flat();
@@ -30,6 +120,7 @@ export function normalizeReviewMetadata({ supplied, inherited, content, allowedG
   const gapById = new Map(allowedGaps.map((gap) => [gap.id, gap]));
   const next = { ...copy(previous), schemaVersion: 1, gaps: copy(previous.gaps || {}) };
   if (input.proposals !== undefined) next.proposals = normalizeProposalMetadata({ supplied: input.proposals, inherited: previous.proposals, content, baseContent, researchResult, researchJobId, baseVersionId, stamp });
+  if (input.discussionProposals !== undefined) next.discussionProposals = normalizeDiscussionProposals({ supplied: input.discussionProposals, inherited: previous.discussionProposals, content, stamp, baseVersionId });
   if (input.citationChecks !== undefined) {
     if (!object(input.citationChecks) || Object.keys(input.citationChecks).length > 600) fail('Invalid citation checks');
     const sources = new Map((researchResult?.insights || []).flatMap((insight) => normalizeCitations(insight.citations).map((citation, index) => [`${insight.id}:${index}`, citation])));
@@ -54,9 +145,104 @@ export function normalizeReviewMetadata({ supplied, inherited, content, allowedG
       if (value.state === 'closed' && !reason) fail('Closing a gap requires a reason');
       if (previous.gaps?.[id]?.state === 'closed' && value.state !== 'closed' && !reason) fail('Reopening a gap requires a reason');
       if (value.state === 'answered' && !answer) fail('Answered gap requires an answer');
-      const semantic = { answer, reason, state: value.state, affectedIds: (gapById.get(id).affectedIds || []).filter((target) => recordIds.has(target)) };
+      const closureKind = Object.hasOwn(value, 'closureKind')
+        ? (value.closureKind == null ? null : cleanText(value.closureKind, 32, 'Gap closure kind'))
+        : (previous.gaps?.[id]?.closureKind || null);
+      if (closureKind && !['resolved', 'dismissed'].includes(closureKind)) fail('Invalid gap closure kind');
+      if (closureKind === 'dismissed' && value.state !== 'closed') fail('Dismissed gaps must be closed');
+      if (closureKind === 'resolved' && value.state !== 'closed') fail('Resolved gaps must be closed');
+      if (closureKind === 'resolved' && !answer) fail('Resolved gaps require an answer');
+      const semantic = { answer, reason, state: value.state, closureKind, affectedIds: (gapById.get(id).affectedIds || []).filter((target) => recordIds.has(target)) };
       const prior = previous.gaps?.[id];
-      next.gaps[id] = prior && same(semantic, { answer: prior.answer, reason: prior.reason, state: prior.state, affectedIds: prior.affectedIds }) ? copy(prior) : { ...semantic, ...stamp };
+      next.gaps[id] = prior && same(semantic, { answer: prior.answer, reason: prior.reason, state: prior.state, closureKind: prior.closureKind || null, affectedIds: prior.affectedIds }) ? copy(prior) : { ...semantic, ...(closureKind ? { closureKind } : {}), ...stamp };
+    }
+  }
+
+  const suppliedGapRequirements = input.gapRequirements;
+  const hasGapChecklist = suppliedGapRequirements !== undefined || Object.keys(previous.gapRequirements || {}).length > 0;
+  if (suppliedGapRequirements !== undefined && (!object(suppliedGapRequirements) || Object.keys(suppliedGapRequirements).length > 500)) {
+    fail('gapRequirements must be an object with at most 500 gaps');
+  }
+  if (suppliedGapRequirements !== undefined) {
+    for (const gapId of Object.keys(suppliedGapRequirements)) if (!gapById.has(gapId)) fail('Gap is outside the authorized review lineage');
+  }
+  if (hasGapChecklist) {
+    next.gapRequirements = copy(previous.gapRequirements || {});
+    const gapsToTrack = allowedGaps.filter((gap) => {
+      const supplied = suppliedGapRequirements?.[gap.id];
+      return suppliedGapRequirements !== undefined && supplied !== undefined
+        || Object.hasOwn(next.gapRequirements, gap.id)
+        || next.gaps?.[gap.id]?.closureKind === 'resolved';
+    });
+    for (const gap of gapsToTrack) {
+      const linkage = linkedRequirements(content, gap);
+      const supplied = suppliedGapRequirements?.[gap.id];
+      if (supplied !== undefined && (!object(supplied) || Object.keys(supplied).length > Math.max(100, linkage.ids.length + 20))) fail('Invalid GAP requirement checklist');
+      if (supplied !== undefined) {
+        for (const requirementId of Object.keys(supplied)) if (!linkage.ids.includes(requirementId)) fail('Requirement is not linked to this GAP');
+      }
+      const priorChecks = object(next.gapRequirements[gap.id]) ? next.gapRequirements[gap.id] : {};
+      const nextChecks = { ...priorChecks };
+      for (const requirementId of linkage.ids) {
+        const value = supplied?.[requirementId] ?? priorChecks[requirementId] ?? { state: 'pending' };
+        if (!object(value)) fail('Invalid GAP requirement confirmation');
+        const state = value.state || 'pending';
+        if (!['pending', 'incorporated', 'no-change'].includes(state)) fail('Invalid GAP requirement confirmation state');
+        const reason = cleanText(value.reason, 5000, 'GAP requirement confirmation reason');
+        if (state === 'no-change' && !reason) fail('A no-change confirmation requires a reason');
+        const basis = confirmationBasis({ gap, answer: next.gaps?.[gap.id]?.answer || previous.gaps?.[gap.id]?.answer || '', record: linkage.records.get(requirementId) });
+        const prior = priorChecks[requirementId];
+        const current = checkIsCurrent(prior, basis);
+        const missing = linkage.unresolved.includes(requirementId);
+        if (missing || !current && prior && (prior.state === 'incorporated' || prior.state === 'no-change') && state !== 'pending') {
+          nextChecks[requirementId] = { state: 'pending', reason: '', stale: true, unresolved: missing, ...basis, ...(prior.actorUserId ? { previousActorUserId: prior.actorUserId } : {}), ...stamp };
+          continue;
+        }
+        if (state === 'pending') {
+          nextChecks[requirementId] = { state: 'pending', reason: '', ...(missing ? { unresolved: true } : {}), ...basis, ...(prior && current ? { actorUserId: prior.actorUserId, recordedAt: prior.recordedAt } : stamp) };
+          continue;
+        }
+        if (missing) {
+          nextChecks[requirementId] = { state: 'pending', reason: '', unresolved: true, stale: true, ...basis, ...stamp };
+          continue;
+        }
+        if (prior && current && prior.state === state && prior.reason === reason) nextChecks[requirementId] = copy(prior);
+        else nextChecks[requirementId] = { state, reason, ...basis, ...stamp };
+      }
+      // Keep a checked reference that is no longer linked as an explicit stale item.
+      for (const [requirementId, prior] of Object.entries(priorChecks)) {
+        if (Object.hasOwn(nextChecks, requirementId) || !object(prior)) continue;
+        nextChecks[requirementId] = { ...copy(prior), state: 'pending', stale: true, unresolved: true, reason: '' };
+      }
+      next.gapRequirements[gap.id] = nextChecks;
+    }
+  }
+
+  for (const gap of allowedGaps) {
+    const state = next.gaps?.[gap.id];
+    if (!state) continue;
+    const closureKind = state.closureKind || null;
+    if (closureKind === 'resolved') {
+      const linkage = linkedRequirements(content, gap);
+      const checks = next.gapRequirements?.[gap.id] || {};
+      const complete = linkage.ids.length > 0 && linkage.ids.every((requirementId) => {
+        const check = checks[requirementId];
+        const basis = confirmationBasis({ gap, answer: state.answer, record: linkage.records.get(requirementId) });
+        return !linkage.unresolved.includes(requirementId) && (check?.state === 'incorporated' || check?.state === 'no-change') && checkIsCurrent(check, basis);
+      });
+      if (!complete) {
+        const requested = input.gaps?.[gap.id];
+        const explicitlyResolving = requested?.closureKind === 'resolved' && previous.gaps?.[gap.id]?.closureKind !== 'resolved';
+        if (explicitlyResolving) throw new ApiError({ status: 409, code: 'REVIEW_GAP_CHECKLIST_REQUIRED', message: 'Every linked requirement must have a current confirmation before resolving this GAP', details: { gapId: gap.id, requirementIds: linkage.ids, unresolved: linkage.unresolved } });
+        const priorResolution = previous.gaps?.[gap.id];
+        next.gaps[gap.id] = {
+          ...state,
+          state: state.answer?.trim() ? 'answered' : 'open',
+          closureKind: null,
+          resolutionHistory: [...(priorResolution?.resolutionHistory || []), { ...copy(priorResolution || state), reopenedAt: now.toISOString(), reopenedReason: 'Подтверждения требований устарели' }],
+          ...stamp,
+        };
+      }
     }
   }
   if (input.omissions !== undefined) {

@@ -71,7 +71,8 @@ body {
 
 .reqai-research-copy {
   min-width: 0;
-  max-width: 75ch;
+  width: 100%;
+  max-width: none;
   overflow-wrap: break-word;
   word-break: normal;
 }

@@ -4,6 +4,8 @@ import { TOOL_DEFINITIONS } from './schemas.js';
 import { safeLog } from './redaction.js';
 
 const OPERATIONS = Object.freeze({
+  upload_artifact: 'uploadArtifact',
+  cancel_task: 'cancelTask',
   decompose_requirements: 'decompose',
   research_requirements: 'researchRequirements',
   get_task_status: 'getStatus',
@@ -34,11 +36,11 @@ export function createRequirementsMcpServer({ client, token, config, metrics, cl
       outputSchema: definition.outputSchema,
       annotations: {
         readOnlyHint: name.startsWith('get_'),
-        destructiveHint: false,
+        destructiveHint: name === 'cancel_task',
         idempotentHint: name.startsWith('get_'),
         openWorldHint: false,
       },
-      _meta: { 'reqai/toolSchemaVersion': config.schemaVersion, 'reqai/asynchronous': !name.startsWith('get_') },
+      _meta: { 'reqai/toolSchemaVersion': config.schemaVersion, 'reqai/asynchronous': ['decompose_requirements', 'research_requirements', 'cancel_task'].includes(name) },
     }, async (input) => {
       const started = clock();
       try {

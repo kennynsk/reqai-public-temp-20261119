@@ -19,6 +19,22 @@ import { createJobTraceService } from '../services/job-trace-service.js';
 import { createPromptCatalog, defaultPromptBundleRoot } from '../prompts/prompt-catalog.js';
 import { createPromptProfileResolver } from '../prompts/prompt-profile-resolver.js';
 import { createBabokSkillBundleLoader, defaultBabokSkillBundleRoot, qualifyBabokSkillBundle } from '../skills/babok-skill-bundle.js';
+import { RequirementDiscussionRepository } from '../repositories/requirement-discussion-repository.js';
+import { createRequirementDiscussionService } from '../services/requirement-discussion-service.js';
+import { createGigaChatClient } from '../provider/create-gigachat-client.js';
+import { GigaChatProvider } from '../provider/gigachat-provider.js';
+import { ZaiProvider } from '../provider/zai-provider.js';
+import { MockLlmProvider } from '../provider/mock-llm-provider.js';
+
+function discussionGenerator(config) {
+  if (!config?.llm) return null;
+  const provider = config.llm.providerMode === 'mock'
+    ? new MockLlmProvider({ delayMs: config.llm.mockDelayMs })
+    : config.llm.providerMode === 'zai'
+      ? new ZaiProvider({ apiKey: config.llm.apiKey, baseUrl: config.llm.baseUrl })
+      : new GigaChatProvider(createGigaChatClient(config), { modelAliases: config.llm.modelAliases });
+  return (request) => provider.complete(request);
+}
 
 export async function startApiRuntime(config, { createAppFn = createApp } = {}) {
   const promptCatalog = config.features?.versionedPrompts === false ? null : createPromptCatalog({ rootDir: defaultPromptBundleRoot(), maxRenderedBytes: config.prompts.maxRenderedBytes });
@@ -42,6 +58,7 @@ export async function startApiRuntime(config, { createAppFn = createApp } = {}) 
   const eventRepository = databasePool ? new EventRepository(databasePool, { schema: config.database.schema }) : null;
   const webhookRepository = databasePool ? new WebhookRepository(databasePool, { schema: config.database.schema }) : null;
   const requirementsVersionRepository = databasePool ? new RequirementsVersionRepository(databasePool, { schema: config.database.schema }) : null;
+  const requirementDiscussionRepository = databasePool ? new RequirementDiscussionRepository(databasePool, { schema: config.database.schema }) : null;
   const jobTraceRepository = databasePool ? new JobTraceRepository(databasePool, { schema: config.database.schema }) : null;
   const workflowEngine = config.asyncEnabled ? await createTemporalWorkflowEngine(config) : null;
   const requirementsVersionService = databasePool ? createRequirementsVersionService({
@@ -53,6 +70,14 @@ export async function startApiRuntime(config, { createAppFn = createApp } = {}) 
   }) : null;
   const jobService = createJobService({ config, jobRepository, operationalRepository, requirementsVersionService, jobTraceRepository, promptProfileResolver, babokSkillProfile });
   const requirementsIntegrationService = databasePool ? createRequirementsIntegrationService({ config, artifactRepository, jobService, requirementsVersionService }) : null;
+  const requirementDiscussionService = databasePool && config.features?.requirementDiscussion !== false ? createRequirementDiscussionService({
+    config,
+    repository: requirementDiscussionRepository,
+    jobRepository,
+    versionService: requirementsVersionService,
+    generator: discussionGenerator(config),
+    auditRepository,
+  }) : null;
   const services = {
     jobService,
     jobQueryService: createJobQueryService({ config, jobRepository, auditRepository }),
@@ -68,6 +93,7 @@ export async function startApiRuntime(config, { createAppFn = createApp } = {}) 
     promptCatalog,
     babokSkillProfile,
     requirementsIntegrationService,
+    requirementDiscussionService,
   };
   const created = createAppFn({ siteId: config.process.siteId, readiness, config, services });
   const { app } = created;

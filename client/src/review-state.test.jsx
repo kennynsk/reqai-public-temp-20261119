@@ -17,6 +17,26 @@ test('rebase merges independent GAP answers and omission entries without carryin
   expect(remote.review.completeness.stale).toBe(false);
 });
 
+test('editing one requirement invalidates only its GAP confirmation basis', () => {
+  const content = roomBookingRegistry();
+  const decisions = {
+    review: {
+      schemaVersion: 1,
+      gapRequirements: {
+        'GAP-001': { 'BR-001': { state: 'incorporated' }, 'FR-001': { state: 'incorporated' } },
+      },
+    },
+  };
+  const state = { content, decisions, drafts: {} };
+  const next = reviewReducer(state, {
+    type: 'field',
+    key: 'BR:BR-001',
+    value: { group: 'BR', id: 'BR-001', text: 'Новая цель', initialText: content.groups.BR[0].text },
+  });
+  expect(next.decisions.review.gapRequirements['GAP-001']['BR-001']).toMatchObject({ state: 'pending', stale: true });
+  expect(next.decisions.review.gapRequirements['GAP-001']['FR-001']).toEqual({ state: 'incorporated' });
+});
+
 test('assembles every pending field, including a composer, without mutating source', () => {
   const original = roomBookingRegistry();
   let state = { content: original, decisions: {}, drafts: {} };

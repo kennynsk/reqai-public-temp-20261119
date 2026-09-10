@@ -10,6 +10,7 @@ const operations = await readFile(path.join(directory, '003_artifacts_events_ope
 const requirementsVersions = await readFile(path.join(directory, '007_requirements_versions.sql'), 'utf8');
 const jobTrace = await readFile(path.join(directory, '008_job_trace.sql'), 'utf8');
 const attemptLineage = await readFile(path.join(directory, '009_attempt_lineage.sql'), 'utf8');
+const discussions = await readFile(path.join(directory, '012_requirement_discussions.sql'), 'utf8');
 
 test('job migration defines tenant-aware lifecycle and idempotency constraints', () => {
   for (const table of ['jobs', 'idempotency_keys', 'job_steps', 'job_dependencies', 'job_attempts']) {
@@ -57,4 +58,16 @@ test('attempt lineage migration keeps activity executions and repair passes dist
   assert.match(attemptLineage, /FORCE ROW LEVEL SECURITY/);
   assert.match(attemptLineage, /ALTER COLUMN execution_id SET NOT NULL/);
   assert.match(attemptLineage, /UNIQUE \(job_id, step_id, actual_model, execution_id, attempt\)/);
+});
+
+test('discussion migration stores scoped snapshots, attempts and proposals with task cascade', () => {
+  for (const table of ['requirement_discussions', 'requirement_discussion_context_snapshots', 'requirement_discussion_messages', 'requirement_discussion_attempts', 'requirement_discussion_proposals']) {
+    assert.match(discussions, new RegExp(`CREATE TABLE \\{\\{APP_SCHEMA\\}\\}\\.${table}`));
+  }
+  assert.match(discussions, /job_id uuid NOT NULL REFERENCES \{\{APP_SCHEMA\}\}\.jobs\(id\) ON DELETE CASCADE/);
+  assert.match(discussions, /content jsonb NOT NULL/);
+  assert.match(discussions, /UNIQUE \(tenant_id, job_id, anchor_id\)/);
+  assert.match(discussions, /UNIQUE \(discussion_id, client_message_id\)/);
+  assert.match(discussions, /requirement_discussion_active_attempt_idx/);
+  assert.match(discussions, /FORCE ROW LEVEL SECURITY/);
 });

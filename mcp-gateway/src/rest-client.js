@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 const SAFE_DETAIL_KEYS = new Set(['field', 'fields', 'retryAfterSeconds', 'limit', 'mode']);
 
@@ -81,7 +81,7 @@ export function parseBearer(header) {
 }
 
 export function createReqAiClient({ config, fetchImpl = globalThis.fetch }) {
-  async function request({ method, path, token, body, idempotencyKey, timeoutMs = config.backendTimeoutMs }) {
+  async function request({ method, path, token, body, rawBody, contentType, idempotencyKey, timeoutMs = config.backendTimeoutMs }) {
     const requestId = randomUUID();
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -93,12 +93,12 @@ export function createReqAiClient({ config, fetchImpl = globalThis.fetch }) {
           ...(token ? { authorization: `Bearer ${token}` } : {}),
           accept: 'application/json',
           'x-request-id': requestId,
-          ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+          ...(rawBody === undefined ? (body === undefined ? {} : { 'content-type': 'application/json' }) : { 'content-type': `${contentType}; charset=utf-8`, 'x-content-sha256': createHash('sha256').update(rawBody).digest('hex') }),
           ...(idempotencyKey ? { 'idempotency-key': idempotencyKey } : {}),
         },
-        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+        ...(rawBody === undefined ? (body === undefined ? {} : { body: JSON.stringify(body) }) : { body: rawBody }),
       });
-      const text = await response.text();
+      const text = await readLimitedText(response, { limitBytes: config.responseLimitBytes, requestId });
       let payload = null;
       try { payload = text ? JSON.parse(text) : null; } catch { payload = null; }
       if (!response.ok) {
@@ -157,6 +157,8 @@ export function createReqAiClient({ config, fetchImpl = globalThis.fetch }) {
   return Object.freeze({
     health: () => request({ method: 'GET', path: '/health/ready', token: null, timeoutMs: config.authTimeoutMs }),
     authenticate,
+    uploadArtifact: (token, { content, contentType = 'text/plain' }) => request({ method: 'POST', path: '/api/v1/artifacts', token, rawBody: content, contentType }),
+    cancelTask: (token, { jobId }) => request({ method: 'POST', path: `/api/v1/jobs/${encodeURIComponent(jobId)}/cancel`, token }),
     decompose: (token, input) => { const { idempotencyKey, ...body } = input; return request({ method: 'POST', path: '/api/v1/decompositions', token, body, idempotencyKey }); },
     researchRequirements: (token, input) => { const { idempotencyKey, versionId, ...body } = input; return request({ method: 'POST', path: `/api/v1/requirements/versions/${encodeURIComponent(versionId)}/research`, token, body, idempotencyKey }); },
     getStatus: (token, { jobId }) => request({ method: 'GET', path: `/api/v1/jobs/${encodeURIComponent(jobId)}`, token }),

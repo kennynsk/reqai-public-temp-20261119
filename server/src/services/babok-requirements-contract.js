@@ -377,6 +377,59 @@ export function validateBabokConsolidation(value, { failedChunks = [] } = {}) {
   return value;
 }
 
+// Applied to new model-generated results, not historical or manually edited
+// registries. Shape compatibility alone does not establish skill compliance.
+export function collectBabokQualityIssues(value, { final = false } = {}) {
+  validateBabokRegistry(value);
+  const issues = [];
+  const contractViolation = (path, reason) => issues.push({ path, reason });
+  const gapIds = new Set(value.analysis.GAP.map((gap) => gap.id));
+  const gapsFor = (record) => value.analysis.GAP.filter((gap) => gap.affectedIds.includes(record.id)
+    || [...(record.relatedIds || []), ...(record.relatedTo || [])].includes(gap.id));
+  for (const type of BABOK_REQUIREMENT_TYPES) {
+    for (const [index, record] of value.groups[type].entries()) {
+      const path = `$.groups.${type}[${index}]`;
+      if (record.provenance === 'Предложено — требует подтверждения') {
+        contractViolation(`${path}.provenance`, `${record.id}: предложенное требование нужно подтвердить или перенести в гипотезы.`);
+      }
+      if (record.quality === 'Требует уточнения' && !gapsFor(record).length) {
+        contractViolation(`${path}.quality`, `${record.id}: отмечено «Требует уточнения», но не указана связь с пробелом GAP. Уточните, какие сведения отсутствуют.`);
+      }
+      if (type === 'NFR' && (!record.scope || !record.verificationMethod)) {
+        contractViolation(path, `${record.id}: уточните область действия и способ проверки нефункционального требования.`);
+      }
+      if (type === 'SR' && record.quality === 'Готово' && !record.role) {
+        contractViolation(`${path}.role`, `${record.id}: уточните роль заинтересованной стороны.`);
+      }
+      if (type === 'TR' && !record.completionCriterion) {
+        contractViolation(`${path}.completionCriterion`, `${record.id}: уточните критерий завершения перехода.`);
+      }
+    }
+  }
+  if (value.summary.conclusions.length > 5) contractViolation('$.summary.conclusions', 'В резюме больше пяти выводов: выделите основные.');
+  if (value.analysis.questions.length > 7) contractViolation('$.analysis.questions', 'В списке больше семи вопросов: уточните приоритеты.');
+  if (final) {
+    const records = BABOK_REQUIREMENT_TYPES.flatMap((type) => value.groups[type]);
+    const linked = (parent, child) => (parent.relatedIds || []).includes(child.id)
+      || (child.relatedTo || []).includes(parent.id)
+      || value.analysis.traceability.some((link) => link.from === parent.id && link.to === child.id && link.status === 'Подтверждено источником');
+    for (const record of [...value.groups.BR, ...value.groups.SR]) {
+      const childTypes = record.id.startsWith('BR-') ? ['SR-'] : ['SR-', 'FR-', 'NFR-'];
+      if (!records.some((child) => child.id !== record.id && childTypes.some((prefix) => child.id.startsWith(prefix)) && linked(record, child)) && !gapsFor(record).length) {
+        contractViolation('$.analysis.GAP', `${record.id}: не показано покрытие дочерними требованиями или связь с пробелом GAP. Проверьте полноту декомпозиции.`);
+      }
+    }
+    if (gapIds.size && !value.analysis.questions.length) contractViolation('$.analysis.questions', 'Для выявленных пробелов не сформулированы вопросы. Добавьте вопросы для уточнения.');
+  }
+  return issues;
+}
+
+export function validateBabokSkillResult(value, options = {}) {
+  const [issue] = collectBabokQualityIssues(value, options);
+  if (issue) contractViolation(issue.path, issue.reason);
+  return value;
+}
+
 export function babokIdentifierSet(registry) {
   validateBabokRegistry(registry);
   const ids = [

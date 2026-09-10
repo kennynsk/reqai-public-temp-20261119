@@ -81,3 +81,21 @@ test('result-not-ready stays canonical and retryable without a gateway wait loop
   await assert.rejects(client.getResult('human-token', { jobId: UUID }), (error) => error.code === 'RESULT_NOT_READY' && error.retryable);
   assert.equal(calls, 1);
 });
+
+
+test('upload preserves UTF-8 bytes and caller auth; cancel uses canonical endpoint without a body', async () => {
+  const calls = [];
+  const config = { backendUrl: 'http://backend', backendTimeoutMs: 1000, responseLimitBytes: 4096 };
+  const client = createReqAiClient({ config, fetchImpl: async (url, options) => { calls.push({ url, ...options }); return new Response('{}', { status: 200 }); } });
+  const content = '  Требования\n';
+  await client.uploadArtifact('caller', { content, contentType: 'text/markdown' });
+  const { createHash } = await import('node:crypto');
+  assert.equal(calls[0].body, content);
+  assert.equal(calls[0].headers['x-content-sha256'], createHash('sha256').update(content).digest('hex'));
+  assert.equal(calls[0].headers.authorization, 'Bearer caller');
+  assert.equal(calls[0].headers['content-type'], 'text/markdown; charset=utf-8');
+  await client.cancelTask('caller', { jobId: 'example' });
+  assert.equal(calls[1].url, 'http://backend/api/v1/jobs/example/cancel');
+  assert.equal(calls[1].method, 'POST');
+  assert.equal(calls[1].body, undefined);
+});

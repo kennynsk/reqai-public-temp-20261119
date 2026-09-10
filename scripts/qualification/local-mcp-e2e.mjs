@@ -28,12 +28,14 @@ async function call(name, args) {
 try {
   const listed = await client.listTools();
   const tools = listed.tools.map((tool) => tool.name);
-  const expectedTools = ['decompose_requirements', 'research_requirements', 'get_task_status', 'get_task_result'];
+  const expectedTools = ['decompose_requirements', 'research_requirements', 'get_task_status', 'get_task_result', 'upload_artifact', 'cancel_task', 'get_task_result_content'];
   if (JSON.stringify(tools) !== JSON.stringify(expectedTools)) throw new Error(`Unexpected MCP tools: ${JSON.stringify(tools)}`);
 
+  const material = await call('upload_artifact', { content: businessContext, contentType: 'text/plain' });
   const decomposition = await call('decompose_requirements', {
     idempotencyKey: `mcp-decompose-${randomUUID()}`,
-    businessContext,
+    inputArtifactId: material.artifactId,
+    promptVersion: '2.3.0',
     model,
     temperature: 0.2,
   });
@@ -41,15 +43,19 @@ try {
   const decompositionStatus = await waitForJob(baseUrl, decomposition.jobId, readMcpStatus);
   const decompositionMetadata = await call('get_task_result', { jobId: decomposition.jobId });
   verifyModel(decompositionMetadata, model);
-  const decompositionResult = await readResult(baseUrl, decomposition.jobId);
-  const requirements = collectRequirements(decompositionResult.content);
-  if (!Object.values(requirements).some((items) => items.length)) throw new Error('MCP decomposition returned no requirements to save');
+  const raw = await call('get_task_result_content', { jobId: decomposition.jobId, format: 'raw' });
+  const decompositionResult = { metadata: decompositionMetadata, content: JSON.parse(raw.content) };
+  const report = await call('get_task_result_content', { jobId: decomposition.jobId, format: 'markdown' });
+  if ((report.content.match(/^## /gm) || []).length !== 12) throw new Error('Expected 12 BABOK report sections');
+  const registry = decompositionResult.content;
+  const requirements = registry.schemaVersion === 'babok-requirements.v1' ? registry : collectRequirements(registry);
+  if (!Object.values(registry.groups || requirements).some((items) => Array.isArray(items) && items.length)) throw new Error('MCP decomposition returned no requirements to save');
 
   // Version persistence is a REST domain resource; all asynchronous operations and reads stay on MCP.
   const version = await json(await fetch(`${baseUrl}/api/v1/requirements/versions`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ sourceJobId: decomposition.jobId, requirements, decisions: { qualification: 'direct-mcp' } }),
+    body: JSON.stringify({ sourceJobId: decomposition.jobId, ...(registry.schemaVersion === 'babok-requirements.v1' ? { registry } : { requirements }), decisions: { qualification: 'direct-mcp' } }),
   }));
   const research = await call('research_requirements', {
     idempotencyKey: `mcp-research-${randomUUID()}`,

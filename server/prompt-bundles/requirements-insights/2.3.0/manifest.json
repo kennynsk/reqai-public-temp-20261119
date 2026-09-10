@@ -1,0 +1,22 @@
+{
+  "id": "requirements-insights",
+  "version": "2.3.0",
+  "displayName": "Research-driven new requirements and solution improvements",
+  "workflowPurposes": [
+    "REQUIREMENTS_INSIGHTS"
+  ],
+  "outputSchemaVersion": "requirements-insights.v1",
+  "templates": {
+    "insights": {
+      "path": "insights.md",
+      "requiredVariables": [
+        "babokIdentifierSet",
+        "businessContext",
+        "requirementsSection",
+        "reviewContext",
+        "supportingMaterials"
+      ],
+      "sha256": "51457502d79e1ca5ae597646504e9569f1dbe2ce55d78bd1cca5169861523e73"
+    }
+  }
+}

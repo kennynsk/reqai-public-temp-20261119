@@ -1,0 +1,22 @@
+{
+  "id": "requirements-insights",
+  "version": "2.2.0",
+  "displayName": "BABOK research with ready requirement wording",
+  "workflowPurposes": [
+    "REQUIREMENTS_INSIGHTS"
+  ],
+  "outputSchemaVersion": "requirements-insights.v1",
+  "templates": {
+    "insights": {
+      "path": "insights.md",
+      "requiredVariables": [
+        "babokIdentifierSet",
+        "businessContext",
+        "requirementsSection",
+        "reviewContext",
+        "supportingMaterials"
+      ],
+      "sha256": "3b96d8df7b5c47e638a34371e099bc57b36ca4173f75c7c07777f1989d363220"
+    }
+  }
+}

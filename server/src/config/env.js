@@ -189,12 +189,21 @@ export function loadConfig(env = process.env, { loadFiles = env === process.env 
     features: {
       requirementsIntegrationApi: bool(env, 'REQUIREMENTS_INTEGRATION_API_ENABLED', true),
       versionedPrompts: bool(env, 'VERSIONED_PROMPTS_ENABLED', true),
+      requirementDiscussion: bool(env, 'REQUIREMENT_DISCUSSION_ENABLED', true),
+    },
+    aiDiscussion: {
+      messageChars: integer(env, 'DISCUSSION_MESSAGE_MAX_CHARS', 12000, { min: 256, max: 100000 }),
+      contextBytes: integer(env, 'DISCUSSION_CONTEXT_MAX_BYTES', 120000, { min: 4096, max: 1048576 }),
+      outputChars: integer(env, 'DISCUSSION_OUTPUT_MAX_CHARS', 30000, { min: 256, max: 200000 }),
+      historyMessages: integer(env, 'DISCUSSION_HISTORY_MESSAGES', 40, { min: 1, max: 200 }),
+      maxChanges: integer(env, 'DISCUSSION_MAX_CHANGES', 20, { min: 1, max: 100 }),
+      promptVersion: optionalString(env, 'DISCUSSION_PROMPT_VERSION', '1.0.0'),
     },
     prompts: {
       maxRenderedBytes: integer(env, 'PROMPT_MAX_RENDERED_BYTES', 2_097_152, { min: 1024, max: 10_485_760 }),
       policy: {
-        'requirements-decomposition': promptRelease(env, 'PROMPT_DECOMPOSITION', '2.2.0', ['1.0.0', '2.0.0', '2.1.0', '2.2.0']),
-        'requirements-insights': promptRelease(env, 'PROMPT_REQUIREMENTS_INSIGHTS', '2.0.0', ['1.0.0', '2.0.0']),
+        'requirements-decomposition': promptRelease(env, 'PROMPT_DECOMPOSITION', '2.3.0', ['1.0.0', '2.0.0', '2.1.0', '2.2.0', '2.3.0']),
+        'requirements-insights': promptRelease(env, 'PROMPT_REQUIREMENTS_INSIGHTS', '2.3.0', ['1.0.0', '2.0.0', '2.1.0', '2.2.0', '2.3.0']),
       },
     },
     skills: {

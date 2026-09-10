@@ -36,6 +36,28 @@ describe('review metadata', () => {
     });
   });
 
+  test('keeps unrelated GAP confirmations when a complete gap map changes one answer', () => {
+    const decisions = {
+      review: {
+        schemaVersion: 1,
+        gaps: {
+          'GAP-1': { state: 'answered', answer: 'Первый' },
+          'GAP-2': { state: 'answered', answer: 'Второй' },
+        },
+        gapRequirements: {
+          'GAP-1': { 'FR-1': { state: 'incorporated' } },
+          'GAP-2': { 'FR-2': { state: 'incorporated' } },
+        },
+      },
+    };
+    const next = updateReviewMetadata(decisions, {
+      gaps: { ...decisions.review.gaps, 'GAP-1': { state: 'answered', answer: 'Изменённый' } },
+    });
+    expect(next.review.gapRequirements).toEqual({
+      'GAP-2': { 'FR-2': { state: 'incorporated' } },
+    });
+  });
+
   test('invalidates only evidence that exists and is a no-op without a review', () => {
     const withoutReview = { BR: [] };
     expect(invalidateReviewEvidence(withoutReview)).toBe(withoutReview);

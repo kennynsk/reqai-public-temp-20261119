@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { loadConfig } from '../src/config.js';
-import { TOOL_DEFINITIONS, decomposeRequirementsInput, researchRequirementsInput, taskResultContentInput, taskResultContentOutput, taskStatusOutput, taskResultOutput } from '../src/schemas.js';
+import { uploadArtifactInput, TOOL_DEFINITIONS, decomposeRequirementsInput, researchRequirementsInput, taskResultContentInput, taskResultContentOutput, taskStatusOutput, taskResultOutput } from '../src/schemas.js';
 
 const UUID = '123e4567-e89b-42d3-a456-426614174000';
 
@@ -16,9 +16,9 @@ test('configuration is disabled by default and production fails closed', () => {
   assert.throws(() => loadConfig({ MCP_IAM_AUDIENCE_MODE: 'exchange' }), /forward-same-audience/);
 });
 
-test('exactly five versioned tools are exposed and no prompt/resource capability exists', () => {
-  assert.deepEqual(Object.keys(TOOL_DEFINITIONS), ['decompose_requirements', 'research_requirements', 'get_task_status', 'get_task_result', 'get_task_result_content']);
-  assert.equal(loadConfig({}).schemaVersion, '2.1.0');
+test('exactly seven versioned tools are exposed and no prompt/resource capability exists', () => {
+  assert.deepEqual(Object.keys(TOOL_DEFINITIONS), ['decompose_requirements', 'research_requirements', 'get_task_status', 'get_task_result', 'upload_artifact', 'cancel_task', 'get_task_result_content']);
+  assert.equal(loadConfig({}).schemaVersion, '2.2.0');
 });
 
 test('tool input schemas reject unknown and technical identity or lineage fields', () => {
@@ -52,4 +52,12 @@ test('result content input defaults to markdown and output carries bounded text'
   assert.equal(taskResultContentInput.safeParse({ jobId: UUID, format: 'html' }).success, false);
   assert.equal(taskResultContentOutput.safeParse({ jobId: UUID, format: 'markdown', contentType: 'text/markdown', content: '# Requirements' }).success, true);
   assert.equal(taskResultContentOutput.safeParse({ jobId: UUID, format: 'markdown', contentType: 'text/markdown', content: 'x'.repeat(1_000_001) }).success, false);
+});
+
+
+test('upload enforces UTF-8 byte limit and rejects paths, identities and unsupported content types', () => {
+  assert.equal(uploadArtifactInput.safeParse({ content: 'я'.repeat(131072) }).success, true);
+  for (const input of [{ content: 'я'.repeat(131073) }, { content: '' }, { path: '/tmp/private' }, { content: 'x', tenantId: UUID }, { content: 'x', contentType: 'application/pdf' }]) {
+    assert.equal(uploadArtifactInput.safeParse(input).success, false);
+  }
 });

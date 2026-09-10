@@ -49,3 +49,12 @@ test('BABOK report renderer keeps a shared traceability child in one tree branch
   assert.match(trace, /BR-001/);
   assert.match(trace, /BR-002/);
 });
+
+test('report preserves GAP annotations, confirmed conflicts and shared parent links', () => {
+  const registry = JSON.parse(readFileSync(new URL('./fixtures/babok-requirements-v1.complete.json', import.meta.url), 'utf8'));
+  registry.groups.BR[0].quality = 'Требует уточнения';
+  registry.analysis.traceability.push({ from: 'FR-001', to: 'NFR-001', relation: 'конфликтует', status: 'Подтверждено источником', source: null });
+  const report = renderBabokReport(registry);
+  assert.match(report, /Требует уточнения \(GAP-001\)/);
+  assert.match(report, /\| FR-001 \| NFR-001 \| конфликтует \| Подтверждено источником \|/);
+});

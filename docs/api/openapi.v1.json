@@ -23,9 +23,9 @@
       "post": {
         "operationId": "startDecomposition",
         "summary": "Start asynchronous requirements decomposition",
-        "description": "Inline businessContext is limited to the JSON request limit. Upload larger inputs through POST /api/v1/artifacts and provide inputArtifactId.",
+        "description": "Inline businessContext is limited to the JSON request limit. Upload larger inputs through POST /api/v1/artifacts and provide inputArtifactId (mutually exclusive with businessContext). Optional baselineArtifactId and referenceArtifactIds attach comparison and reference materials. Set promptVersion to 2.3.0 for original BABOK skill execution; when omitted, the configured active version is used. Discover available models and prompt releases through GET /api/v1.",
         "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }],
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DecompositionRequest" } } } },
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DecompositionRequest" }, "example": { "businessContext": "Сотрудник создаёт заявку. Руководитель согласует её или возвращает на доработку.", "model": "glm-5.3-flash", "temperature": 0.2, "promptVersion": "2.3.0" } } } },
         "responses": {
           "202": { "description": "Canonical job accepted", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JobAccepted" } } } },
           "400": { "$ref": "#/components/responses/BadRequest" },
@@ -181,6 +181,82 @@
         }
       }
     },
+    "/api/v1/jobs/{jobId}/discussions": {
+      "post": {
+        "operationId": "openRequirementDiscussion",
+        "summary": "Open or resume a contextual requirements discussion",
+        "parameters": [{ "$ref": "#/components/parameters/JobId" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OpenRequirementDiscussion" } } } },
+        "responses": {
+          "201": { "description": "Discussion opened without starting generation", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RequirementDiscussion" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/v1/jobs/{jobId}/discussions/{anchorId}": {
+      "get": {
+        "operationId": "getRequirementDiscussion",
+        "summary": "Read scoped discussion history for an anchor",
+        "parameters": [{ "$ref": "#/components/parameters/JobId" }, { "$ref": "#/components/parameters/DiscussionAnchorId" }, { "name": "cursor", "in": "query", "schema": { "type": "string", "format": "date-time" } }, { "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 50 } }],
+        "responses": {
+          "200": { "description": "Messages in chronological order", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RequirementDiscussion" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/v1/jobs/{jobId}/discussions/{anchorId}/events": {
+      "get": {
+        "operationId": "streamRequirementDiscussionEvents",
+        "summary": "Stream recoverable discussion generation events",
+        "parameters": [{ "$ref": "#/components/parameters/JobId" }, { "$ref": "#/components/parameters/DiscussionAnchorId" }, { "name": "Last-Event-ID", "in": "header", "schema": { "type": "integer", "minimum": 0 } }],
+        "responses": {
+          "200": { "description": "SSE discussion events", "content": { "text/event-stream": { "schema": { "type": "string" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/v1/jobs/{jobId}/discussions/{anchorId}/messages": {
+      "post": {
+        "operationId": "sendRequirementDiscussionMessage",
+        "summary": "Submit one idempotent contextual discussion turn",
+        "parameters": [{ "$ref": "#/components/parameters/JobId" }, { "$ref": "#/components/parameters/DiscussionAnchorId" }, { "$ref": "#/components/parameters/IdempotencyKey" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DiscussionMessageRequest" } } } },
+        "responses": {
+          "202": { "description": "Generation completed or is recoverable by attempt id", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RequirementDiscussionTurn" } } } },
+          "200": { "description": "Idempotent replay of a prior turn", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RequirementDiscussionTurn" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "413": { "$ref": "#/components/responses/PayloadTooLarge" },
+          "502": { "$ref": "#/components/responses/Unavailable" }
+        }
+      }
+    },
+    "/api/v1/jobs/{jobId}/discussions/attempts/{attemptId}/retry": {
+      "post": {
+        "operationId": "retryRequirementDiscussion",
+        "summary": "Retry a failed or cancelled discussion attempt",
+        "parameters": [{ "$ref": "#/components/parameters/JobId" }, { "$ref": "#/components/parameters/DiscussionAttemptId" }],
+        "responses": { "202": { "description": "Retry result", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RequirementDiscussionTurn" } } } }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }, "409": { "$ref": "#/components/responses/Conflict" } }
+      }
+    },
+    "/api/v1/jobs/{jobId}/discussions/attempts/{attemptId}/cancel": {
+      "post": {
+        "operationId": "cancelRequirementDiscussion",
+        "summary": "Cancel active discussion generation",
+        "parameters": [{ "$ref": "#/components/parameters/JobId" }, { "$ref": "#/components/parameters/DiscussionAttemptId" }],
+        "responses": { "202": { "description": "Cancellation requested", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DiscussionAttempt" } } } }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }, "409": { "$ref": "#/components/responses/Conflict" } }
+      }
+    },
     "/api/v1/jobs/{jobId}": {
       "get": {
         "operationId": "getJob",
@@ -207,11 +283,22 @@
     "/api/v1/jobs/{jobId}/result/content": {
       "get": {
         "operationId": "downloadJobResult",
-        "parameters": [{ "$ref": "#/components/parameters/JobId" }],
+        "description": "Download the stored result in its original content type (raw, the default), or render a babok-requirements.v1 result as the full BABOK Markdown report. A babok-text-draft.v1 fallback exposes preserved model responses as Markdown; it is not an editable requirements registry. Result metadata is available separately at /api/v1/jobs/{jobId}/result.",
+        "parameters": [
+          { "$ref": "#/components/parameters/JobId" },
+          { "name": "format", "in": "query", "required": false, "description": "raw preserves the stored artifact; markdown is available for BABOK JSON results only.", "schema": { "type": "string", "enum": ["raw", "markdown"], "default": "raw" } }
+        ],
         "responses": {
-          "200": { "description": "Streamed result artifact", "content": { "application/octet-stream": { "schema": { "type": "string", "contentEncoding": "binary" } } } },
+          "200": { "description": "Stored result or rendered Markdown report. Raw responses retain the artifact Content-Type.", "content": {
+            "application/json": { "schema": { "type": "object", "additionalProperties": true }, "example": { "schemaVersion": "babok-requirements.v1" } },
+            "text/markdown": { "schema": { "type": "string" } },
+            "application/octet-stream": { "schema": { "type": "string", "contentEncoding": "binary" } }
+          } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
           "401": { "$ref": "#/components/responses/Unauthorized" },
-          "404": { "$ref": "#/components/responses/NotFound" }
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "description": "Result is not yet available, or REPORT_FORMAT_UNAVAILABLE when the stored result cannot be rendered as BABOK Markdown.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } }
         }
       }
     },
@@ -455,7 +542,9 @@
       "JobId": { "name": "jobId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
       "TraceEntryId": { "name": "entryId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
       "ArtifactId": { "name": "artifactId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
-      "RequirementsVersionId": { "name": "versionId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+      "RequirementsVersionId": { "name": "versionId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
+      "DiscussionAnchorId": { "name": "anchorId", "in": "path", "required": true, "schema": { "type": "string", "pattern": "^(BR|SR|FR|NFR|TR|CON|GAP)-[A-Za-z0-9_-]{1,96}$" } },
+      "DiscussionAttemptId": { "name": "attemptId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
     },
     "schemas": {
       "JobType": { "type": "string", "enum": ["DECOMPOSITION", "RESEARCH"] },
@@ -875,16 +964,138 @@
             "state": { "enum": ["open", "answered", "closed"] },
             "answer": { "type": "string", "maxLength": 20000 },
             "reason": { "type": "string", "maxLength": 5000, "description": "Required for closing and reopening." },
+            "closureKind": { "type": ["string", "null"], "enum": ["resolved", "dismissed", null], "description": "Resolved requires current confirmations; dismissed records an explicit reason." },
             "affectedIds": { "type": "array", "readOnly": true, "items": { "type": "string" } },
             "actorUserId": { "type": "string", "readOnly": true },
-            "recordedAt": { "type": "string", "format": "date-time", "readOnly": true }
+            "recordedAt": { "type": "string", "format": "date-time", "readOnly": true },
+            "resolutionHistory": { "type": "array", "readOnly": true, "items": { "type": "object", "additionalProperties": true } }
           } } },
+          "gapRequirements": { "type": "object", "maxProperties": 500, "description": "Per-GAP confirmations. Every linked requirement must be explicitly incorporated or marked no-change with a reason before resolved closure.", "additionalProperties": { "type": "object", "additionalProperties": { "type": "object", "required": ["state"], "properties": { "state": { "enum": ["pending", "incorporated", "no-change"] }, "reason": { "type": "string", "maxLength": 5000 }, "questionHash": { "type": "string", "readOnly": true }, "answerHash": { "type": "string", "readOnly": true }, "requirementHash": { "type": "string", "readOnly": true }, "stale": { "type": "boolean", "readOnly": true }, "unresolved": { "type": "boolean", "readOnly": true }, "actorUserId": { "type": "string", "readOnly": true }, "recordedAt": { "type": "string", "format": "date-time", "readOnly": true } } } } },
           "omissions": { "type": "array", "maxItems": 200, "items": { "type": "object", "required": ["id", "text", "requirementIds"], "properties": { "id": { "type": "string", "pattern": "^OMISSION-[a-zA-Z0-9_-]{1,80}$" }, "text": { "type": "string", "maxLength": 5000 }, "requirementIds": { "type": "array", "maxItems": 100, "items": { "type": "string" } } } } },
           "completeness": { "type": "object", "description": "Send check:true to record a new manual check; checked/stale/contentHash/actor/time are authoritative output.", "properties": { "check": { "type": "boolean" }, "note": { "type": "string", "maxLength": 5000 }, "checked": { "type": "boolean", "readOnly": true }, "stale": { "type": "boolean" } } },
           "acknowledgment": { "type": "object", "description": "Send confirm:true after reviewing the current open issue list. New-client finalization with open issues requires a current acknowledgment. It is not semantic approval.", "properties": { "confirm": { "type": "boolean" }, "confirmed": { "type": "boolean", "readOnly": true }, "stale": { "type": "boolean" }, "issueIds": { "type": "array", "readOnly": true, "items": { "type": "string" } } } },
           "proposals": { "type": "object", "maxProperties": 500, "description": "Stable insight-id:index keys. Values retain operation add/replace, targetType/targetId, originalText, before/after and decision accepted/rejected; reversal is retain-manual or restore-before. Exact new records, replacement snapshots and original wording are validated against authorized lineage; unchanged historical evidence survives later manual edits.", "additionalProperties": { "type": "object" } },
-          "citationChecks": { "type": "object", "maxProperties": 600, "description": "Stable insight-id:citation-index keys. The server resolves the original citation and rejects checked:true for unsafe/non-HTTP(S) URLs. No external request occurs.", "additionalProperties": { "type": "object", "required": ["checked"], "properties": { "checked": { "type": "boolean" }, "note": { "type": "string", "maxLength": 5000 } } } }
+          "citationChecks": { "type": "object", "maxProperties": 600, "description": "Stable insight-id:citation-index keys. The server resolves the original citation and rejects checked:true for unsafe/non-HTTP(S) URLs. No external request occurs.", "additionalProperties": { "type": "object", "required": ["checked"], "properties": { "checked": { "type": "boolean" }, "note": { "type": "string", "maxLength": 5000 } } } },
+          "discussionProposals": { "type": "object", "maxProperties": 500, "description": "Local acceptance or rejection receipts for contextual AI proposal packages. The server stamps actor and time when persisted.", "additionalProperties": { "type": "object", "required": ["proposalId", "decision", "baseHash", "changes"], "properties": { "proposalId": { "type": "string" }, "decision": { "enum": ["accepted", "rejected"] }, "baseHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" }, "changes": { "type": "array", "maxItems": 20, "items": { "$ref": "#/components/schemas/DiscussionProposalChange" } }, "gapBases": { "type": "object", "additionalProperties": { "type": "object", "required": ["question", "answer"], "properties": { "question": { "type": "string" }, "answer": { "type": "string" } } } }, "discarded": { "type": "boolean" }, "actorUserId": { "type": "string", "readOnly": true }, "recordedAt": { "type": "string", "format": "date-time", "readOnly": true } } } }
         }
+      },
+      "OpenRequirementDiscussion": {
+        "type": "object",
+        "required": ["anchorId"],
+        "properties": {
+          "anchorId": { "type": "string", "pattern": "^(BR|SR|FR|NFR|TR|CON|GAP)-[A-Za-z0-9_-]{1,96}$" },
+          "anchorType": { "type": "string", "enum": ["BR", "SR", "FR", "NFR", "TR", "CON", "GAP"] },
+          "baseVersionId": { "type": "string", "format": "uuid", "description": "Required when creating a new discussion; the version must belong to the task." }
+        },
+        "additionalProperties": false
+      },
+      "DiscussionContextSummary": {
+        "type": "object",
+        "required": ["manifest", "includedBytes", "unsavedDraft"],
+        "properties": {
+          "baseVersionId": { "type": ["string", "null"], "format": "uuid" },
+          "manifest": { "type": "object", "additionalProperties": true },
+          "includedBytes": { "type": "integer", "minimum": 0 },
+          "omitted": { "type": "array", "items": { "type": "string" } },
+          "unsavedDraft": { "type": "boolean" }
+        }
+      },
+      "DiscussionMessage": {
+        "type": "object",
+        "required": ["messageId", "role", "status", "text", "createdAt"],
+        "properties": {
+          "messageId": { "type": "string", "format": "uuid" },
+          "role": { "type": "string", "enum": ["user", "assistant", "system"] },
+          "status": { "type": "string", "enum": ["pending", "streaming", "completed", "failed", "cancelled"] },
+          "text": { "type": "string", "maxLength": 30000 },
+          "clientMessageId": { "type": ["string", "null"] },
+          "generationId": { "type": ["string", "null"], "format": "uuid" },
+          "contextSnapshotId": { "type": ["string", "null"], "format": "uuid" },
+          "errorCode": { "type": ["string", "null"] },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "completedAt": { "type": ["string", "null"], "format": "date-time" }
+        }
+      },
+      "DiscussionAttempt": {
+        "type": "object",
+        "required": ["attemptId", "discussionId", "status", "generationId", "model", "promptVersion"],
+        "properties": {
+          "attemptId": { "type": "string", "format": "uuid" },
+          "discussionId": { "type": "string", "format": "uuid" },
+          "userMessageId": { "type": "string", "format": "uuid" },
+          "assistantMessageId": { "type": "string", "format": "uuid" },
+          "contextSnapshotId": { "type": "string", "format": "uuid" },
+          "baseVersionId": { "type": ["string", "null"], "format": "uuid" },
+          "generationId": { "type": "string", "format": "uuid" },
+          "model": { "type": "string" },
+          "promptVersion": { "type": "string" },
+          "status": { "type": "string", "enum": ["running", "completed", "failed", "cancelled"] },
+          "errorCode": { "type": ["string", "null"] },
+          "startedAt": { "type": "string", "format": "date-time" },
+          "completedAt": { "type": ["string", "null"], "format": "date-time" }
+        }
+      },
+      "DiscussionProposalChange": {
+        "type": "object",
+        "required": ["targetId", "before", "after", "beforeHash"],
+        "properties": {
+          "targetId": { "type": "string" },
+          "targetType": { "type": "string" },
+          "before": { "type": "object", "additionalProperties": { "type": "string" } },
+          "after": { "type": "object", "additionalProperties": { "type": "string" } },
+          "beforeHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+          "rationale": { "type": "string", "maxLength": 5000 }
+        }
+      },
+      "DiscussionProposal": {
+        "type": "object",
+        "required": ["proposalId", "schemaVersion", "explanation", "changes", "baseHash"],
+        "properties": {
+          "proposalId": { "type": "string", "format": "uuid" },
+          "schemaVersion": { "type": "string", "const": "requirement-discussion-proposal.v1" },
+          "baseVersionId": { "type": ["string", "null"], "format": "uuid", "description": "Saved requirements version used as the proposal basis." },
+          "explanation": { "type": "string", "maxLength": 30000 },
+          "changes": { "type": "array", "maxItems": 20, "items": { "$ref": "#/components/schemas/DiscussionProposalChange" } },
+          "baseHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+          "gapBases": { "type": "object", "maxProperties": 500, "additionalProperties": { "type": "object", "required": ["question", "answer"], "properties": { "question": { "type": "string", "maxLength": 20000 }, "answer": { "type": "string", "maxLength": 20000 } }, "additionalProperties": false } }
+        }
+      },
+      "DiscussionMessageRequest": {
+        "type": "object",
+        "required": ["message", "baseVersionId"],
+        "properties": {
+          "message": { "type": "string", "minLength": 1, "maxLength": 12000 },
+          "clientMessageId": { "type": "string", "minLength": 8, "maxLength": 128 },
+          "baseVersionId": { "type": "string", "format": "uuid" },
+          "draft": { "type": "object", "description": "Optional current unsaved registry and review decisions; validated server-side.", "additionalProperties": true },
+          "model": { "type": "string" }
+        },
+        "additionalProperties": false
+      },
+      "RequirementDiscussion": {
+        "type": "object",
+        "required": ["discussionId", "jobId", "anchorId", "anchorType", "messages", "nextCursor"],
+        "properties": {
+          "discussionId": { "type": "string", "format": "uuid" },
+          "tenantId": { "type": "string", "readOnly": true },
+          "ownerUserId": { "type": "string", "readOnly": true },
+          "jobId": { "type": "string", "format": "uuid" },
+          "anchorId": { "type": "string" },
+          "anchorType": { "type": "string" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" },
+          "messages": { "type": "array", "items": { "$ref": "#/components/schemas/DiscussionMessage" } },
+          "nextCursor": { "type": ["string", "null"] },
+          "attempt": { "$ref": "#/components/schemas/DiscussionAttempt" },
+          "contextSummary": { "$ref": "#/components/schemas/DiscussionContextSummary" },
+          "proposal": { "$ref": "#/components/schemas/DiscussionProposal" }
+        }
+      },
+      "RequirementDiscussionTurn": {
+        "allOf": [
+          { "$ref": "#/components/schemas/RequirementDiscussion" },
+          { "type": "object", "properties": { "replayed": { "type": "boolean" }, "userMessage": { "$ref": "#/components/schemas/DiscussionMessage" }, "assistantMessage": { "$ref": "#/components/schemas/DiscussionMessage" } } }
+        ]
       },
       "CreateRequirementsVersion": {
         "type": "object",
@@ -1092,7 +1303,8 @@
               "decompositionModes",
               "researchModes",
               "domainOperations",
-              "promptReleases"
+              "promptReleases",
+              "requirementDiscussion"
             ],
             "properties": {
               "models": {
@@ -1122,6 +1334,10 @@
                     "requirements-research"
                   ]
                 }
+              },
+              "requirementDiscussion": {
+                "type": "boolean",
+                "description": "Whether contextual requirement discussion endpoints and UI entry points are enabled for this runtime."
               },
               "promptReleases": {
                 "type": "object",

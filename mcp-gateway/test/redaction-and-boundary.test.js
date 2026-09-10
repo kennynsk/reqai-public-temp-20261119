@@ -34,7 +34,7 @@ test('deployment is independent, restricted and disabled by default', () => {
   assert.match(manifest, /secretKeyRef: \{ name: reqai-mcp-readiness/);
   assert.match(manifest, /readOnlyRootFilesystem: true/);
   assert.match(compose, /profiles: \["mcp"\]/);
-  assert.match(compose, /MCP_TOOL_SCHEMA_VERSION: 2\.1\.0/);
+  assert.match(compose, /MCP_TOOL_SCHEMA_VERSION: 2\.2\.0/);
 });
 
 test('operations documentation records client, IAM, polling, large artifacts and rollback', () => {
@@ -43,4 +43,9 @@ test('operations documentation records client, IAM, polling, large artifacts and
   for (const phrase of ['forward-same-audience', 'inputArtifactId', 'get_task_status', 'MCP_BACKEND_TIMEOUT', 'Threat model']) assert.match(contract, new RegExp(phrase));
   assert.match(runbook, /MCP gateway: canary, incident и rollback/);
   assert.match(runbook, /уже принятые REST jobs продолжаются/);
+});
+
+
+test('uploaded material content is redacted recursively', () => {
+  assert.deepEqual(redact({ args: { content: 'private baseline', contentType: 'text/plain' } }), { args: { content: '[REDACTED]', contentType: '[REDACTED]' } });
 });

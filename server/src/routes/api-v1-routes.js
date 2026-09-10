@@ -1,3 +1,4 @@
+import { isBabokTextDraft, renderBabokTextDraft } from '../services/babok-text-draft.js';
 import express from 'express';
 
 import { requireAnyRole } from '../auth/authorization.js';
@@ -123,6 +124,7 @@ export function createApiV1Router({ config, services = {} }) {
         decompositionModes: SUPPORTED_CREATE_MODES.filter((mode) => mode === 'DECOMPOSITION'),
         researchModes: SUPPORTED_CREATE_MODES.filter((mode) => mode === 'REQUIREMENTS_INSIGHTS'),
         domainOperations: config.features?.requirementsIntegrationApi ? ['decomposition', 'requirements-research'] : [],
+        requirementDiscussion: config.features?.requirementDiscussion !== false && Boolean(services.requirementDiscussionService),
         promptReleases: config.features?.versionedPrompts ? Object.fromEntries(Object.entries(config.prompts.policy).map(([id, release]) => [id, { active: release.active, selectable: release.released }])) : {},
       },
     });
@@ -175,6 +177,38 @@ export function createApiV1Router({ config, services = {} }) {
 
   router.patch('/api/v1/jobs/:jobId/metadata', requireAnyRole('user', 'tenant-admin', 'system-admin'), asyncRoute(async (req, res) => {
     res.json(await services.jobQueryService.updateMetadata({ auth: req.auth, jobId: requireUuid(req.params.jobId), body: req.body, requestId: req.context?.requestId }));
+  }));
+
+  router.post('/api/v1/jobs/:jobId/discussions', requireAnyRole('user', 'tenant-admin', 'system-admin'), asyncRoute(async (req, res) => {
+    if (!services.requirementDiscussionService) throw new ApiError({ status: 503, code: 'DISCUSSION_DISABLED', message: 'Requirement discussions are unavailable', retryable: true });
+    const anchorId = String(req.body?.anchorId || '').trim();
+    res.status(201).json(await services.requirementDiscussionService.open({ auth: req.auth, jobId: requireUuid(req.params.jobId), anchorId, anchorType: req.body?.anchorType, baseVersionId: req.body?.baseVersionId }));
+  }));
+
+  router.get('/api/v1/jobs/:jobId/discussions/:anchorId', requireAnyRole('user', 'tenant-admin', 'operator', 'auditor', 'system-admin'), asyncRoute(async (req, res) => {
+    if (!services.requirementDiscussionService) throw new ApiError({ status: 503, code: 'DISCUSSION_DISABLED', message: 'Requirement discussions are unavailable', retryable: true });
+    res.json(await services.requirementDiscussionService.get({ auth: req.auth, jobId: requireUuid(req.params.jobId), anchorId: decodeURIComponent(req.params.anchorId), cursor: req.query.cursor, limit: req.query.limit }));
+  }));
+
+  router.get('/api/v1/jobs/:jobId/discussions/:anchorId/events', requireAnyRole('user', 'tenant-admin', 'operator', 'auditor', 'system-admin'), asyncRoute(async (req, res) => {
+    if (!services.requirementDiscussionService) throw new ApiError({ status: 503, code: 'DISCUSSION_DISABLED', message: 'Requirement discussions are unavailable', retryable: true });
+    await services.requirementDiscussionService.stream({ auth: req.auth, jobId: requireUuid(req.params.jobId), anchorId: decodeURIComponent(req.params.anchorId), afterEventId: req.get('Last-Event-ID') || req.query.after, response: res });
+  }));
+
+  router.post('/api/v1/jobs/:jobId/discussions/:anchorId/messages', requireAnyRole('user', 'tenant-admin', 'system-admin'), asyncRoute(async (req, res) => {
+    if (!services.requirementDiscussionService) throw new ApiError({ status: 503, code: 'DISCUSSION_DISABLED', message: 'Requirement discussions are unavailable', retryable: true });
+    const value = await services.requirementDiscussionService.generate({ auth: req.auth, jobId: requireUuid(req.params.jobId), anchorId: decodeURIComponent(req.params.anchorId), body: { ...(req.body || {}), clientMessageId: req.body?.clientMessageId || req.get('Idempotency-Key') }, requestId: req.context?.requestId });
+    res.status(value.replayed ? 200 : 202).json(value);
+  }));
+
+  router.post('/api/v1/jobs/:jobId/discussions/attempts/:attemptId/retry', requireAnyRole('user', 'tenant-admin', 'system-admin'), asyncRoute(async (req, res) => {
+    if (!services.requirementDiscussionService) throw new ApiError({ status: 503, code: 'DISCUSSION_DISABLED', message: 'Requirement discussions are unavailable', retryable: true });
+    res.status(202).json(await services.requirementDiscussionService.retry({ auth: req.auth, jobId: requireUuid(req.params.jobId), attemptId: requireUuid(req.params.attemptId, 'attemptId'), requestId: req.context?.requestId }));
+  }));
+
+  router.post('/api/v1/jobs/:jobId/discussions/attempts/:attemptId/cancel', requireAnyRole('user', 'tenant-admin', 'system-admin'), asyncRoute(async (req, res) => {
+    if (!services.requirementDiscussionService) throw new ApiError({ status: 503, code: 'DISCUSSION_DISABLED', message: 'Requirement discussions are unavailable', retryable: true });
+    res.status(202).json(await services.requirementDiscussionService.cancel({ auth: req.auth, jobId: requireUuid(req.params.jobId), attemptId: requireUuid(req.params.attemptId, 'attemptId') }));
   }));
 
   router.get('/api/v1/jobs/:jobId', requireAnyRole('user', 'tenant-admin', 'operator', 'auditor', 'system-admin'), asyncRoute(async (req, res) => {
@@ -294,10 +328,10 @@ export function createApiV1Router({ config, services = {} }) {
       const text = await services.artifactRepository.readText({ tenantId: req.auth.tenantId, artifactId: row.id, maxBytes: config.jobs.resultMaxBytes });
       let value;
       try { value = JSON.parse(text); } catch { throw new ApiError({ status: 409, code: 'REPORT_FORMAT_UNAVAILABLE', message: 'Result is not a JSON report' }); }
-      if (value?.schemaVersion !== 'babok-requirements.v1') throw new ApiError({ status: 409, code: 'REPORT_FORMAT_UNAVAILABLE', message: 'Markdown rendering is available for BABOK results only' });
+      if (value?.schemaVersion !== 'babok-requirements.v1' && !isBabokTextDraft(value)) throw new ApiError({ status: 409, code: 'REPORT_FORMAT_UNAVAILABLE', message: 'Markdown rendering is available for BABOK results only' });
       res.type('text/markdown; charset=utf-8');
       res.set('Content-Disposition', `attachment; filename="babok-requirements-${req.params.jobId}.md"`);
-      return res.send(renderBabokReport(value));
+      return res.send(isBabokTextDraft(value) ? renderBabokTextDraft(value) : renderBabokReport(value));
     }
     res.set('Content-Type', row.content_type); res.set('Content-Length', String(row.size_bytes));
     await services.artifactRepository.streamTo({ tenantId: req.auth.tenantId, artifactId: row.id, writable: res });

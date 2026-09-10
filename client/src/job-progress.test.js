@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { executionPhaseIndex, focusMessageForJob, isModelPhase, progressAriaText, progressPresentationForJob, visualProgressForJob } from './job-progress.js';
+import { executionPhaseIndex, focusMessageForJob, waitingTipForJob, isModelPhase, progressAriaText, progressPresentationForJob, visualProgressForJob } from './job-progress.js';
 
 test('model progress moves from the server milestone without crossing assembly', () => {
   const job = { type: 'DECOMPOSITION', status: 'RUNNING', currentStep: 'model', progress: 20, updatedAt: '2026-08-28T12:00:00Z' };
@@ -25,11 +25,11 @@ test('late decomposition phases move inside bounded ranges and terminal success 
   expect(focusMessageForJob({ status: 'RETRY_WAIT', currentStep: 'model' })).toMatch(/повторной попытки/);
 });
 
-test('phase estimates restore from the same server timestamp after reload and never apply to research', () => {
+test('phase estimates restore from the same server timestamp after reload for both task types', () => {
   const decomposition = { type: 'DECOMPOSITION', status: 'RUNNING', progress: 70, currentStep: 'assembly', updatedAt: '2026-08-28T12:00:00Z' };
   const restored = progressPresentationForJob(decomposition, Date.parse('2026-08-28T12:00:12Z'));
   expect(progressPresentationForJob({ ...decomposition }, Date.parse('2026-08-28T12:00:12Z'))).toEqual(restored);
-  expect(progressPresentationForJob({ type: 'RESEARCH', status: 'RUNNING', progress: 20, currentStep: 'requirements-insights', updatedAt: decomposition.updatedAt }, Date.parse('2026-08-28T12:10:00Z'))).toMatchObject({ estimated: false, progress: 20 });
+  expect(progressPresentationForJob({ type: 'RESEARCH', status: 'RUNNING', progress: 20, currentStep: 'requirements-insights', updatedAt: decomposition.updatedAt }, Date.parse('2026-08-28T12:10:00Z'))).toMatchObject({ estimated: true, progress: 89 });
 });
 
 test('normalizes progress, timestamps, and all focus messages at phase boundaries', () => {
@@ -50,4 +50,33 @@ test('normalizes progress, timestamps, and all focus messages at phase boundarie
   expect(focusMessageForJob({ status: 'RUNNING', currentStep: 'unknown' })).toMatch(/Ожидаем обновления/);
   expect(progressAriaText({ progress: 50, stageLabel: null, estimated: false })).toBe('50 процентов подтверждено сервером');
   expect(progressAriaText({ progress: 50, stageLabel: null, estimated: true })).toMatch(/этапа выполнения/);
+});
+
+
+test('waiting tips rotate independently of real status and restore from job start', () => {
+  const job = { type: 'DECOMPOSITION', status: 'RUNNING', currentStep: 'model', startedAt: '2026-09-10T10:00:00Z' };
+  const start = Date.parse(job.startedAt);
+  const first = waitingTipForJob(job, start);
+  expect(waitingTipForJob(job, start + 14_999)).toBe(first);
+  expect(waitingTipForJob(job, start + 15_000)).not.toBe(first);
+  expect(waitingTipForJob(job, start + 150_000)).toBe(first);
+  expect(waitingTipForJob({ ...job, updatedAt: start + 15_000 }, start + 15_000)).toBe(waitingTipForJob(job, start + 15_000));
+  expect(focusMessageForJob(job, start)).toBe(focusMessageForJob(job, start + 15_000));
+  expect(waitingTipForJob({ ...job, type: 'RESEARCH' }, start)).toMatch(/Анализируем требования/);
+  expect(waitingTipForJob({ ...job, status: 'SUCCEEDED' }, start)).toBeNull();
+  expect(waitingTipForJob({ ...job, startedAt: null }, start)).toBe(first);
+});
+
+
+test('research progress moves smoothly and waits for server confirmation before completion', () => {
+  const start = Date.parse('2026-09-10T10:00:00Z');
+  const job = { type: 'RESEARCH', status: 'RUNNING', currentStep: 'model', progress: 20, updatedAt: start };
+  const values = [0, 1000, 30_000, 150_000, 600_000].map((elapsed) => visualProgressForJob(job, start + elapsed));
+  expect(values[0]).toBe(20);
+  for (let i = 1; i < values.length; i++) {
+    expect(values[i]).toBeGreaterThan(values[i - 1]);
+    expect(values[i]).toBeLessThan(90);
+  }
+  expect(progressPresentationForJob({ ...job, currentStep: 'assembly', progress: 90 }, start + 60_000)).toMatchObject({ estimated: true, progress: 99 });
+  expect(progressPresentationForJob({ ...job, status: 'SUCCEEDED', progress: 100 }, start + 60_000)).toMatchObject({ estimated: false, progress: 100 });
 });

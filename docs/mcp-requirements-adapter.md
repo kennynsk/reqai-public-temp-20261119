@@ -6,13 +6,15 @@ MCP gateway — отдельная тонкая обёртка над Requiremen
 
 - SDK: `@modelcontextprotocol/sdk` `1.30.0`.
 - Production transport: authenticated Streamable HTTP на `/mcp`.
-- Tool schema: `2.1.0` (read-only result-content retrieval added without expanding the mutation surface).
+- Tool schema: `2.2.0` (добавлены загрузка текстовых материалов и отмена задач).
 - Gateway выключен по умолчанию; stdio разрешён только локально при явной конфигурации.
 
 ## Tools
 
 | Tool | REST operation | Назначение |
 | --- | --- | --- |
+| `upload_artifact` | `POST /api/v1/artifacts` | Загрузить текстовый материал и получить artifactId |
+| `cancel_task` | `POST /api/v1/jobs/{jobId}/cancel` | Запросить отмену задачи |
 | `decompose_requirements` | `POST /api/v1/decompositions` | Асинхронная декомпозиция |
 | `research_requirements` | `POST /api/v1/requirements/versions/{versionId}/research` | Исследование сохранённой версии |
 | `get_task_status` | `GET /api/v1/jobs/{jobId}` | Канонический статус |
@@ -27,6 +29,45 @@ Inline-вход ограничен 1 MiB. Для больших входов к�
 
 Remote endpoint требует `Authorization: Bearer <JWT>`. Gateway проверяет совместимость capabilities и без изменения пересылает caller token; backend остаётся authoritative для ролей, principal и tenant. Readiness использует отдельный least-privilege token. Первая версия требует одинаковый IAM audience (`forward-same-audience`) и fail-closed при иной конфигурации.
 
-Gateway ограничивает Host, body size, concurrency, backend timeout (`MCP_BACKEND_TIMEOUT_MS`) и MCP payload size (`MCP_RESPONSE_LIMIT_BYTES`). Логи не содержат JWT, prompt/requirements text или artifact content. Threat model требует reference-only control plane, fail-closed auth, строгих schemas и отсутствия локального execution fallback. Deployment по умолчанию имеет `replicas: 0` и `MCP_ENABLED=false`; публикация требует HTTPS ingress, allowlist и IAM canary.
+Gateway ограничивает Host, body size, concurrency, backend timeout (`MCP_BACKEND_TIMEOUT_MS`) и MCP payload size (`MCP_RESPONSE_LIMIT_BYTES`). Логи не содержат JWT, prompt/requirements text или artifact content. Threat model допускает ограниченную загрузку текста через artifact API и требует, fail-closed auth, строгих schemas и отсутствия локального execution fallback. Deployment по умолчанию имеет `replicas: 0` и `MCP_ENABLED=false`; публикация требует HTTPS ingress, allowlist и IAM canary.
 
 Breaking change и rollback: [legacy-mode-retirement.md](legacy-mode-retirement.md). Release gates: [mcp-qualification.md](mcp-qualification.md).
+
+
+## Материалы и отмена (schema 2.2.0)
+
+`upload_artifact` принимает `content` (непустой UTF-8 текст до 262144 байт)
+и необязательный `contentType`: `text/plain` (по умолчанию), `text/markdown`
+или `application/json`. Gateway сохраняет текст без trim/перекодирования,
+вычисляет SHA-256 и отправляет байты в REST с токеном вызывающего пользователя.
+Ответ содержит `artifactId`, `size`, `sha256`, `contentType`, `createdAt`.
+Загрузка синхронна и не запускает LLM. Повтор загрузки может создать новый артефакт;
+сохраняйте возвращённый ID. Gateway не повторяет мутации автоматически.
+
+MCP-клиент сам читает файл и передаёт его содержимое. Локальные пути и URL
+не поддерживаются; PDF/DOCX нужно предварительно преобразовать в текст.
+Для больших материалов используйте REST upload. Лимит HTTP JSON body действует
+дополнительно (экранирование текста увеличивает размер запроса).
+
+Пример последовательности вызовов MCP (UUID заменяются ответами предыдущих шагов):
+
+```json
+{"name":"upload_artifact","arguments":{"content":"Сотрудник создаёт заявку. Руководитель согласует заявку.","contentType":"text/plain"}}
+```
+
+```json
+{"name":"decompose_requirements","arguments":{"idempotencyKey":"mcp-example-decompose-0001","inputArtifactId":"UUID_ИЗ_ЗАГРУЗКИ","model":"glm-5.3-flash","promptVersion":"2.3.0"}}
+```
+
+Baseline и справочники загружаются тем же инструментом; ID передаются в
+`baselineArtifactId` и `referenceArtifactIds`. Затем вызывайте `get_task_status`
+с `jobId`; после `SUCCEEDED` — `get_task_result_content` с `format: "markdown"`
+или `"raw"`. В отличие от REST, MCP по умолчанию возвращает Markdown, а raw JSON
+находится в строковом поле `content` ответа инструмента.
+
+Для остановки вызовите `cancel_task` с `{ "jobId": "UUID_ЗАДАЧИ" }`.
+Ответ — канонический статус задачи, а не обещание немедленной остановки.
+Проверяйте статус до `CANCELLED`, `SUCCEEDED` или `FAILED`: завершение может
+опередить отмену. Уже выполненные LLM-вызовы не отменяются задним числом.
+Ошибки доступа, отсутствующая задача и конфликты возвращаются из REST без обхода
+авторизации. Инструмент отмены помечен как изменяющий выполняемую работу.

@@ -1,4 +1,4 @@
-const SENSITIVE_KEY = /authorization|cookie|token|secret|password|api[_-]?key|credential|prompt|businessContext|researchContext/i;
+const SENSITIVE_KEY = /authorization|cookie|token|secret|password|api[_-]?key|credential|prompt|content|businessContext|researchContext/i;
 
 export function redact(value, depth = 0) {
   if (depth > 5) return '[TRUNCATED]';

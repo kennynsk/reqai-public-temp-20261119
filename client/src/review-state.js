@@ -1,12 +1,19 @@
 import { useContext, useEffect, useReducer, useState } from 'react';
 import { DraftContext, SessionContext } from './review-context.js';
 import { STRUCTURED_FIELDS, validateReviewContent } from './review-fields.js';
-import { invalidateReviewEvidence } from './review-metadata.js';
+import { invalidateReviewEvidence, updateReviewMetadata } from './review-metadata.js';
 
 const PREFIX = 'reqai.reviewDraft:';
 export const DRAFT_TTL = 24 * 60 * 60 * 1000;
 const copy = (value) => JSON.parse(JSON.stringify(value));
 const recordIds = (content) => Object.values(content.groups || content).filter(Array.isArray).flat().map((item) => item.id).filter(Boolean);
+
+function changedRecordIds(before, after) {
+  const records = (content) => Object.values(content?.groups || content || {}).filter(Array.isArray).flat().filter((item) => item?.id);
+  const left = new Map(records(before).map((item) => [item.id, item]));
+  const right = new Map(records(after).map((item) => [item.id, item]));
+  return [...new Set([...left.keys(), ...right.keys()].filter((id) => JSON.stringify(left.get(id)) !== JSON.stringify(right.get(id))))];
+}
 
 function mergeDecisionChanges(base, local, remote, changes, path = '') {
   if (JSON.stringify(base) === JSON.stringify(local)) return remote;
@@ -48,9 +55,32 @@ export function reviewReducer(state, action) {
   switch (action.type) {
     case 'content': {
       const content = typeof action.value === 'function' ? action.value(state.content) : action.value;
-      return { ...state, content, decisions: JSON.stringify(content) === JSON.stringify(state.content) ? state.decisions : invalidateReviewEvidence(state.decisions), reservedIds: [...new Set([...(state.reservedIds || []), ...recordIds(state.content), ...recordIds(content)])] };
+      const changed = changedRecordIds(state.content, content);
+      const sameContent = JSON.stringify(content) === JSON.stringify(state.content);
+      const beforeGaps = new Map((state.content?.analysis?.GAP || []).map((gap) => [gap.id, JSON.stringify(gap)]));
+      const afterGaps = new Map((content?.analysis?.GAP || []).map((gap) => [gap.id, JSON.stringify(gap)]));
+      const changedGaps = [...new Set([...beforeGaps.keys(), ...afterGaps.keys()].filter((id) => beforeGaps.get(id) !== afterGaps.get(id)))];
+      return { ...state, content, decisions: sameContent ? state.decisions : invalidateReviewEvidence(state.decisions, { changedRecordIds: changed, changedGapIds: changedGaps }), reservedIds: [...new Set([...(state.reservedIds || []), ...recordIds(state.content), ...recordIds(content)])] };
     }
-    case 'field': return { ...state, decisions: action.value.text !== action.value.initialText || Object.keys(action.value.fields || {}).length ? invalidateReviewEvidence(state.decisions) : state.decisions, drafts: { ...state.drafts, [action.key]: action.value } };
+    case 'proposal': {
+      const content = typeof action.value === 'function' ? action.value(state.content) : action.value;
+      const changed = changedRecordIds(state.content, content);
+      const beforeGaps = new Map((state.content?.analysis?.GAP || []).map((gap) => [gap.id, JSON.stringify(gap)]));
+      const afterGaps = new Map((content?.analysis?.GAP || []).map((gap) => [gap.id, JSON.stringify(gap)]));
+      const changedGaps = [...new Set([...beforeGaps.keys(), ...afterGaps.keys()].filter((id) => beforeGaps.get(id) !== afterGaps.get(id)))];
+      const decisions = invalidateReviewEvidence(state.decisions, { changedRecordIds: changed, changedGapIds: changedGaps });
+      const proposal = action.proposal;
+      const nextDecisions = proposal
+        ? updateReviewMetadata(decisions, { discussionProposals: { ...(decisions.review?.discussionProposals || {}), [proposal.proposalId]: proposal } })
+        : decisions;
+      const drafts = { ...(state.drafts || {}) };
+      for (const id of action.clearDraftIds || []) {
+        const group = String(id).split('-', 1)[0];
+        delete drafts[`${group}:${id}`];
+      }
+      return { ...state, content, decisions: nextDecisions, drafts, reservedIds: [...new Set([...(state.reservedIds || []), ...recordIds(state.content), ...recordIds(content)])] };
+    }
+    case 'field': return { ...state, decisions: action.value.text !== action.value.initialText || Object.keys(action.value.fields || {}).length ? invalidateReviewEvidence(state.decisions, { changedRecordIds: action.value.id ? [action.value.id] : null }) : state.decisions, drafts: { ...state.drafts, [action.key]: action.value } };
     case 'clear': { const drafts = { ...state.drafts }; delete drafts[action.key]; return { ...state, drafts }; }
     case 'decisions': return { ...state, decisions: action.value };
     case 'restore': return action.value;

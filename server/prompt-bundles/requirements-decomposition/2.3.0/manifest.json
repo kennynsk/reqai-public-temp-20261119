@@ -1,0 +1,38 @@
+{
+  "id": "requirements-decomposition",
+  "version": "2.3.0",
+  "displayName": "BABOK original skill execution",
+  "workflowPurposes": [
+    "DECOMPOSITION"
+  ],
+  "outputSchemaVersion": "babok-requirements.v1",
+  "executionMode": "skill-bundle",
+  "templates": {
+    "decompose": {
+      "path": "decompose.md",
+      "requiredVariables": [
+        "baselineMaterial",
+        "businessContext",
+        "chunkContext",
+        "materialDescriptors",
+        "referenceMaterials",
+        "solutionContext",
+        "sourceMaterial"
+      ],
+      "sha256": "76093d5693cd8746ee5d8dba44e44d0607f9a7fe97c0c26349795918ba8ed724"
+    },
+    "consolidate": {
+      "path": "consolidate.md",
+      "requiredVariables": [
+        "baselineMaterial",
+        "businessContext",
+        "consolidationContext",
+        "materialDescriptors",
+        "referenceMaterials",
+        "sectionArtifacts",
+        "sourceMaterial"
+      ],
+      "sha256": "4900c8f2edb9d3a6ed603cddcf1205d9f4a873f25bba2559b742de501e4c7571"
+    }
+  }
+}

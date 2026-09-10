@@ -27,6 +27,12 @@ const requiredOperations = {
   'GET /api/v1/requirements/versions/{versionId}': ['200', '401', '404'],
   'GET /api/v1/requirements/versions/{versionId}/export': ['200', '400', '401', '404'],
   'GET /api/v1/jobs/{jobId}/requirements/versions': ['200', '401', '404'],
+  'POST /api/v1/jobs/{jobId}/discussions': ['201', '400', '401', '403', '404'],
+  'GET /api/v1/jobs/{jobId}/discussions/{anchorId}': ['200', '401', '403', '404'],
+  'GET /api/v1/jobs/{jobId}/discussions/{anchorId}/events': ['200', '401', '403', '404'],
+  'POST /api/v1/jobs/{jobId}/discussions/{anchorId}/messages': ['202', '400', '401', '403', '404', '409', '413', '502'],
+  'POST /api/v1/jobs/{jobId}/discussions/attempts/{attemptId}/retry': ['202', '401', '403', '404', '409'],
+  'POST /api/v1/jobs/{jobId}/discussions/attempts/{attemptId}/cancel': ['202', '401', '403', '404', '409'],
 };
 
 test('OpenAPI v1 contract declares all required operations and responses', () => {
