@@ -443,28 +443,29 @@ describe('AsyncJobWorkspace presentational branches', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Перейти к финальной версии' }));
     expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ baseVersionId: 'registry-v1', decisions: { skippedResearch: true } }));
 
-    const functional = screen.getByRole('region', { name: 'Функциональные требования' });
+    fireEvent.click(screen.getByRole('button', { name: /^Выбрать FR-001:/ }));
+    const functional = document.getElementById('record-FR-001');
     fireEvent.click(within(functional).getAllByRole('link', { name: 'BR-001' })[0]);
     await waitFor(() => expect(document.getElementById('record-BR-001')).toHaveFocus());
-    fireEvent.change(screen.getByRole('combobox', { name: 'Тип требований' }), { target: { value: 'all' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Все типы' }));
     const clarification = screen.getByRole('checkbox', { name: 'Нужно уточнить' });
     fireEvent.click(clarification);
-    expect(within(screen.getByRole('region', { name: 'Функциональные требования' })).getByText('Нет сформированных требований')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Нет требований' })).toBeInTheDocument();
     fireEvent.click(clarification);
 
-    const business = screen.getByRole('region', { name: 'Бизнес-требования' });
+    const business = document.getElementById('record-BR-001');
     fireEvent.click(within(business).getByRole('button', { name: 'Действия для BR-001' }));
     fireEvent.click(within(business).getByRole('button', { name: 'Удалить', exact: true }));
     expect(screen.getByRole('dialog', { name: 'Удаление требования' })).toHaveTextContent('FR-001');
     fireEvent.click(screen.getByRole('button', { name: 'Подтвердить удаление' }));
     expect(screen.getByText(/Удалено BR-001/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Отменить удаление' }));
-    expect(screen.getByText('Сократить конфликты бронирования.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Выбрать BR-001:/ })).toBeInTheDocument();
 
-    fireEvent.change(screen.getByRole('combobox', { name: 'Тип требований' }), { target: { value: 'SR' } });
-    const stakeholders = screen.getByRole('region', { name: 'Требования заинтересованных сторон' });
-    fireEvent.click(within(stakeholders).getByRole('button', { name: 'Добавить требование' }));
-    fireEvent.change(within(stakeholders).getByRole('textbox', { name: 'Новое требование: SR' }), { target: { value: 'Черновая роль' } });
+    fireEvent.click(screen.getByRole('button', { name: /^SR ·/ }));
+    fireEvent.click(screen.getByText('Добавить требование', { selector: 'summary' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Требования заинтересованных сторон', exact: true }));
+    fireEvent.change(await screen.findByRole('textbox', { name: 'Новое требование: SR' }), { target: { value: 'Черновая роль' } });
     onSave.mockClear();
     fireEvent.click(screen.getByRole('button', { name: 'Сохранить изменения' }));
     expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ registry: expect.objectContaining({ groups: expect.objectContaining({ SR: expect.arrayContaining([expect.objectContaining({ text: 'Черновая роль', provenance: 'Предложено — требует подтверждения' })]) }) }) }));

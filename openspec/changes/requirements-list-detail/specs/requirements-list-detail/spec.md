@@ -66,7 +66,7 @@ Navigation from requirement links, questions, completeness results and validatio
 
 #### Scenario: Follow analysis link
 - **WHEN** the user follows a GAP or other analysis record link
-- **THEN** the existing questions or report destination opens rather than a blank requirement detail
+- **THEN** the existing questions section or analysis disclosure opens rather than a blank requirement detail
 
 ### Requirement: Responsive and keyboard usable composition
 Below the desktop breakpoint the selector SHALL appear above the detail with bounded vertical scrolling. Content and controls SHALL reflow without horizontal page overflow at 320, 390, 768, 1024 and 1440 CSS pixels and at 200 percent browser zoom. Search and filter controls SHALL have Russian accessible names, selection SHALL not be color-only and keyboard focus SHALL remain visible. Repeated total counts SHALL be avoided; the selector may show the number of matching records when conditions are active.

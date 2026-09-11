@@ -45,17 +45,17 @@ test('an active older child remains openable and blocks new launch and finalizat
 test('BABOK default shows nonempty types and can open a composer in an empty type', async () => {
   const registry = compactReviewFixture();
   render(<BabokRegistryResult value={registry} latestVersion={{ ...version, registry }} onSave={vi.fn()} />);
-  expect(screen.getByRole('combobox', { name: 'Тип требований' })).toHaveValue('all');
-  expect(screen.getByRole('region', { name: 'Требования заинтересованных сторон' })).toBeInTheDocument();
-  expect(screen.queryByRole('region', { name: 'Функциональные требования' })).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Все типы' })).toHaveAttribute('aria-pressed', 'true');
+  expect(screen.getByRole('button', { name: /^Выбрать SR-001:/ })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /^Выбрать FR-/ })).not.toBeInTheDocument();
   expect(screen.getByText(/Полнота: не проверена/)).toBeInTheDocument();
   fireEvent.click(screen.getAllByText('Добавить требование')[0]);
   fireEvent.click(screen.getByRole('button', { name: 'Функциональные требования', exact: true }));
   const input = await screen.findByRole('textbox', { name: 'Новое требование: FR' });
   await waitFor(() => expect(input).toHaveFocus());
   fireEvent.change(input, { target: { value: 'Система уведомляет сотрудника.' } });
-  fireEvent.change(screen.getByRole('combobox', { name: 'Тип требований' }), { target: { value: 'BR' } });
-  fireEvent.change(screen.getByRole('combobox', { name: 'Тип требований' }), { target: { value: 'FR' } });
+  fireEvent.click(screen.getByRole('button', { name: /^BR ·/ }));
+  fireEvent.click(screen.getByRole('button', { name: /^FR ·/ }));
   expect(screen.getByRole('textbox', { name: 'Новое требование: FR' })).toHaveValue('Система уведомляет сотрудника.');
 });
 

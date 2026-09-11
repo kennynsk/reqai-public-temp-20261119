@@ -65,6 +65,8 @@ import { CoverageWarning, SourceEvidence } from './SourceEvidence.jsx';
 import { STRUCTURED_FIELDS, QUALITY_OPTIONS } from './review-fields.js';
 import { ReviewDraftProvider, ReviewSessionProvider } from './ReviewDraftProvider.jsx';
 import ResearchInsightWorkspace from './ResearchInsightWorkspace.jsx';
+import RequirementListWorkspace from './RequirementListWorkspace.jsx';
+import { filterRequirementList, selectedRequirementEntry } from './requirement-list.js';
 import { buildBabokRequirementIndex, buildLegacyRequirementIndex } from './research-review.js';
 import { RequirementPreviewProvider } from './RequirementPreview.jsx';
 
@@ -465,7 +467,7 @@ function EditableRequirementCard({ type, requirement, onEdit, onDelete, onDraftC
   );
 }
 
-function BabokRequirementCard({ type, requirement, onEdit, onDelete, onDraftChange, readOnly = false, materials, manuallyEdited = false, onNavigate, onDiscuss }) {
+function BabokRequirementCard({ type, requirement, onEdit, onDelete, onDraftChange, readOnly = false, materials, manuallyEdited = false, onNavigate, onDiscuss, focused = false }) {
   const field = useDraftField({ group: type, id: requirement.id, text: requirement.text || '' });
   const [localEditing, setLocalEditing] = useState(false);
   const [localText, setLocalText] = useState(requirement.text || '');
@@ -494,11 +496,12 @@ function BabokRequirementCard({ type, requirement, onEdit, onDelete, onDraftChan
   }
 
   return (
-    <article id={`record-${requirement.id}`} tabIndex={-1} style={{ scrollMarginTop: '14rem' }} className={`group relative py-5 first:pt-0 last:pb-0 ${requirement.fromResearch ? 'bg-indigo-50/40 -mx-3 px-3 rounded-xl' : ''}`}>
+    <article id={`record-${requirement.id}`} tabIndex={-1} style={{ scrollMarginTop: '14rem' }} className={`group relative ${focused ? '' : 'py-5 first:pt-0 last:pb-0'} ${requirement.fromResearch ? 'bg-indigo-50/40 -mx-3 px-3 rounded-xl' : ''}`}>
       <div className="flex items-start justify-between gap-4 mb-2">
         <div className="flex items-center gap-2 flex-wrap">
           <RecordLinks ids={[requirement.id]} onNavigate={onNavigate} />
           {(manuallyEdited || requirement.manuallyEdited) && <span className="text-xs text-slate-600">Изменено вручную</span>}
+          {focused && requirement.quality === 'Готово' && <span className="text-xs font-semibold text-emerald-700">Готово</span>}
           {requirement.quality !== 'Готово' && <span className="text-xs rounded bg-amber-50 px-2 py-1 text-amber-800">{BABOK_QUALITY_LABELS[requirement.quality] || 'Нужно уточнить'}</span>}
           {requirement.fromResearch && <span className="inline-flex items-center gap-1 text-xs font-bold text-indigo-600"><Sparkles className="w-3.5 h-3.5" />AI-предложение</span>}
           {requirement.researchEnhancementKey && <span className="text-[11px] text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">решение сохранено</span>}
@@ -506,9 +509,9 @@ function BabokRequirementCard({ type, requirement, onEdit, onDelete, onDraftChan
         {!editing && (onDiscuss || !readOnly) && <details className="relative">
           <summary role="button" aria-label={`Действия для ${requirement.id}`} title="Действия" className="list-none cursor-pointer rounded-lg p-1.5 text-slate-600 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"><MoreHorizontal className="w-5 h-5" /></summary>
           <div className="absolute right-0 top-full mt-1 z-20 w-44 rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg">
-            {onDiscuss && <button type="button" onClick={(event) => { onDiscuss(requirement.id); event.currentTarget.closest('details').removeAttribute('open'); }} className="w-full rounded-lg px-3 py-2 text-left text-sm text-indigo-700 hover:bg-indigo-50 flex items-center gap-2"><MessageCircle className="w-4 h-4" />Обсудить с AI</button>}
+            {!focused && onDiscuss && <button type="button" onClick={(event) => { onDiscuss(requirement.id); event.currentTarget.closest('details').removeAttribute('open'); }} className="w-full rounded-lg px-3 py-2 text-left text-sm text-indigo-700 hover:bg-indigo-50 flex items-center gap-2"><MessageCircle className="w-4 h-4" />Обсудить с AI</button>}
             {!readOnly && <>
-            <button onClick={(event) => { setEditing(true); event.currentTarget.closest('details').removeAttribute('open'); }} className="w-full rounded-lg px-3 py-2 text-left text-sm text-slate-600 hover:bg-slate-50 flex items-center gap-2"><Pencil className="w-4 h-4" />Редактировать</button>
+            {!focused && <button onClick={(event) => { setEditing(true); event.currentTarget.closest('details').removeAttribute('open'); }} className="w-full rounded-lg px-3 py-2 text-left text-sm text-slate-600 hover:bg-slate-50 flex items-center gap-2"><Pencil className="w-4 h-4" />Редактировать</button>}
             <button onClick={onDelete} className="w-full rounded-lg px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"><Trash2 className="w-4 h-4" />Удалить</button>
             </>}
           </div>
@@ -529,9 +532,13 @@ function BabokRequirementCard({ type, requirement, onEdit, onDelete, onDraftChan
             <button onClick={cancel} className="text-xs px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200">Отмена</button>
           </div>
         </div>
-      ) : <p className="text-[15px] text-slate-700 leading-7 w-full">{requirement.text}</p>}
+      ) : focused ? <h2 className="text-xl font-bold leading-snug text-slate-950 sm:text-2xl">{requirement.text}</h2> : <p className="text-[15px] text-slate-700 leading-7 w-full">{requirement.text}</p>}
+      {focused && !editing && <div className="mt-4 flex flex-wrap items-center gap-2">
+        {!readOnly && <button type="button" onClick={() => setEditing(true)} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"><Pencil aria-hidden="true" className="h-4 w-4" />Редактировать</button>}
+        {onDiscuss && <button type="button" onClick={() => onDiscuss(requirement.id)} className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-50"><MessageCircle aria-hidden="true" className="h-4 w-4" />Обсудить с AI</button>}
+      </div>}
       <RequirementClarifications requirement={requirement} editing={editing} readOnly={readOnly} onNavigate={onNavigate} />
-      <details className="mt-3 rounded-lg border border-slate-100 bg-slate-50/70 group/evidence">
+      <details open={focused || undefined} className="mt-3 rounded-lg border border-slate-100 bg-slate-50/70 group/evidence">
         <summary className="cursor-pointer list-none px-3 py-2 text-xs font-semibold text-slate-600 flex items-center justify-between gap-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">
           <span>Источник, качество и связи</span><ChevronDown className="w-3.5 h-3.5 group-open/evidence:hidden" /><ChevronUp className="w-3.5 h-3.5 hidden group-open/evidence:block" />
         </summary>
@@ -640,6 +647,9 @@ function BabokRegistryResult({ value, latestVersion, onSave, onStartResearch, on
   const [lastDeletion, setLastDeletion] = useState(null);
   const compact = !readOnly && !finalVersion && !latestVersion?.decisions?.skippedResearch;
   const [typeFilter, setTypeFilter] = useState('all');
+  const [query, setQuery] = useState('');
+  const [selectedRecordId, setSelectedRecordId] = useState(initialRecordId);
+  const [composerType, setComposerType] = useState(null);
   const [activeType, setActiveType] = useState(() => BABOK_REQUIREMENT_TYPES.find((key) => value.groups[key]?.some((record) => record.id === initialRecordId)) || 'BR');
   const [needsClarification, setNeedsClarification] = useState(false);
   const [reviewSection, setReviewSection] = useState(/^(GAP|QUESTION)-/.test(initialRecordId || '') ? 'questions' : 'requirements');
@@ -647,7 +657,7 @@ function BabokRegistryResult({ value, latestVersion, onSave, onStartResearch, on
   const navigateRecord = (id, { edit = false } = {}) => {
     const type = BABOK_REQUIREMENT_TYPES.find((key) => registry.groups[key].some((record) => record.id === id));
     if (type && edit && !readOnly && !review.state.drafts[`${type}:${id}`]) { const record = registry.groups[type].find((item) => item.id === id); review.field(`${type}:${id}`, { group: type, id, text: record.text, initialText: record.text, isNew: false }); }
-    if (type) { setReviewSection('requirements'); setActiveType(type); setTypeFilter(type); setNeedsClarification(false); }
+    if (type) { setReviewSection('requirements'); setActiveType(type); setTypeFilter(type); setNeedsClarification(false); setQuery(''); setSelectedRecordId(id); }
     else if (/^(GAP|QUESTION)-/.test(id)) setReviewSection('questions');
     requestAnimationFrame(() => { const target = document.getElementById(`record-${id}`); let parent = target?.parentElement; while (parent) { if (parent.tagName === 'DETAILS') parent.open = true; parent = parent.parentElement; } target?.scrollIntoView?.({ block: 'center' }); target?.focus(); if (edit) target?.querySelector('textarea')?.focus(); });
   };
@@ -658,7 +668,16 @@ function BabokRegistryResult({ value, latestVersion, onSave, onStartResearch, on
   const baseline = latestVersion?.registry || value;
   const hasUnsavedChanges = !readOnly && (review.dirty || !latestVersion?.versionId || JSON.stringify(registry) !== JSON.stringify(baseline));
   const activeMeta = BABOK_REQUIREMENT_COLUMNS.find(([type]) => type === activeType) || BABOK_REQUIREMENT_COLUMNS[0];
-  const visibleTypes = compact ? (typeFilter === 'all' ? BABOK_REQUIREMENT_TYPES.filter((type) => registry.groups[type].length > 0) : [typeFilter]) : layout === 'rows' ? [activeType] : BABOK_REQUIREMENT_TYPES;
+  const visibleTypes = layout === 'rows' ? [activeType] : BABOK_REQUIREMENT_TYPES;
+
+  const entries = filterRequirementList(BABOK_REQUIREMENT_COLUMNS, registry.groups, { type: typeFilter, query, needsClarification });
+  const selectedEntry = selectedRequirementEntry(entries, selectedRecordId);
+  function changeFilters(patch) {
+    const next = { type: typeFilter, query, needsClarification, ...patch };
+    const nextEntries = filterRequirementList(BABOK_REQUIREMENT_COLUMNS, registry.groups, next);
+    setSelectedRecordId(selectedRequirementEntry(nextEntries, selectedEntry?.requirement.id)?.requirement.id || null);
+    setTypeFilter(next.type); setQuery(next.query); setNeedsClarification(next.needsClarification);
+  }
 
   useEffect(() => {
     if (!readOnly) onDirtyChange?.(hasUnsavedChanges || dirtyDrafts.size > 0);
@@ -691,22 +710,32 @@ function BabokRegistryResult({ value, latestVersion, onSave, onStartResearch, on
     review.clear(`${type}:${id}`);
     markEdited(id);
     setPendingDeletion(null);
+    if (compact) {
+      const next = selectedRequirementEntry(filterRequirementList(BABOK_REQUIREMENT_COLUMNS, after.groups, { type: typeFilter, query, needsClarification }), selectedRecordId);
+      requestAnimationFrame(() => (document.getElementById(`record-${next?.requirement.id}`) || document.querySelector('input[type="search"]'))?.focus());
+    }
   }
 
   function undoDeletion() {
     const restored = rebaseReview(review.state, lastDeletion.after, lastDeletion.before, review.state.decisions, review.state.decisions);
     review.dispatch({ type: 'restore', value: restored.state });
+    if (compact) {
+      setSelectedRecordId(lastDeletion.id); setQuery(''); setTypeFilter('all'); setNeedsClarification(false);
+      requestAnimationFrame(() => document.getElementById(`record-${lastDeletion.id}`)?.focus());
+    }
     setLastDeletion(null);
   }
 
   function addRequirement(type, text) {
     const id = stableBabokId(registry.groups[type], type, review.state.reservedIds);
     setActiveType(type); setTypeFilter(type); setReviewSection('requirements');
+    setQuery(''); setNeedsClarification(false); setSelectedRecordId(id); setComposerType(null);
     markEdited(id);
     setRegistry((current) => {
       const actualId = stableBabokId(current.groups[type], type, review.state.reservedIds);
       return withBabokCounts({ ...current, groups: { ...current.groups, [type]: [...current.groups[type], createBabokManualRecord(type, actualId, text, { sourceArtifactId: current.materials.primary.artifactId })] } });
     });
+    if (compact) requestAnimationFrame(() => { const target = document.getElementById(`record-${id}`); target?.focus(); target?.scrollIntoView?.({ block: 'nearest' }); });
     return id;
   }
 
@@ -714,7 +743,12 @@ function BabokRegistryResult({ value, latestVersion, onSave, onStartResearch, on
     const assembled = assembleReview(review.state, (type, text, records) => createBabokManualRecord(type, stableBabokId(records, type, review.state.reservedIds), text, { sourceArtifactId: registry.materials.primary.artifactId }), withBabokCounts);
     setValidationError(assembled.error || null);
     if (assembled.error) {
-      setActiveType(assembled.error.type); setTypeFilter(assembled.error.type); setReviewSection('requirements'); setNeedsClarification(false);
+      setActiveType(assembled.error.type); setTypeFilter(assembled.error.type); setReviewSection('requirements'); setNeedsClarification(false); setQuery(''); setSelectedRecordId(assembled.error.id);
+      if (assembled.error.id.startsWith('new-')) setComposerType(assembled.error.type);
+      else {
+        const record = registry.groups[assembled.error.type]?.find((item) => item.id === assembled.error.id);
+        if (record && !review.state.drafts[`${assembled.error.type}:${record.id}`]) review.field(`${assembled.error.type}:${record.id}`, { group: assembled.error.type, id: record.id, text: record.text, initialText: record.text, isNew: false });
+      }
       requestAnimationFrame(() => (document.querySelector(`[data-review-field="${assembled.error.id}:${assembled.error.field}"]`) || document.querySelector(`[aria-label="Текст требования ${assembled.error.id}"]`))?.focus());
       return;
     }
@@ -823,13 +857,20 @@ function BabokRegistryResult({ value, latestVersion, onSave, onStartResearch, on
       {!compact && <p className="text-sm text-slate-600">Требований: {BABOK_REQUIREMENT_TYPES.reduce((total, type) => total + registry.groups[type].length, 0)} · Пробелов: {registry.analysis.GAP.length} · Вопросов: {registry.analysis.questions.length}{registry.scope.partial ? ' · Частичная обработка' : ''}</p>}
 
       <div hidden={reviewSection !== 'requirements'} className="space-y-4">
-      {compact ? <>
-        <RequirementTypeFilter columns={BABOK_REQUIREMENT_COLUMNS} groups={registry.groups} value={typeFilter} onChange={setTypeFilter}>
-          <label className="flex min-h-10 items-center gap-2 text-xs sm:text-sm text-slate-700"><input type="checkbox" checked={needsClarification} onChange={(event) => setNeedsClarification(event.target.checked)} />Нужно уточнить</label>
-          <RequirementComposerMenu columns={BABOK_REQUIREMENT_COLUMNS} onChoose={(type) => { setTypeFilter(type); setNeedsClarification(false); }} />
-        </RequirementTypeFilter>
-        {(!visibleTypes.length || (needsClarification && !visibleTypes.some((type) => registry.groups[type].some((record) => record.quality !== 'Готово')))) && <p className="text-sm text-slate-600">Нет требований для выбранных условий. {needsClarification && <button className="p-2 text-indigo-700 underline" onClick={() => setNeedsClarification(false)}>Сбросить фильтр уточнения</button>}</p>}
-      </> : <>
+      {compact ? <RequirementListWorkspace
+        columns={BABOK_REQUIREMENT_COLUMNS} groups={registry.groups} entries={entries} selected={selectedEntry}
+        onSelect={setSelectedRecordId} typeFilter={typeFilter} query={query} needsClarification={needsClarification}
+        onFiltersChange={changeFilters} qualityLabels={BABOK_QUALITY_LABELS} drafts={review.state.drafts}
+        composerMenu={<RequirementComposerMenu columns={BABOK_REQUIREMENT_COLUMNS} onChoose={(type) => { changeFilters({ type, query: '', needsClarification: false }); setComposerType(type); }} />}
+        composer={composerType && <section id={`req-type-${composerType}`} aria-label={`Добавление: ${composerType}`} className="rounded-xl border border-slate-200 bg-white p-3">
+          <BabokAddRequirementForm key={composerType} type={composerType} categoryLabel={BABOK_REQUIREMENT_COLUMNS.find(([type]) => type === composerType)?.[1]} onAdd={(text) => addRequirement(composerType, text)} onDraftChange={(dirty) => setDraftDirty(`${composerType}:new`, dirty)} />
+        </section>}
+        renderDetail={({ type, requirement }) => <BabokRequirementCard key={requirement.id} focused type={type} requirement={requirement} materials={registry.materials}
+          onNavigate={navigateRecord} onDiscuss={jobId && discussionEnabled ? openDiscussion : undefined}
+          manuallyEdited={editedRecordIds.has(requirement.id) || latestVersion?.revision?.manualDecisionMetadata?.editedRecordIds?.includes(requirement.id)}
+          onEdit={(text, fields) => editRequirement(type, requirement.id, text, fields)} onDelete={() => deleteRequirement(type, requirement.id)}
+          onDraftChange={(dirty) => setDraftDirty(`${type}:${requirement.id}`, dirty)} />}
+      /> : <>
       {!readOnly && <CompletenessReview onNavigate={navigateRecord} onAddManual={addRequirement} />}
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div><h2 className="text-base font-bold text-slate-900">Типы требований</h2><p className="text-xs text-slate-500 mt-1">Выберите тип, чтобы сфокусироваться на его записях. Стабильные ID сохраняются при ревизиях.</p></div>
@@ -837,14 +878,14 @@ function BabokRegistryResult({ value, latestVersion, onSave, onStartResearch, on
       </div>
       <RequirementTypeNav columns={BABOK_REQUIREMENT_COLUMNS} groups={registry.groups} activeType={activeType} onSelect={selectType} />
       <label className="flex items-center gap-2 text-sm text-slate-700 p-2"><input type="checkbox" checked={needsClarification} onChange={(event) => setNeedsClarification(event.target.checked)} />Нужно уточнить</label>
-</>}
+
       <div id="babok-requirements" aria-label="Реестр требований" className="grid gap-4 grid-cols-1">
         {visibleTypes.map((type) => {
           const [, label, subtitle, color] = BABOK_REQUIREMENT_COLUMNS.find((item) => item[0] === type);
           const records = (registry.groups[type] || []).filter((record) => !needsClarification || record.quality !== 'Готово');
-          return <section key={type} id={`req-type-${type}`} tabIndex={-1} style={{ scrollMarginTop: '14rem' }} role="region" aria-label={label} className={compact ? `rounded-xl border border-slate-200 border-t-4 ${color} bg-white px-4 py-3` : `bg-white rounded-2xl border border-slate-200 border-t-4 ${color} px-5 py-5`}>
-            <div className="flex items-start justify-between gap-3 mb-2"><div><div className="flex items-center gap-2"><span className="font-mono text-xs font-bold text-slate-500">{type}</span><h2 className="text-base font-bold text-slate-900">{label}</h2></div>{!compact && <p className="text-xs text-slate-500 mt-1">{subtitle}</p>}</div><span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500">{records.length}</span></div>
-            <div className={compact ? "divide-y divide-slate-200 mt-2" : "divide-y divide-slate-200 mt-4"}>
+          return <section key={type} id={`req-type-${type}`} tabIndex={-1} style={{ scrollMarginTop: '14rem' }} role="region" aria-label={label} className={`bg-white rounded-2xl border border-slate-200 border-t-4 ${color} px-5 py-5`}>
+            <div className="flex items-start justify-between gap-3 mb-2"><div><div className="flex items-center gap-2"><span className="font-mono text-xs font-bold text-slate-500">{type}</span><h2 className="text-base font-bold text-slate-900">{label}</h2></div><p className="text-xs text-slate-500 mt-1">{subtitle}</p></div><span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500">{records.length}</span></div>
+            <div className="divide-y divide-slate-200 mt-4">
               {records.map((item) => <BabokRequirementCard key={item.id} type={type} materials={registry.materials} onNavigate={navigateRecord} onDiscuss={jobId && discussionEnabled ? openDiscussion : undefined} manuallyEdited={editedRecordIds.has(item.id) || latestVersion?.revision?.manualDecisionMetadata?.editedRecordIds?.includes(item.id)} requirement={item} onEdit={(text, fields) => editRequirement(type, item.id, text, fields)} onDelete={() => deleteRequirement(type, item.id)} onDraftChange={(dirty) => setDraftDirty(`${type}:${item.id}`, dirty)} readOnly={readOnly} />)}
               {!records.length && <p className="py-6 text-sm text-slate-600">Нет сформированных требований</p>}
             </div>
@@ -852,7 +893,8 @@ function BabokRegistryResult({ value, latestVersion, onSave, onStartResearch, on
           </section>;
         })}
       </div>
-      {!compact && layout === 'rows' && <p className="text-xs text-slate-500">Сейчас выбран тип {activeMeta[0]} · {activeMeta[1]}. Переключите вкладку, чтобы просмотреть другой тип.</p>}
+      {layout === 'rows' && <p className="text-xs text-slate-500">Сейчас выбран тип {activeMeta[0]} · {activeMeta[1]}. Переключите вкладку, чтобы просмотреть другой тип.</p>}
+      </>}
       </div>
       {reviewSection === 'report' && <Suspense fallback={<p role="status">Загрузка отчёта…</p>}><BabokSkillReport registry={registry} /></Suspense>}
       {reviewSection === 'questions' || reviewSection === 'links'
