@@ -31,3 +31,9 @@ Rendered the real React components with synthetic room-booking data in an isolat
 ## Remaining limits
 
 The complete client suite is not fully green because of the reproduced baseline failure above. This change does not repair that unrelated AI fallback. Backend end-to-end save/research was covered through existing mocked client contracts, not by running a new live LLM or deployment flow. The temporary preview is for reviewing the implementation; the committed application remains the source of truth.
+
+## Desktop selector scroll follow-up — 2026-09-12
+
+- Desktop selector now uses `min(42rem, 65vh)` maximum height, internal vertical scrolling, contained scroll chaining and a pinned heading. Mobile retains `min(18rem, 36vh)`.
+- Verified in the running dev app on localhost:5177 with 15 requirements: 610 px visible height versus 1746 px content; internal scroll reached 906 px while document scroll position (169 px), detail top (255 px), and heading top (264 px) stayed unchanged.
+- Client production build and strict OpenSpec validation pass. Existing bundle-size advisory remains.

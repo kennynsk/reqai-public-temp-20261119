@@ -27,7 +27,7 @@ export default function RequirementListWorkspace({
     {composer}
     <div className="grid min-w-0 items-start gap-4 lg:grid-cols-[minmax(17.5rem,20rem)_minmax(0,1fr)]">
       <nav aria-label="Список требований" className="reqai-requirement-selector min-w-0 rounded-2xl border border-slate-200 bg-white p-2">
-        <div className="flex items-center justify-between gap-3 px-3 py-2 text-xs font-semibold text-slate-500"><span className="uppercase tracking-[0.08em]">Требования</span>{filtered && <span>Найдено: {entries.length}</span>}</div>
+        <div className="reqai-requirement-selector-heading top-0 z-10 flex items-center justify-between gap-3 bg-white px-3 py-2 text-xs font-semibold text-slate-500"><span className="uppercase tracking-[0.08em]">Требования</span>{filtered && <span>Найдено: {entries.length}</span>}</div>
         {entries.length ? <ul className="space-y-1">{entries.map(({ type, requirement }) => {
           const active = selected?.requirement.id === requirement.id;
           const ready = requirement.quality === 'Готово';

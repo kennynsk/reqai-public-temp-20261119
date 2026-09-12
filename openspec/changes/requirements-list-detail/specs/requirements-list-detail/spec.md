@@ -69,7 +69,7 @@ Navigation from requirement links, questions, completeness results and validatio
 - **THEN** the existing questions section or analysis disclosure opens rather than a blank requirement detail
 
 ### Requirement: Responsive and keyboard usable composition
-Below the desktop breakpoint the selector SHALL appear above the detail with bounded vertical scrolling. Content and controls SHALL reflow without horizontal page overflow at 320, 390, 768, 1024 and 1440 CSS pixels and at 200 percent browser zoom. Search and filter controls SHALL have Russian accessible names, selection SHALL not be color-only and keyboard focus SHALL remain visible. Repeated total counts SHALL be avoided; the selector may show the number of matching records when conditions are active.
+The selector SHALL have a viewport-relative maximum height and internal vertical scrolling on desktop, with its heading remaining visible while the entries scroll. Scrolling the selector SHALL NOT move the adjacent detail panel. Below the desktop breakpoint the selector SHALL appear above the detail with a smaller bounded vertical scrolling area. Content and controls SHALL reflow without horizontal page overflow at 320, 390, 768, 1024 and 1440 CSS pixels and at 200 percent browser zoom. Search and filter controls SHALL have Russian accessible names, selection SHALL not be color-only and keyboard focus SHALL remain visible. Repeated total counts SHALL be avoided; the selector may show the number of matching records when conditions are active.
 
 #### Scenario: Narrow screen
 - **WHEN** the registry is viewed on a 390 CSS pixel screen
@@ -78,3 +78,7 @@ Below the desktop breakpoint the selector SHALL appear above the detail with bou
 #### Scenario: Keyboard operation
 - **WHEN** the user navigates by Tab and activates selector entries and controls by keyboard
 - **THEN** focus follows visual reading order and all existing edit, delete, add, source and discussion actions remain reachable
+
+#### Scenario: Long desktop requirement list
+- **WHEN** the registry contains more entries than fit within the selector height
+- **THEN** the user can scroll inside the selector to reach every entry while its heading and the adjacent detail remain in place

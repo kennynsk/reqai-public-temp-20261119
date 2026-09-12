@@ -217,9 +217,18 @@ body {
   }
 }
 
+.reqai-requirement-selector-heading {
+  position: sticky;
+}
+
+.reqai-requirement-selector {
+  max-height: min(42rem, 65vh);
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+}
+
 @media (max-width: 1023px) {
   .reqai-requirement-selector {
     max-height: min(18rem, 36vh);
-    overflow-y: auto;
   }
 }
