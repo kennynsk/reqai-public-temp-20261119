@@ -1,3 +1,4 @@
+import { acceptGapClarification, reconcileDiscussionReceipts } from './gap-clarification.js';
 import { useContext, useEffect, useReducer, useState } from 'react';
 import { DraftContext, SessionContext } from './review-context.js';
 import { STRUCTURED_FIELDS, validateReviewContent } from './review-fields.js';
@@ -68,7 +69,8 @@ export function reviewReducer(state, action) {
       const beforeGaps = new Map((state.content?.analysis?.GAP || []).map((gap) => [gap.id, JSON.stringify(gap)]));
       const afterGaps = new Map((content?.analysis?.GAP || []).map((gap) => [gap.id, JSON.stringify(gap)]));
       const changedGaps = [...new Set([...beforeGaps.keys(), ...afterGaps.keys()].filter((id) => beforeGaps.get(id) !== afterGaps.get(id)))];
-      const decisions = invalidateReviewEvidence(state.decisions, { changedRecordIds: changed, changedGapIds: changedGaps });
+      let decisions = invalidateReviewEvidence(state.decisions, { changedRecordIds: changed, changedGapIds: changedGaps });
+      if (action.clarification) decisions = acceptGapClarification(decisions, action.clarification);
       const proposal = action.proposal;
       const nextDecisions = proposal
         ? updateReviewMetadata(decisions, { discussionProposals: { ...(decisions.review?.discussionProposals || {}), [proposal.proposalId]: proposal } })
@@ -100,7 +102,8 @@ export function assembleReview(state, createRecord, normalize = (value) => value
   }
   const error = validateReviewContent(content);
   if (error) return { error };
-  return { content: normalize(content), decisions: state.decisions };
+  const normalized = normalize(content);
+  return { content: normalized, decisions: reconcileDiscussionReceipts(state.decisions, normalized) };
 }
 
 export function rebaseReview(state, base, remote, baseDecisions = {}, remoteDecisions = {}) {

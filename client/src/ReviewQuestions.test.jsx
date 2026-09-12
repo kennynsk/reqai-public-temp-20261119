@@ -49,7 +49,7 @@ test('edits answers, shows priorities, navigates links, and records open/close d
   render(<DraftContext.Provider value={makeReview(dispatch)}><ReviewQuestions registry={registry} onNavigate={onNavigate} /></DraftContext.Provider>);
 
   expect(screen.getByRole('heading', { name: 'Вопросы для уточнения · 4' })).toBeInTheDocument();
-  expect(screen.getByText(/Пробелов: 3/)).toBeInTheDocument();
+  expect(screen.getByText(/AI поможет разобраться/)).toBeInTheDocument();
   expect(screen.getByText('Открыт')).toBeInTheDocument();
   expect(screen.getByText('Дан ответ · ещё открыт')).toBeInTheDocument();
   expect(screen.getByText('Закрыт')).toBeInTheDocument();

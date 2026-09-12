@@ -56,6 +56,7 @@ const mapProposal = (row) => {
   const packageValue = typeof row.package === 'string' ? JSON.parse(row.package) : (row.package || {});
   return {
     proposalId: row.id,
+    messageId: row.message_id,
     ...packageValue,
     status: row.status,
     createdAt: row.created_at ? new Date(row.created_at).toISOString() : null,

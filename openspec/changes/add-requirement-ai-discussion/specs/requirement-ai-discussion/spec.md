@@ -5,7 +5,7 @@
 ## ADDED Requirements
 
 ### Requirement: Contextual discussion entry points
-The system SHALL provide «Обсудить с AI» for an existing requirement or GAP in an editable task, identify the selected record in the discussion panel, and preserve navigation and unsent messages when switching records. Opening the panel MUST NOT start generation. Read-only task views SHALL NOT allow generation or applying edits.
+The system SHALL provide «Обсудить с AI» for an existing requirement and «Помочь уточнить» for an open GAP in an editable task, identify the selected record in the discussion panel, and preserve navigation and unsent messages when switching records. Opening the panel MUST NOT start generation. Read-only task views SHALL NOT allow generation or applying edits.
 
 #### Scenario: Open and switch discussion
 - **WHEN** the user opens discussion from GAP-001 and then BR-001
@@ -40,7 +40,7 @@ The system SHALL persist discussion history per task and anchor record across re
 - **THEN** access is denied without disclosing messages, source fragments or record content
 
 ### Requirement: Discussion and proposed edits remain separate
-The system SHALL distinguish explanatory messages from validated edit proposals. Proposals SHALL identify existing target requirements, changed fields, rationale and a before/after comparison. They MUST NOT invent source citations, directly mutate requirements, change record identifiers or evidence, or close GAPs.
+The system SHALL distinguish explanatory messages from validated edit proposals. Proposals SHALL identify existing target requirements, changed fields, rationale and a before/after comparison. They MUST NOT invent source citations, directly mutate requirements, change record identifiers or evidence, or close GAPs without explicit user acceptance of a guided resolution package.
 
 #### Scenario: Insufficient information
 - **WHEN** the user provides only a one-year horizon for a missing success metric
@@ -52,7 +52,7 @@ The system SHALL distinguish explanatory messages from validated edit proposals.
 - **THEN** the proposal cannot be applied and the user can continue discussion or retry
 
 ### Requirement: Explicit atomic acceptance into draft
-The system SHALL apply a validated proposal only after the user reviews and accepts the entire proposed package. All targeted changes SHALL enter the shared draft atomically, preserve source evidence and unrelated edits, and remain unsaved until the normal version-save action. GAP closure SHALL remain a separate user decision.
+The system SHALL apply a validated proposal only after the user reviews and accepts the entire proposed package. All targeted changes SHALL enter the shared draft atomically, preserve source evidence and unrelated edits, and remain unsaved until the normal version-save action. GAP closure SHALL remain an explicit user decision, which may be included in acceptance of a guided resolution package.
 
 #### Scenario: Multiple target requirements
 - **WHEN** a proposal modifies BR-001 and FR-002 and the user accepts it
@@ -98,7 +98,7 @@ The system SHALL record proposal identity and user acceptance when proposed chan
 - **THEN** those instructions do not execute and cannot bypass scope or acceptance controls
 
 ### Requirement: Per-requirement GAP resolution checklist
-The system SHALL present a shared, deduplicated checklist of every requirement linked to a GAP, through either direction of the relationship, in manual and AI-assisted review. Each item SHALL require explicit user confirmation of «Ответ учтён» or «Изменение не требуется»; the latter MUST include a reason. Accepting AI edits MUST NOT automatically confirm checklist items. Closing a GAP as resolved SHALL require a nonempty answer and current confirmations for all linked requirements. This behavior SHALL work with AI disabled.
+The system SHALL present a shared, deduplicated checklist of every requirement linked to a GAP, through either direction of the relationship, excluding existing context and analysis records, in manual and AI-assisted review. Each item SHALL require explicit user confirmation of «Ответ учтён» or «Изменение не требуется»; the latter MUST include a reason. Accepting ordinary AI edits MUST NOT automatically confirm checklist items. A guided resolution package MAY include explicit confirmation of its displayed checklist as part of acceptance. Closing a GAP as resolved SHALL require a nonempty answer and current confirmations for all linked requirements. This behavior SHALL work with AI disabled.
 
 #### Scenario: GAP-002 affects two requirements
 - **WHEN** GAP-002 links SR-003 and FR-005 and the user confirms only SR-003
@@ -138,3 +138,36 @@ The system SHALL distinguish checklist-based resolution from dismissing a questi
 #### Scenario: Legacy saved version
 - **WHEN** an older saved version contains a closed GAP without confirmations
 - **THEN** the interface preserves that decision and identifies the missing per-requirement review history
+
+### Requirement: Guided clarification of a GAP
+A GAP discussion SHALL offer a ready-to-send starting action and accept plain-language answers. The model SHALL explain the missing decision, ask at most one concrete next question per turn and use the current GAP, associated questions, answers, linked requirements and available context records. It SHALL not invent business decisions. Opening the panel SHALL not start generation.
+
+#### Scenario: User starts without knowing what to ask
+- **WHEN** a user opens «Помочь уточнить» and activates «Начать уточнение»
+- **THEN** a prepared request starts the contextual analysis and the user can answer the next question in the same panel
+
+### Requirement: Explicit guided resolution package
+A validated proposal MAY include a guided clarification with a summarized answer, per-requirement dispositions and reasons, remaining questions and server-captured record bases. The UI SHALL display this information with the before/after changes and label whether accepting it closes the selected GAP or leaves it open. Acceptance SHALL atomically apply the edits, answer and displayed confirmations to the shared draft; a complete package SHALL close only the selected GAP. Persistence SHALL remain a separate normal save. A no-edit package SHALL be allowed only with explicit no-change reasons. Ordinary proposals SHALL retain their existing behavior.
+
+#### Scenario: Complete multi-requirement answer
+- **WHEN** the user accepts a current package covering every linked requirement with no remaining questions
+- **THEN** the answer, edits and confirmations appear together in the draft and the GAP is resolved, with source evidence preserved
+
+#### Scenario: Partial or stale package
+- **WHEN** some questions or requirements remain unhandled, or context was omitted
+- **THEN** acceptance SHALL NOT close the GAP
+- **AND WHEN** the relevant answer, GAP, requirement or linked set changed after generation
+- **THEN** the package SHALL be rejected as stale without partial application
+
+#### Scenario: Context record referenced by a GAP
+- **WHEN** a GAP references an existing TERM or CTX alongside requirements
+- **THEN** that record remains accessible context and does not require a requirement confirmation
+- **AND** a truly missing reference still prevents falsely completing the GAP
+
+#### Scenario: Several accepted clarifications before saving
+- **WHEN** the user accepts a partial clarification and then a complete clarification, or manually edits the accepted result before saving
+- **THEN** saving SHALL preserve the final draft and earlier acceptance history without treating a superseded receipt as proof of the current answer or closure
+
+#### Scenario: Completing a saved partial clarification
+- **WHEN** the user explicitly accepts a fresh complete package after saving a partial answer
+- **THEN** the server SHALL validate the new answer, changes and dispositions together, refresh their confirmation bases, and allow a fully checked question to be saved as resolved

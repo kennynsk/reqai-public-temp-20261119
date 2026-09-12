@@ -24,10 +24,12 @@ function recordsFromContent(content) {
     .filter((record) => record && typeof record.id === 'string');
 }
 
-function linkedRequirements(content, gap) {
+export function linkedRequirements(content, gap) {
   const records = recordsFromContent(content);
   const ids = new Set(records.map((record) => record.id));
-  const linked = new Set(Array.isArray(gap?.affectedIds) ? gap.affectedIds : []);
+  const contextIds = new Set([...(content?.context || []), ...Object.values(content?.analysis || {}).filter(Array.isArray).flat()]
+    .filter((record) => record?.id).map((record) => record.id));
+  const linked = new Set((Array.isArray(gap?.affectedIds) ? gap.affectedIds : []).filter((id) => !contextIds.has(id)));
   for (const record of records) {
     const related = [...(record.relatedIds || []), ...(record.relatedTo || [])];
     if (related.includes(gap.id)) linked.add(record.id);
@@ -55,7 +57,7 @@ function checkIsCurrent(check, basis) {
     && check.requirementHash === basis.requirementHash;
 }
 
-function normalizeDiscussionProposals({ supplied, inherited = {}, content, stamp, baseVersionId = null }) {
+function normalizeDiscussionProposals({ supplied, inherited = {}, content, stamp, baseVersionId = null, review = {} }) {
   if (!object(supplied) || Object.keys(supplied).length > 500) fail('Invalid discussion proposal receipt map');
   const records = new Map(recordsFromContent(content).map((record) => [record.id, record]));
   const result = copy(inherited || {});
@@ -65,7 +67,8 @@ function normalizeDiscussionProposals({ supplied, inherited = {}, content, stamp
     const prior = inherited?.[proposalId];
     if (prior && same(prior, value)) { result[proposalId] = copy(prior); continue; }
     if (!['accepted', 'rejected'].includes(value.decision)) fail('Discussion proposal receipt must be accepted or rejected');
-    if (!Array.isArray(value.changes) || value.changes.length < (value.decision === 'accepted' ? 1 : 0) || value.changes.length > 20) fail('Invalid discussion proposal changes');
+    if (value.superseded !== undefined && typeof value.superseded !== 'boolean') fail('Invalid superseded discussion receipt');
+    if (!Array.isArray(value.changes) || value.changes.length < (value.decision === 'accepted' && !value.clarification ? 1 : 0) || value.changes.length > 20) fail('Invalid discussion proposal changes');
     const changes = value.changes.map((change) => {
       if (!object(change) || typeof change.targetId !== 'string' || !records.has(change.targetId) || !object(change.before) || !object(change.after)) fail('Discussion proposal target is outside the current requirements');
       const type = String(change.targetId).split('-', 1)[0];
@@ -77,7 +80,7 @@ function normalizeDiscussionProposals({ supplied, inherited = {}, content, stamp
       const before = Object.fromEntries(fields.map((field) => [field, change.before[field] ?? '']));
       if (change.beforeHash !== undefined && change.beforeHash !== canonicalSha256(before)) fail('Discussion proposal base hash is invalid');
       const current = records.get(change.targetId);
-      if (value.decision === 'accepted' && fields.some((field) => String(current[field] ?? '') !== String(change.after[field] ?? ''))) fail('Accepted discussion proposal does not match the saved requirement');
+      if (value.decision === 'accepted' && !value.superseded && fields.some((field) => String(current[field] ?? '') !== String(change.after[field] ?? ''))) fail('Accepted discussion proposal does not match the saved requirement');
       return { targetId: change.targetId, targetType: type, before, after: Object.fromEntries(fields.map((field) => [field, String(change.after[field]).trim()])), beforeHash: canonicalSha256(before), ...(change.rationale ? { rationale: cleanText(change.rationale, 5000, 'Discussion proposal rationale') } : {}) };
     });
     const baseHash = canonicalSha256(changes.map(({ targetId, beforeHash }) => ({ targetId, beforeHash })));
@@ -92,9 +95,31 @@ function normalizeDiscussionProposals({ supplied, inherited = {}, content, stamp
         return [gapId, { question, answer }];
       }));
     }
+    let clarification;
+    if (value.clarification !== undefined) {
+      const item = value.clarification;
+      if (!object(item) || !content.analysis?.GAP.some((gap) => gap.id === item.gapId) || typeof item.canResolve !== 'boolean') fail('Invalid guided clarification receipt');
+      const answer = cleanText(item.answer, 20000, 'Clarification answer');
+      if (!answer || !Array.isArray(item.remainingQuestions) || item.remainingQuestions.length > 20) fail('Invalid remaining clarification questions');
+      const remainingQuestions = item.remainingQuestions.map((question) => cleanText(question, 2000, 'Remaining question'));
+      if (value.decision === 'accepted' && !value.superseded && (review.gaps?.[item.gapId]?.answer?.trim() !== answer || (item.canResolve && (remainingQuestions.length || review.gaps?.[item.gapId]?.state !== 'closed' || review.gaps?.[item.gapId]?.closureKind !== 'resolved')))) fail('Guided clarification receipt does not match the saved decision');
+      const linkage = linkedRequirements(content, content.analysis.GAP.find((gap) => gap.id === item.gapId));
+      if (!Array.isArray(item.checks) || !item.checks.length || item.checks.length > 100) fail('Invalid guided clarification checks');
+      const seen = new Set();
+      const checks = item.checks.map((check) => {
+        if (!object(check) || !linkage.records.has(check.requirementId) || !linkage.ids.includes(check.requirementId) || seen.has(check.requirementId) || !['incorporated', 'no-change'].includes(check.state)) fail('Invalid guided requirement disposition');
+        seen.add(check.requirementId);
+        const reason = cleanText(check.reason, 5000, 'Clarification check reason');
+        if (!reason || (check.state === 'incorporated') !== changes.some((change) => change.targetId === check.requirementId)) fail('Guided checks must match the changes');
+        if (!value.superseded && !same({ state: check.state, reason }, { state: review.gapRequirements?.[item.gapId]?.[check.requirementId]?.state, reason: review.gapRequirements?.[item.gapId]?.[check.requirementId]?.reason })) fail('Guided checks do not match the saved confirmations');
+        return { requirementId: check.requirementId, state: check.state, reason };
+      });
+      if (changes.some((change) => !seen.has(change.targetId))) fail('A guided change needs a requirement disposition');
+      clarification = { gapId: item.gapId, answer, canResolve: item.canResolve, remainingQuestions, checks };
+    }
     const proposalBaseVersionId = value.baseVersionId == null ? undefined : cleanText(value.baseVersionId, 128, 'Discussion proposal base version');
     if (proposalBaseVersionId && baseVersionId && proposalBaseVersionId !== baseVersionId) fail('Discussion proposal base version does not match the saved version');
-    result[proposalId] = { proposalId, decision: value.decision, changes, baseHash, ...(proposalBaseVersionId ? { baseVersionId: proposalBaseVersionId } : {}), ...(gapBases ? { gapBases } : {}), ...(value.discarded === true ? { discarded: true } : {}), ...stamp };
+    result[proposalId] = { proposalId, decision: value.decision, changes, baseHash, ...(proposalBaseVersionId ? { baseVersionId: proposalBaseVersionId } : {}), ...(gapBases ? { gapBases } : {}), ...(value.discarded === true ? { discarded: true } : {}), ...(value.superseded === true ? { superseded: true } : {}), ...(clarification ? { clarification } : {}), ...stamp };
   }
   return result;
 }
@@ -120,7 +145,7 @@ export function normalizeReviewMetadata({ supplied, inherited, content, allowedG
   const gapById = new Map(allowedGaps.map((gap) => [gap.id, gap]));
   const next = { ...copy(previous), schemaVersion: 1, gaps: copy(previous.gaps || {}) };
   if (input.proposals !== undefined) next.proposals = normalizeProposalMetadata({ supplied: input.proposals, inherited: previous.proposals, content, baseContent, researchResult, researchJobId, baseVersionId, stamp });
-  if (input.discussionProposals !== undefined) next.discussionProposals = normalizeDiscussionProposals({ supplied: input.discussionProposals, inherited: previous.discussionProposals, content, stamp, baseVersionId });
+  if (input.discussionProposals !== undefined) next.discussionProposals = normalizeDiscussionProposals({ supplied: input.discussionProposals, inherited: previous.discussionProposals, content, stamp, baseVersionId, review: input });
   if (input.citationChecks !== undefined) {
     if (!object(input.citationChecks) || Object.keys(input.citationChecks).length > 600) fail('Invalid citation checks');
     const sources = new Map((researchResult?.insights || []).flatMap((insight) => normalizeCitations(insight.citations).map((citation, index) => [`${insight.id}:${index}`, citation])));
@@ -176,12 +201,15 @@ export function normalizeReviewMetadata({ supplied, inherited, content, allowedG
     });
     for (const gap of gapsToTrack) {
       const linkage = linkedRequirements(content, gap);
+      const contextIds = new Set([...(content?.context || []), ...Object.values(content?.analysis || {}).filter(Array.isArray).flat()].filter((record) => record?.id).map((record) => record.id));
       const supplied = suppliedGapRequirements?.[gap.id];
       if (supplied !== undefined && (!object(supplied) || Object.keys(supplied).length > Math.max(100, linkage.ids.length + 20))) fail('Invalid GAP requirement checklist');
       if (supplied !== undefined) {
-        for (const requirementId of Object.keys(supplied)) if (!linkage.ids.includes(requirementId)) fail('Requirement is not linked to this GAP');
+        for (const requirementId of Object.keys(supplied)) if (!linkage.ids.includes(requirementId) && !contextIds.has(requirementId)) fail('Requirement is not linked to this GAP');
       }
-      const priorChecks = object(next.gapRequirements[gap.id]) ? next.gapRequirements[gap.id] : {};
+      // Older versions incorrectly stored TERM/CTX as missing requirements.
+      // Retire those entries while retaining diagnostics for genuinely missing IDs.
+      const priorChecks = object(next.gapRequirements[gap.id]) ? Object.fromEntries(Object.entries(next.gapRequirements[gap.id]).filter(([id]) => !contextIds.has(id))) : {};
       const nextChecks = { ...priorChecks };
       for (const requirementId of linkage.ids) {
         const value = supplied?.[requirementId] ?? priorChecks[requirementId] ?? { state: 'pending' };
@@ -194,7 +222,8 @@ export function normalizeReviewMetadata({ supplied, inherited, content, allowedG
         const prior = priorChecks[requirementId];
         const current = checkIsCurrent(prior, basis);
         const missing = linkage.unresolved.includes(requirementId);
-        if (missing || !current && prior && (prior.state === 'incorporated' || prior.state === 'no-change') && state !== 'pending') {
+        const freshlyAccepted = Object.values(next.discussionProposals || {}).some((receipt) => !previous.discussionProposals?.[receipt.proposalId] && receipt.decision === 'accepted' && !receipt.superseded && receipt.clarification?.gapId === gap.id && receipt.clarification.checks.some((check) => check.requirementId === requirementId && check.state === state && check.reason === reason));
+        if (missing || !freshlyAccepted && !current && prior && (prior.state === 'incorporated' || prior.state === 'no-change') && state !== 'pending') {
           nextChecks[requirementId] = { state: 'pending', reason: '', stale: true, unresolved: missing, ...basis, ...(prior.actorUserId ? { previousActorUserId: prior.actorUserId } : {}), ...stamp };
           continue;
         }

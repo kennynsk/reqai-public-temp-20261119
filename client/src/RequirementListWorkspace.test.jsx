@@ -5,6 +5,8 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { BabokRegistryResult } from './AsyncJobWorkspace.jsx';
 import { roomBookingRegistry } from './room-booking.fixture.js';
 import { enterpriseApi } from './api/enterprise-api.js';
+import { buildDiscussionContext, validateDiscussionProposal } from '../../server/src/services/requirement-discussion-service.js';
+import { normalizeReviewMetadata } from '../../server/src/services/review-metadata.js';
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); globalThis.localStorage?.clear(); globalThis.sessionStorage?.clear(); });
 function setup(extra = {}) {
@@ -146,5 +148,39 @@ test('selected record discussion keeps the original anchor and includes edits fr
   await waitFor(() => expect(get).toHaveBeenCalledWith('rooms', 'FR-001', expect.any(Object)));
   fireEvent.change(screen.getByRole('textbox', { name: 'Сообщение для FR-001' }), { target: { value: 'Как уточнить?' } });
   fireEvent.click(screen.getByRole('button', { name: 'Отправить' }));
-  await waitFor(() => expect(send).toHaveBeenCalledWith('rooms', 'FR-001', expect.objectContaining({ baseVersionId: 'v1', draft: expect.objectContaining({ registry: expect.objectContaining({ groups: expect.objectContaining({ BR: [expect.objectContaining({ text: 'Уточнённая цель' })] }) }) }) })));
+  await waitFor(() => expect(send).toHaveBeenCalledWith('rooms', 'FR-001', expect.objectContaining({ baseVersionId: 'v1', draft: expect.objectContaining({ registry: expect.objectContaining({ groups: expect.objectContaining({ BR: [expect.objectContaining({ text: 'Уточнённая цель' })] }) }) }) }), expect.any(String)));
+});
+
+test('guided clarification runs from question to proposal, explicit acceptance and a saveable version', async () => {
+  const registry = roomBookingRegistry();
+  vi.spyOn(enterpriseApi, 'getRequirementDiscussion').mockResolvedValue({ discussionId: 'discussion', messages: [] });
+  vi.spyOn(enterpriseApi, 'subscribeRequirementDiscussionEvents').mockResolvedValue(undefined);
+  let turns = 0;
+  vi.spyOn(enterpriseApi, 'sendRequirementDiscussionMessage').mockImplementation(async (job, anchorId, body) => {
+    const messages = [{ messageId: 'assistant', role: 'assistant', text: 'Как измерить результат?', status: 'completed' }];
+    if (++turns === 1) return { messages, proposal: null };
+    const snapshot = buildDiscussionContext({ content: body.draft?.registry || registry, decisions: body.draft?.decisions || {}, anchorId, baseVersionId: 'v1' });
+    return { messages, proposal: { proposalId: 'guided-workspace-001', ...validateDiscussionProposal({ explanation: 'Уточнить показатель', changes: [{ targetId: 'BR-001', before: { successIndicator: '' }, after: { successIndicator: '0 конфликтов бронирования за месяц' }, rationale: 'Целевой показатель пользователя' }], clarification: { gapId: anchorId, answer: '0 конфликтов за месяц', remainingQuestions: [], checks: [{ requirementId: 'BR-001', state: 'incorporated', reason: 'Показатель добавлен к бизнес-цели' }] } }, { content: snapshot }) } };
+  });
+  const save = vi.fn();
+  render(<BabokRegistryResult value={registry} latestVersion={{ versionId: 'v1', registry, decisions: {} }} jobId="rooms" initialRecordId="GAP-007" onSave={save} />);
+  const gap = () => document.getElementById('record-GAP-007');
+  expect(within(gap()).getByLabelText('Ответ на GAP-007')).not.toBeVisible();
+  fireEvent.click(within(gap()).getByRole('button', { name: 'Помочь уточнить' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Начать уточнение' }));
+  await screen.findByText('Как измерить результат?');
+  fireEvent.change(screen.getByRole('textbox', { name: 'Сообщение для GAP-007' }), { target: { value: '0 конфликтов за месяц' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Отправить' }));
+  const accept = await screen.findByRole('button', { name: 'Применить уточнение и закрыть вопрос' });
+  expect(save).not.toHaveBeenCalled();
+  fireEvent.click(accept);
+  expect(screen.getByRole('button', { name: 'Принято в черновик' })).toBeDisabled();
+  fireEvent.click(screen.getAllByRole('button', { name: 'Закрыть обсуждение' }).at(-1));
+  expect(within(gap()).getByText('Закрыт', { exact: true })).toBeInTheDocument();
+  expect(within(gap()).getByRole('textbox', { name: 'Ответ на GAP-007' })).toHaveValue('0 конфликтов за месяц');
+  fireEvent.click(screen.getByRole('button', { name: 'Сохранить изменения' }));
+  const payload = save.mock.calls[0][0];
+  expect(payload.registry.groups.BR[0]).toMatchObject({ successIndicator: '0 конфликтов бронирования за месяц', source: registry.groups.BR[0].source });
+  const saved = normalizeReviewMetadata({ supplied: payload.decisions.review, content: payload.registry, allowedGaps: payload.registry.analysis.GAP, contextId: 'source', actorId: 'alice', now: new Date(), baseVersionId: 'v1' });
+  expect(saved.gaps['GAP-007'].state).toBe('closed');
 });

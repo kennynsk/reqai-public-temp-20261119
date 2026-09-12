@@ -1,3 +1,4 @@
+import { clarificationIsCurrent } from './gap-clarification.js';
 import RequirementClarifications from './RequirementClarifications.jsx';
 import RequirementComposerMenu from './RequirementComposerMenu.jsx';
 import RequirementsReviewHeader from './RequirementsReviewHeader.jsx';
@@ -525,9 +526,9 @@ function BabokRequirementCard({ type, requirement, onEdit, onDelete, onDraftChan
             <label className="text-xs font-semibold text-slate-600">Качество<select aria-label={`Качество ${requirement.id}`} value={field.draft?.fields?.quality ?? requirement.quality} onChange={(event) => field.changeField('quality', event.target.value)} className="block w-full mt-1 rounded-lg border p-2 text-sm font-normal">{QUALITY_OPTIONS.map((quality) => <option key={quality}>{quality}</option>)}</select></label>
           </div>
           <details className="mt-3 text-sm"><summary className="cursor-pointer p-2">Редактировать связи</summary><div className="flex flex-wrap gap-3 p-2">{field.relatedOptions.map((id) => { const name = type === 'BR' ? 'relatedIds' : 'relatedTo'; const selected = field.draft?.fields?.[name] || requirement[name] || []; return <label key={id} className="inline-flex gap-2 items-center p-1"><input type="checkbox" checked={selected.includes(id)} onChange={(event) => field.changeField(name, event.target.checked ? [...selected, id] : selected.filter((value) => value !== id))} />{id}</label>; })}</div></details>
-          <p className="text-xs text-slate-500 mt-2">«Готово» применяет правки к черновику. Исходная цитата не изменяется.</p>
+          <p className="text-xs text-slate-500 mt-2">Правки попадут в черновик. Затем сохраните изменения общей кнопкой вверху.</p>
           <div className="flex gap-2 mt-2">
-            <button onClick={save} disabled={!text.trim()} className="text-xs px-3 py-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:bg-slate-300">Готово</button>
+            <button onClick={save} disabled={!text.trim()} className="text-xs px-3 py-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:bg-slate-300">Применить к черновику</button>
             <button onClick={cancel} className="text-xs px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200">Отмена</button>
           </div>
         </div>
@@ -739,7 +740,7 @@ function BabokRegistryResult({ value, latestVersion, onSave, onStartResearch, on
   }
 
   function saveRegistry(decisions = review.state.decisions) {
-    const assembled = assembleReview(review.state, (type, text, records) => createBabokManualRecord(type, stableBabokId(records, type, review.state.reservedIds), text, { sourceArtifactId: registry.materials.primary.artifactId }), withBabokCounts);
+    const assembled = assembleReview({ ...review.state, decisions }, (type, text, records) => createBabokManualRecord(type, stableBabokId(records, type, review.state.reservedIds), text, { sourceArtifactId: registry.materials.primary.artifactId }), withBabokCounts);
     setValidationError(assembled.error || null);
     if (assembled.error) {
       setActiveType(assembled.error.type); setTypeFilter(assembled.error.type); setReviewSection('requirements'); setNeedsClarification(false); setQuery(''); setSelectedRecordId(assembled.error.id);
@@ -753,7 +754,7 @@ function BabokRegistryResult({ value, latestVersion, onSave, onStartResearch, on
     }
     const originalRecords = new Map(BABOK_REQUIREMENT_TYPES.flatMap((type) => (baseline.groups || baseline)[type] || []).map((record) => [record.id, record]));
     const draftIds = BABOK_REQUIREMENT_TYPES.flatMap((type) => assembled.content.groups[type]).filter((record) => JSON.stringify(originalRecords.get(record.id)) !== JSON.stringify(record)).map((record) => record.id);
-    return onSave?.({ registry: assembled.content, baseVersionId: latestVersion?.versionId || null, decisions, editedRecordIds: [...new Set([...editedRecordIds, ...draftIds])] });
+    return onSave?.({ registry: assembled.content, baseVersionId: latestVersion?.versionId || null, decisions: assembled.decisions, editedRecordIds: [...new Set([...editedRecordIds, ...draftIds])] });
   }
 
   const discussionContext = useMemo(() => {
@@ -774,7 +775,7 @@ function BabokRegistryResult({ value, latestVersion, onSave, onStartResearch, on
     : '';
 
   function applyDiscussionProposal(proposal) {
-    if (readOnly || !proposal?.proposalId || !Array.isArray(proposal.changes) || !proposal.changes.length) return false;
+    if (readOnly || !proposal?.proposalId || !Array.isArray(proposal.changes) || (!proposal.changes.length && !proposal.clarification)) return false;
     // A previously accepted package is already present in this draft. Treat a
     // repeated click as an idempotent success so the panel can reflect that
     // state without applying the edits twice.
@@ -786,6 +787,10 @@ function BabokRegistryResult({ value, latestVersion, onSave, onStartResearch, on
     const assembled = discussionContext.error ? null : discussionContext.registry;
     if (!assembled) {
       setValidationError(discussionContext.error || { id: discussionAnchor, message: 'Исправьте незавершённые правки перед применением предложения.' });
+      return false;
+    }
+    if (proposal.clarification && !clarificationIsCurrent(assembled, discussionContext.decisions, proposal)) {
+      setValidationError({ id: proposal.clarification.gapId, message: 'Уточнение устарело: изменились вопрос, требования или связи. Запросите новый вариант.' });
       return false;
     }
     const byId = new Map(BABOK_REQUIREMENT_TYPES.flatMap((type) => (assembled.groups[type] || []).map((record) => [record.id, { type, record }])));
@@ -810,7 +815,8 @@ function BabokRegistryResult({ value, latestVersion, onSave, onStartResearch, on
     const next = withBabokCounts({ ...assembled, groups: { ...assembled.groups } });
     for (const change of targets) next.groups[change.type] = next.groups[change.type].map((record) => record.id === change.targetId ? { ...record, ...change.after } : record);
     const accepted = { proposalId: proposal.proposalId, decision: 'accepted', baseHash: proposal.baseHash, changes: targets.map(({ targetId, before, after, beforeHash, rationale }) => ({ targetId, before, after, beforeHash, ...(rationale ? { rationale } : {}) })), ...(proposal.baseVersionId ? { baseVersionId: proposal.baseVersionId } : {}), ...(proposal.gapBases ? { gapBases: proposal.gapBases } : {}) };
-    review.dispatch({ type: 'proposal', value: next, proposal: accepted, clearDraftIds: targets.map((item) => item.targetId) });
+    if (proposal.clarification) { const { gapId, answer, canResolve, remainingQuestions, checks } = proposal.clarification; accepted.clarification = { gapId, answer, canResolve, remainingQuestions, checks }; }
+    review.dispatch({ type: 'proposal', value: next, proposal: accepted, clarification: proposal.clarification, clearDraftIds: targets.map((item) => item.targetId) });
     targets.forEach((item) => markEdited(item.targetId));
     setValidationError(null);
     return true;
@@ -899,7 +905,7 @@ function BabokRegistryResult({ value, latestVersion, onSave, onStartResearch, on
         ? <RequirementPreviewProvider index={requirementIndex}><RegistryAnalysis registry={registry} section={reviewSection} onNavigate={navigateRecord} onDiscuss={jobId && discussionEnabled ? openDiscussion : undefined} readOnly={readOnly} /></RequirementPreviewProvider>
         : <RegistryAnalysis registry={registry} section={reviewSection} onNavigate={navigateRecord} onDiscuss={jobId && discussionEnabled ? openDiscussion : undefined} readOnly={readOnly} />}
       <RecordFocus id={initialRecordId} />
-      {discussionAnchor && <DiscussionPanel jobId={jobId} anchorId={discussionAnchor} anchorLabel={discussionAnchorLabel} baseVersionId={latestVersion?.versionId || null} draft={discussionContext.unsaved && discussionContext.registry ? { registry: discussionContext.registry, decisions: discussionContext.decisions } : null} contextReady={Boolean(jobId && latestVersion?.versionId && !discussionContext.error)} contextError={discussionContext.error ? `${discussionContext.error.id}: ${discussionContext.error.message}` : !latestVersion?.versionId ? 'Сначала сохраните требования, чтобы открыть AI-обсуждение.' : ''} readOnly={readOnly} onClose={() => setDiscussionAnchor(null)} onApplyProposal={applyDiscussionProposal} onRejectProposal={rejectDiscussionProposal} />}
+      {discussionAnchor && <DiscussionPanel jobId={jobId} anchorId={discussionAnchor} anchorLabel={discussionAnchorLabel} baseVersionId={latestVersion?.versionId || null} draft={discussionContext.unsaved && discussionContext.registry ? { registry: discussionContext.registry, decisions: discussionContext.decisions } : null} proposalDecisions={review.state.decisions.review?.discussionProposals || {}} contextReady={Boolean(jobId && latestVersion?.versionId && !discussionContext.error)} contextError={discussionContext.error ? `${discussionContext.error.id}: ${discussionContext.error.message}` : !latestVersion?.versionId ? 'Сначала сохраните требования, чтобы открыть AI-обсуждение.' : ''} readOnly={readOnly} onClose={() => setDiscussionAnchor(null)} onApplyProposal={applyDiscussionProposal} onRejectProposal={rejectDiscussionProposal} />}
     </div></ReviewDraftProvider>
   );
 }

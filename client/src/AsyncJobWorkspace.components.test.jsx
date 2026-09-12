@@ -252,14 +252,14 @@ describe('AsyncJobWorkspace presentational branches', () => {
     fireEvent.click(relation);
     fireEvent.change(screen.getByLabelText('Категория NFR-001'), { target: { value: 'Скорость' } });
     fireEvent.change(screen.getByLabelText('Область NFR-001'), { target: { value: '' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Готово' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Применить к черновику' }));
     expect(onEdit).toHaveBeenCalledWith('Требование', expect.objectContaining({ category: 'Скорость', scope: null, relatedTo: ['BR-001'] }));
     cleanup();
     const invalid = babokRecord('NFR', { category: '' });
     render(<BabokRequirementCard type="NFR" requirement={invalid} materials={{ primary: { artifactId: 'a' } }} onEdit={onEdit} onDelete={vi.fn()} />);
     fireEvent.click(screen.getByRole('button', { name: 'Действия для NFR-001' }));
     fireEvent.click(screen.getByRole('button', { name: 'Редактировать' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Готово' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Применить к черновику' }));
     expect(screen.getByRole('alert')).toHaveTextContent('Заполните поле «Категория».');
     cleanup();
     render(<ReviewHarness content={{ groups: { BR: [babokRecord('BR', { id: 'BR-002', text: 'Исходная цель', quality: 'Неизвестное качество' })] }, context: [], analysis: { GAP: [], HYP: [], TERM: [] } }}><BabokRequirementCard type="BR" requirement={{ id: 'BR-002', quality: 'Неизвестное качество' }} materials={{}} onEdit={onEdit} onDelete={vi.fn()} onDraftChange={vi.fn()} /></ReviewHarness>);
@@ -294,7 +294,7 @@ describe('AsyncJobWorkspace presentational branches', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Действия для NFR-local' }));
     fireEvent.click(screen.getByRole('button', { name: 'Редактировать' }));
     fireEvent.change(screen.getByRole('textbox', { name: 'Текст требования NFR-local' }), { target: { value: 'Локальная правка' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Готово' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Применить к черновику' }));
     expect(onEdit).toHaveBeenCalledWith('Локальная правка', {});
 
     cleanup();
@@ -311,7 +311,7 @@ describe('AsyncJobWorkspace presentational branches', () => {
     const relation = screen.getByRole('checkbox', { name: 'FR-local' });
     expect(relation).toBeChecked();
     fireEvent.click(relation);
-    fireEvent.click(screen.getByRole('button', { name: 'Готово' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Применить к черновику' }));
     expect(controlledEdit).toHaveBeenCalledWith('Требование', expect.objectContaining({ relatedIds: [] }));
   });
 

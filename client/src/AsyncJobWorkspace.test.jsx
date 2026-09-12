@@ -170,14 +170,14 @@ test('GAP answer follows the user into editing and closes with the applied requi
   fireEvent.click(screen.getByRole('button', { name: 'Вопросы · 7' }));
   const answer = screen.getByRole('textbox', { name: 'Ответ на GAP-001' });
   fireEvent.change(answer, { target: { value: 'Уведомлять по электронной почте.' } });
-  fireEvent.click(within(answer.closest('article')).getByRole('button', { name: 'Уточнить BR-001' }));
+  fireEvent.click(within(answer.closest('article')).getByRole('button', { name: 'Редактировать BR-001' }));
   const editor = screen.getByRole('textbox', { name: 'Текст требования BR-001' });
   expect(editor).toHaveValue('Сохранить мой черновик.');
   const card = editor.closest('article');
   expect(within(card).getByText('Уведомлять по электронной почте.')).toBeVisible();
   expect(within(card).getByRole('button', { name: 'Ответ учтён для GAP-001 в BR-001' })).toBeDisabled();
   fireEvent.change(editor, { target: { value: 'Сократить конфликты бронирования с уведомлением по электронной почте.' } });
-  fireEvent.click(within(card).getByRole('button', { name: 'Готово' }));
+  fireEvent.click(within(card).getByRole('button', { name: 'Применить к черновику' }));
   const disclosure = within(card).getByText(/Уточнения ·/).closest('details');
   if (!disclosure.open) fireEvent.click(within(card).getByText(/Уточнения ·/));
   fireEvent.click(within(card).getByRole('button', { name: 'Ответ учтён для GAP-001 в BR-001' }));
@@ -1084,7 +1084,7 @@ test('reviews a BABOK registry by type, preserves evidence and saves a complete 
   fireEvent.click(within(business).getByRole('button', { name: 'Действия для BR-001' }));
   fireEvent.click(within(business).getByRole('button', { name: 'Редактировать' }));
   fireEvent.change(screen.getByLabelText('Текст требования BR-001'), { target: { value: 'Сократить время согласования заявки' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Готово' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Применить к черновику' }));
 
   fireEvent.click(screen.getByText('Добавить требование', { selector: 'summary' }));
   fireEvent.click(screen.getByRole('button', { name: 'Функциональные требования', exact: true }));

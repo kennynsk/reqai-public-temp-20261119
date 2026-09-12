@@ -52,7 +52,9 @@ function allRecords(content) {
 export function linkedRequirementIds(content, gap) {
   if (!gap) return [];
   const records = allRecords(content);
-  const linked = new Set(gap.affectedIds || []);
+  const contextIds = new Set([...(content?.context || []), ...Object.values(content?.analysis || {}).filter(Array.isArray).flat()]
+    .filter((record) => record?.id).map((record) => record.id));
+  const linked = new Set((gap.affectedIds || []).filter((id) => !contextIds.has(id)));
   for (const record of records) {
     const related = [...(record.relatedIds || []), ...(record.relatedTo || [])];
     if (related.includes(gap.id)) linked.add(record.id);

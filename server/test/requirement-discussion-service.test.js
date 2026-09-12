@@ -78,7 +78,7 @@ class MemoryDiscussionRepository {
   findAttempt({ attemptId }) { return this.attempts.get(attemptId) || null; }
   storeProposal({ discussionId, messageId, proposal }) { const row = { id: `p-${++this.sequence}`, discussionId, messageId, package: proposal, status: 'available' }; this.proposals.set(row.id, row); return row; }
   latestAttempt({ discussionId }) { return [...this.attempts.values()].filter((item) => item.discussionId === discussionId).at(-1) || null; }
-  latestProposal({ discussionId }) { const row = [...this.proposals.values()].filter((item) => item.discussionId === discussionId).at(-1); return row ? { proposalId: row.id, ...row.package, status: row.status } : null; }
+  latestProposal({ discussionId }) { const row = [...this.proposals.values()].filter((item) => item.discussionId === discussionId).at(-1); return row ? { proposalId: row.id, messageId: row.messageId, ...row.package, status: row.status } : null; }
 }
 
 const serviceAuth = { tenantId: 'tenant-a', userId: 'alice', roles: ['user'] };
@@ -134,4 +134,29 @@ test('provider failure preserves its reason for actionable client errors', async
     assert.equal(error.details.reasonCode, 'MODEL_HTTP_401');
     return true;
   });
+});
+
+test('guided prompt persists no-change resolutions and a subsequent question never revives the old proposal', async () => {
+  let call = 0;
+  const captured = [];
+  const content = structuredClone(registry);
+  content.analysis.GAP[0].affectedIds = ['FR-005'];
+  const service = createRequirementDiscussionService({
+    repository: new MemoryDiscussionRepository(),
+    jobRepository: { findVisibleById: async () => ({ id: 'job-1' }) },
+    versionService: { get: async () => ({ versionId: 'v1', sourceJobId: 'job-1', registry: content, decisions: {} }) },
+    generator: async ({ messages }) => {
+      captured.push(messages);
+      return { text: JSON.stringify(++call === 1 ? { explanation: 'Уточнение', changes: [], clarification: { gapId: 'GAP-002', answer: 'Текущие требования подходят', remainingQuestions: [], checks: [{ requirementId: 'FR-005', state: 'no-change', reason: 'Уже отражено' }, { requirementId: 'SR-003', state: 'no-change', reason: 'Роль уже указана' }] } } : { explanation: 'Какой следующий шаг?', changes: [] }) };
+    },
+  });
+  const first = await service.generate({ auth: serviceAuth, jobId: 'job-1', anchorId: 'GAP-002', body: { message: 'Согласовано', clientMessageId: 'guided-turn-001', baseVersionId: 'v1' } });
+  assert.equal(first.proposal.clarification.canResolve, true);
+  assert.equal(first.attempt.promptVersion, '2.0.0');
+  assert.ok(captured[0].some((message) => message.content.includes('За один ход задавай только один')));
+  assert.ok(captured[0].some((message) => message.content.includes('Не выдумывай')));
+  await service.generate({ auth: serviceAuth, jobId: 'job-1', anchorId: 'GAP-002', body: { message: 'Продолжим', clientMessageId: 'guided-turn-002', baseVersionId: 'v1' } });
+  const reloaded = await service.get({ auth: serviceAuth, jobId: 'job-1', anchorId: 'GAP-002' });
+  assert.equal(reloaded.proposal, undefined);
+  assert.equal(reloaded.messages.at(-1).text, 'Какой следующий шаг?');
 });
