@@ -48,7 +48,8 @@ test('BABOK default shows nonempty types and can open a composer in an empty typ
   expect(screen.getByRole('button', { name: 'Все типы' })).toHaveAttribute('aria-pressed', 'true');
   expect(screen.getByRole('button', { name: /^Выбрать SR-001:/ })).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /^Выбрать FR-/ })).not.toBeInTheDocument();
-  expect(screen.getByText(/Полнота: не проверена/)).toBeInTheDocument();
+  expect(screen.queryByText(/Полнота:|Сверить полноту/)).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Перейти к финальной версии' })).toBeEnabled();
   fireEvent.click(screen.getAllByText('Добавить требование')[0]);
   fireEvent.click(screen.getByRole('button', { name: 'Функциональные требования', exact: true }));
   const input = await screen.findByRole('textbox', { name: 'Новое требование: FR' });

@@ -117,7 +117,7 @@ test('reading a saved job preserves the unsent context draft and attachments', a
   expect(screen.getByText('draft.txt')).toBeInTheDocument();
 });
 
-async function openSavedRoomReview({ source = false, title = null } = {}) {
+async function openSavedRoomReview({ source = false, title = null, decisions = {} } = {}) {
   const registry = roomBookingRegistry();
   const job = { jobId: 'rooms', type: 'DECOMPOSITION', mode: 'DECOMPOSITION', status: 'SUCCEEDED', ...(title ? { title } : {}), ...(source ? { inputArtifactId: 'source' } : {}) };
   if (source) mocks.downloadArtifact.mockResolvedValue({ text: async () => roomBookingBrief });
@@ -126,7 +126,7 @@ async function openSavedRoomReview({ source = false, title = null } = {}) {
   mocks.getJob.mockResolvedValue(job);
   mocks.getResult.mockResolvedValue({ ...job, resultArtifactId: 'rooms-result' });
   mocks.getResultContent.mockResolvedValue(JSON.stringify(registry));
-  mocks.listRequirementsVersions.mockResolvedValue({ items: [{ versionId: 'rooms-v1', sourceJobId: 'rooms', registry, requirements: {}, decisions: {}, createdAt: '2026-08-28T10:00:00Z' }] });
+  mocks.listRequirementsVersions.mockResolvedValue({ items: [{ versionId: 'rooms-v1', sourceJobId: 'rooms', registry, requirements: {}, decisions, createdAt: '2026-08-28T10:00:00Z' }] });
   render(<AsyncJobWorkspace />);
   await screen.findByRole('heading', { name: 'Сократить конфликты бронирования.' });
   fireEvent.click(screen.getByRole('button', { name: /^BR ·/ }));
@@ -196,28 +196,30 @@ test('GAP answer follows the user into editing and closes with the applied requi
   expect(payload.decisions.review.gaps['GAP-001'].reason).toContain('BR-001');
 });
 
-test('source comparison flags missing reopening, adds a manual FR and invalidates completeness', async () => {
-  await openSavedRoomReview({ source: true });
+test('adds a requirement without a completeness check and preserves historical review notes', async () => {
+  const decisions = { review: {
+    schemaVersion: 1,
+    completeness: { checked: true, stale: false, recordedAt: '2026-08-28T09:00:00Z' },
+    omissions: [{ id: 'OMISSION-history', text: 'Предыдущая заметка о пропуске', requirementIds: ['FR-002'] }],
+  } };
+  await openSavedRoomReview({ source: true, decisions });
   fireEvent.click(screen.getByRole('button', { name: 'Отмена', exact: true }));
-  fireEvent.click(screen.getByText(/Полнота:.*Сверить/));
-  const check = await screen.findByRole('checkbox', { name: 'Я сверил доступный исходный текст с требованиями' });
-  await waitFor(() => expect(check).toBeEnabled());
-  fireEvent.click(check);
-  expect(check).toBeChecked();
-  fireEvent.click(screen.getByRole('button', { name: 'Зафиксировать пропуск' }));
-  fireEvent.change(screen.getByRole('textbox', { name: 'Пропущенное обязательство' }), { target: { value: 'Администратор повторно открывает комнату после обслуживания.' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Добавить пропуск в черновик' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Создать ручное требование' }));
+  expect(screen.queryByText(/Полнота:|Сверить полноту/)).not.toBeInTheDocument();
+  expect(screen.queryByRole('checkbox', { name: 'Я сверил доступный исходный текст с требованиями' })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByText('Добавить требование'));
+  fireEvent.click(screen.getByRole('button', { name: 'Функциональные требования', exact: true }));
+  const input = await screen.findByRole('textbox', { name: 'Новое требование: FR' });
+  fireEvent.change(input, { target: { value: 'Администратор повторно открывает комнату после обслуживания.' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Добавить', exact: true }));
   const group = document.getElementById('record-FR-003');
   expect(within(group).getByText('Администратор повторно открывает комнату после обслуживания.')).toBeInTheDocument();
-  expect(check).not.toBeChecked();
-  mocks.saveRequirementsVersion.mockImplementation(async (payload) => ({ ...payload, versionId: 'omission-version', createdAt: new Date().toISOString() }));
+  mocks.saveRequirementsVersion.mockImplementation(async (payload) => ({ ...payload, versionId: 'manual-version', createdAt: new Date().toISOString() }));
   fireEvent.click(screen.getByRole('button', { name: 'Сохранить изменения' }));
   await waitFor(() => expect(mocks.saveRequirementsVersion).toHaveBeenCalled());
   const payload = mocks.saveRequirementsVersion.mock.calls[0][0];
   expect(payload.registry.groups.FR).toHaveLength(3);
-  expect(payload.decisions.review.omissions[0].requirementIds).toEqual(['FR-003']);
-  expect(payload.decisions.review.completeness).toMatchObject({ check: false, stale: true });
+  expect(payload.decisions.review.omissions).toEqual(decisions.review.omissions);
+  expect(payload.decisions.review.completeness).toMatchObject({ ...decisions.review.completeness, check: false, stale: true });
 });
 
 test('does not advertise a pending BABOK draft as saved or eligible for research', async () => {

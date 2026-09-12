@@ -35,7 +35,7 @@ The registry SHALL support a single selected type or all types, case-insensitive
 - **THEN** its full name remains visible and the user can add a requirement to that type
 
 ### Requirement: Preserve edits and record operations
-The view SHALL reuse the existing review draft lifecycle. Text, structured fields, relation edits and new-record drafts SHALL survive changing selection, filters and review sections. Save SHALL assemble all drafts, including invisible ones. An invalid draft SHALL be revealed with the relevant editor and error field reachable before any save request. Existing add, delete confirmation, undo, AI discussion, conflict handling, completeness checks and immutable version payloads SHALL remain available.
+The view SHALL reuse the existing review draft lifecycle. Text, structured fields, relation edits and new-record drafts SHALL survive changing selection, filters and review sections. Save SHALL assemble all drafts, including invisible ones. An invalid draft SHALL be revealed with the relevant editor and error field reachable before any save request. Existing add, delete confirmation, undo, AI discussion, conflict handling and immutable version payloads SHALL remain available.
 
 #### Scenario: Switch during unfinished edit
 - **WHEN** a user edits wording and structured fields on A, selects B, then returns to A
@@ -58,7 +58,7 @@ The view SHALL reuse the existing review draft lifecycle. Text, structured field
 - **THEN** discussion uses the same record anchor and draft/version context as before, and export is not limited to the filtered list
 
 ### Requirement: Reveal linked records
-Navigation from requirement links, questions, completeness results and validation SHALL reveal its intended target even when filters or another review section hide it. Existing task and read-only snapshot routes SHALL remain valid.
+Navigation from requirement links, questions and validation SHALL reveal its intended target even when filters or another review section hide it. Existing task and read-only snapshot routes SHALL remain valid.
 
 #### Scenario: Follow hidden requirement link
 - **WHEN** the user follows a link to an existing requirement outside the current visible set

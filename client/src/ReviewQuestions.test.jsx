@@ -113,5 +113,5 @@ test('filters closed and open questions and renders read-only answers', () => {
 
 test('shows a safe empty state when there are no questions', () => {
   render(<DraftContext.Provider value={null}><ReviewQuestions registry={{ analysis: { GAP: [], questions: [] }, materials: {} }} readOnly onNavigate={vi.fn()} /></DraftContext.Provider>);
-  expect(screen.getByText('В этом списке нет вопросов. Это не подтверждает полноту требований.')).toBeInTheDocument();
+  expect(screen.getByText('В этом списке нет вопросов.')).toBeInTheDocument();
 });

@@ -57,10 +57,14 @@ export function requirementsDocument(version, title = 'Требования') {
   const qualityIssues = Object.values(groups).flat().filter((item) => item.quality && item.quality !== 'Готово');
   if (qualityIssues.length) { heading(2, 'Требования, требующие проверки'); for (const item of qualityIssues) paragraph(`${item.id} · ${item.quality}: ${item.text}`); }
   if (review.acknowledgment) paragraph(review.acknowledgment.stale ? 'Прежнее подтверждение открытых вопросов устарело после изменений.' : `Пользователь подтвердил сохранение открытых вопросов: ${date(review.acknowledgment.recordedAt)}. Это не означает их закрытие.`);
-  heading(1, 'Проверка полноты');
-  paragraph(review.completeness?.checked && !review.completeness.stale ? `Выполнена ручная сверка доступного исходного текста: ${date(review.completeness.recordedAt)}.` : 'Полнота текущей редакции не подтверждена ручной сверкой.');
-  if (review.completeness?.note) paragraph(review.completeness.note);
-  for (const item of review.omissions || []) paragraph(`Отмеченный пропуск: ${item.text} · ${item.requirementIds.length ? `Добавлены требования: ${item.requirementIds.join(', ')}` : 'Остаётся открытым'}`);
+  if (review.completeness?.recordedAt || review.completeness?.note || review.completeness?.checked || review.omissions?.length) {
+    heading(1, 'История ручной сверки');
+    if (review.completeness?.recordedAt || review.completeness?.checked) {
+      paragraph(`Сохранённая отметка ручной сверки: ${date(review.completeness.recordedAt)}.${review.completeness.stale ? ' Отметка устарела после изменений.' : ''}`);
+    }
+    paragraph(review.completeness?.note);
+    for (const item of review.omissions || []) paragraph(`Отмеченный пропуск: ${item.text} · ${item.requirementIds.length ? `Добавлены требования: ${item.requirementIds.join(', ')}` : 'Остаётся открытым'}`);
+  }
   const proposals = Object.values(review.proposals || {});
   if (proposals.length) {
     heading(1, 'Решения по AI-предложениям');

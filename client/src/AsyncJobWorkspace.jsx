@@ -52,7 +52,6 @@ import RequirementTypeNav from './RequirementTypeNav.jsx';
 import HistoryDrawer from './HistoryDrawer.jsx';
 import TaskTitle from './TaskTitle.jsx';
 import ContextInput from './ContextInput.jsx';
-import CompletenessReview from './CompletenessReview.jsx';
 import { openReviewItems, updateReviewMetadata } from './review-metadata.js';
 import LegacyDeletionNotice from './LegacyDeletionNotice.jsx';
 import { useLegacyDeletion } from './use-legacy-deletion.js';
@@ -832,7 +831,7 @@ function BabokRegistryResult({ value, latestVersion, onSave, onStartResearch, on
       {pendingDeletion && <ReviewDialog label="Удаление требования" onClose={() => setPendingDeletion(null)}><h2 className="text-lg font-bold">Удалить {pendingDeletion.id}?</h2><p className="my-3">Связанные записи: {pendingDeletion.affectedIds.join(', ') || 'нет'}. Связей в схеме: {pendingDeletion.links}. Ссылки на удалённое требование будут убраны. До сохранения удаление можно отменить.</p><div className="flex gap-3"><button className="rounded-lg border p-3" onClick={() => setPendingDeletion(null)}>Не удалять</button><button className="rounded-lg bg-red-700 text-white p-3" onClick={confirmDeletion}>Подтвердить удаление</button></div></ReviewDialog>}
       {lastDeletion && <p role="status" className="rounded-xl bg-amber-50 p-3">Удалено {lastDeletion.id}. <button className="font-semibold text-indigo-700 underline p-2" onClick={undoDeletion}>Отменить удаление</button></p>}
       {validationError && <p role="alert" className="text-sm text-red-700">{validationError.id}: {validationError.message}</p>}
-      {compact ? <RequirementsReviewHeader reviewStatus={<CompletenessReview compact onNavigate={navigateRecord} onAddManual={addRequirement} />} version={latestVersion} dirty={hasUnsavedChanges} busy={busy} researchBusy={researchBusy} onSave={() => saveRegistry()} onResearch={() => onStartResearch?.({ requirementsVersionId: latestVersion.versionId })} onFinal={() => saveRegistry({ ...review.state.decisions, skippedResearch: true })} /> : <>
+      {compact ? <RequirementsReviewHeader version={latestVersion} dirty={hasUnsavedChanges} busy={busy} researchBusy={researchBusy} onSave={() => saveRegistry()} onResearch={() => onStartResearch?.({ requirementsVersionId: latestVersion.versionId })} onFinal={() => saveRegistry({ ...review.state.decisions, skippedResearch: true })} /> : <>
       <div className="rounded-xl border border-slate-200 bg-white p-4 flex flex-col gap-3">
         <div className="flex items-center gap-3 min-w-0">
           {hasSavedVersion && !hasUnsavedChanges && <span className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0"><Check className="w-4 h-4" /></span>}
@@ -871,7 +870,6 @@ function BabokRegistryResult({ value, latestVersion, onSave, onStartResearch, on
           onEdit={(text, fields) => editRequirement(type, requirement.id, text, fields)} onDelete={() => deleteRequirement(type, requirement.id)}
           onDraftChange={(dirty) => setDraftDirty(`${type}:${requirement.id}`, dirty)} />}
       /> : <>
-      {!readOnly && <CompletenessReview onNavigate={navigateRecord} onAddManual={addRequirement} />}
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div><h2 className="text-base font-bold text-slate-900">Типы требований</h2><p className="text-xs text-slate-500 mt-1">Выберите тип, чтобы сфокусироваться на его записях. Стабильные ID сохраняются при ревизиях.</p></div>
         <RequirementsLayoutToggle layout={layout} onChange={setLayout} />

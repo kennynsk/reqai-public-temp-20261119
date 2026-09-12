@@ -22,3 +22,20 @@ The stage-two requirements review SHALL prioritize reading and editing with a co
 #### Scenario: Historical format or immutable input
 - **WHEN** the user opens a legacy registry or a read-only research input snapshot
 - **THEN** the existing format-specific view and mutation restrictions remain in force
+
+## ADDED Requirements
+
+### Requirement: Skill-driven requirements review
+The BABOK workspace SHALL present the output of the existing skill decomposition and its built-in checks for further requirement editing and GAP decisions. Editable stage-two and final BABOK views SHALL NOT request a separate whole-registry manual completeness check or display an unchecked completeness status. It SHALL NOT add a separate coverage-check launch or claim semantic completeness from processing success. Source access, evidence, manual requirement creation, GAP handling and warnings for partial processing or unavailable materials SHALL remain available. Existing review metadata SHALL be preserved for compatibility; exports SHALL show recorded historical checks/omissions only when present, without adding an unchecked status to new documents.
+
+#### Scenario: Work with a decomposition
+- **WHEN** a user opens a saved BABOK decomposition or its editable final version
+- **THEN** they can work with requirements and questions without a manual completeness widget or checkbox, and saving/finalization does not depend on a completeness mark
+
+#### Scenario: Historical manual review
+- **WHEN** a saved version contains earlier manual review marks or omission notes
+- **THEN** those values survive subsequent edits under the existing versioning rules and remain available in the exported history
+
+#### Scenario: Limited source processing
+- **WHEN** processing is partial or an input material is unavailable
+- **THEN** the workspace still exposes that limitation without asking every user to manually compare the entire registry

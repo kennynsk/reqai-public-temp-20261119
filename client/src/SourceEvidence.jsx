@@ -23,6 +23,5 @@ export function MaterialCoverage({ materials = {}, scope = {} }) {
     <p>Предыдущая версия: {STATUS_LABELS[materials.baseline?.status] || 'Не предоставлена'}</p>
     <p>Справочные материалы: {materials.references?.length || 0}</p>
     {(scope.partial || materials.primary?.status === 'UNAVAILABLE' || materials.baseline?.status === 'UNAVAILABLE' || materials.references?.some((item) => item.status === 'UNAVAILABLE')) && <p role="status" className="text-amber-800">Есть частично обработанные или недоступные материалы. Проверьте открытые вопросы.</p>}
-    <p className="text-slate-600">Успешная обработка не подтверждает полноту требований. Сверьте реестр с исходной задачей.</p>
   </section>;
 }

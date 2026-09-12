@@ -37,3 +37,12 @@ The complete client suite is not fully green because of the reproduced baseline 
 - Desktop selector now uses `min(42rem, 65vh)` maximum height, internal vertical scrolling, contained scroll chaining and a pinned heading. Mobile retains `min(18rem, 36vh)`.
 - Verified in the running dev app on localhost:5177 with 15 requirements: 610 px visible height versus 1746 px content; internal scroll reached 906 px while document scroll position (169 px), detail top (255 px), and heading top (264 px) stayed unchanged.
 - Client production build and strict OpenSpec validation pass. Existing bundle-size advisory remains.
+
+## Skill-driven review follow-up — 2026-09-12
+
+- Removed the manual completeness widget from editable BABOK review and final views, its header slot, and generic whole-registry recheck prompts. Original skill execution, source evidence, GAP decisions and material/partial-processing warnings remain.
+- Existing review metadata is still preserved by the draft/versioning flow. Export displays actual historical marks and omission notes, without a default unchecked-completeness section for new versions.
+- Focused client regressions: 93 passed across `AsyncJobWorkspace`, `RequirementsReviewHeader`, `RequirementListWorkspace`, `ReviewQuestions`, and `SourceEvidence`. The former omission UI integration now verifies ordinary manual add/save plus preservation of old review notes.
+- Server regressions: 20 passed across skill execution and requirements-document export, including historical metadata preservation and no default manual check section. No live LLM invocation was needed or performed.
+- Client lint/build, strict OpenSpec validation, and legacy-surface qualification passed. Existing bundle-size advisory remains. Full client suite was not repeated for this scoped follow-up; the earlier baseline limitation remains documented above.
+- Browser check on localhost:5177 confirmed the header contains save status and source access, no manual completeness text/checkbox, and all 15 requirements remain. Screenshot inspection found no empty space left by the removed block. No user data was changed during browser verification.

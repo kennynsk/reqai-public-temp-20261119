@@ -4,7 +4,7 @@ import { RequirementsReviewContext } from './requirements-review-context.js';
 import { researchPresentation, reviewPrimary } from './requirements-review-presentation.js';
 import { ResultExportAction } from './ResultExportContext.jsx';
 
-export default function RequirementsReviewHeader({ version, dirty, busy, researchBusy, onSave, onResearch, onFinal, reviewStatus }) {
+export default function RequirementsReviewHeader({ version, dirty, busy, researchBusy, onSave, onResearch, onFinal }) {
   const context = useContext(RequirementsReviewContext);
   const statusId = useId();
   const saved = Boolean(version?.versionId);
@@ -25,7 +25,7 @@ export default function RequirementsReviewHeader({ version, dirty, busy, researc
         <ResultExportAction />
       </div>
     </div>
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-600"><p id={statusId} role="status">{status}</p>{reviewStatus}</div>
+    <p id={statusId} role="status" className="text-xs text-slate-600">{status}</p>
     {context.source}
     {research.status && <p role="status" className="text-sm text-slate-600">{research.status}</p>}
   </header>;

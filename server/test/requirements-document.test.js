@@ -42,3 +42,22 @@ test('DOCX contains long Cyrillic text, real headings and explicit page geometry
   assert.match(styles, /w:line="300"/);
   assert.ok(!xml.includes('private-version-uuid'));
 });
+
+test('new documents omit manual completeness status while historical checks and omissions remain exportable', () => {
+  const current = requirementsDocument(version);
+  assert.ok(!current.blocks.some((block) => /ручн.*свер|Проверка полноты/.test(block.text)));
+  const review = {
+    completeness: { checked: true, stale: true, recordedAt: '2026-08-28T09:00:00Z', note: 'Проверили условия возврата.' },
+    omissions: [{ id: 'OMISSION-history', text: 'Не указан срок возврата', requirementIds: ['FR-002'] }],
+  };
+  const historical = { ...version, decisions: { review } };
+  const snapshot = structuredClone(historical);
+  const text = requirementsDocument(historical).blocks.map((block) => block.text).join('\n');
+  assert.match(text, /История ручной сверки/);
+  assert.match(text, /Отметка устарела после изменений/);
+  assert.match(text, /Проверили условия возврата/);
+  assert.match(text, /Не указан срок возврата.*FR-002/);
+  assert.deepEqual(historical, snapshot);
+  const unchecked = requirementsDocument({ ...version, decisions: { review: { completeness: { checked: false, stale: false } } } });
+  assert.ok(!unchecked.blocks.some((block) => /ручн.*свер|Проверка полноты/.test(block.text)));
+});

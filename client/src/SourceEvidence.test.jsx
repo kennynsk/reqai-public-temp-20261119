@@ -19,7 +19,7 @@ test('keeps coverage warnings visible without exposing raw material enums', () =
   const { container } = render(<MaterialCoverage materials={registry.materials} scope={{ partial: true }} />);
   expect(screen.getByRole('status')).toHaveTextContent('недоступные материалы');
   expect(container.textContent).not.toMatch(/AVAILABLE|NOT_PROVIDED|sha256/);
-  expect(container.textContent).toContain('не подтверждает полноту');
+  expect(container.textContent).not.toContain('Сверьте реестр');
 });
 
 test('handles absent evidence, technical names, locator aliases, and known material roles', () => {

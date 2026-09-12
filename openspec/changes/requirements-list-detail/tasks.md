@@ -15,3 +15,9 @@
 - [x] 3.2 Cover hidden draft save/validation, structured fields, relations, add to empty type, delete/undo and discussion in integration tests.
 - [x] 3.3 Run full client tests, lint/build, strict OpenSpec validation and documentation qualification; record results.
 - [x] 3.4 Inspect isolated fixture preview at desktop/mobile widths and enlarged text; retain a reviewable branch with specification and implementation commits without merging or deploying.
+
+## 4. Skill-driven review follow-up
+
+- [x] 4.1 Remove manual completeness UI and generic recheck prompts; retain GAP workflow, source access and material warnings.
+- [x] 4.2 Preserve legacy review metadata and limit exported completeness content to actual historical records.
+- [x] 4.3 Update affected regression tests; validate build/lint, skill execution checks, OpenSpec and the running dev UI.
