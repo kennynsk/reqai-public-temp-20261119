@@ -436,7 +436,7 @@ function EditableRequirementCard({ type, requirement, onEdit, onDelete, onDraftC
   }
 
   return (
-    <article id={`record-${requirement.id}`} tabIndex={-1} style={{ scrollMarginTop: '14rem' }} className={`group relative py-5 first:pt-0 last:pb-0 ${requirement.fromResearch ? 'bg-indigo-50/40 -mx-3 px-3 rounded-xl' : ''}`}>
+    <article id={`record-${requirement.id}`} tabIndex={-1} style={{ scrollMarginTop: '9rem' }} className={`group relative py-5 first:pt-0 last:pb-0 ${requirement.fromResearch ? 'bg-indigo-50/40 -mx-3 px-3 rounded-xl' : ''}`}>
       <div className="flex items-start justify-between gap-4 mb-2">
         <div className="flex items-center gap-2">
           <a href={`#record-${requirement.id}`} className="text-xs font-bold text-indigo-700 bg-indigo-50 px-2 py-1 rounded underline underline-offset-2">{requirement.id}</a>
@@ -496,7 +496,7 @@ function BabokRequirementCard({ type, requirement, onEdit, onDelete, onDraftChan
   }
 
   return (
-    <article id={`record-${requirement.id}`} tabIndex={-1} style={{ scrollMarginTop: '14rem' }} className={`group relative ${focused ? '' : 'py-5 first:pt-0 last:pb-0'} ${requirement.fromResearch ? 'bg-indigo-50/40 -mx-3 px-3 rounded-xl' : ''}`}>
+    <article id={`record-${requirement.id}`} tabIndex={-1} style={{ scrollMarginTop: '9rem' }} className={`group relative ${focused ? '' : 'py-5 first:pt-0 last:pb-0'} ${requirement.fromResearch ? 'bg-indigo-50/40 -mx-3 px-3 rounded-xl' : ''}`}>
       <div className="flex items-start justify-between gap-4 mb-2">
         <div className="flex items-center gap-2 flex-wrap">
           <RecordLinks ids={[requirement.id]} onNavigate={onNavigate} />
@@ -887,7 +887,7 @@ function BabokRegistryResult({ value, latestVersion, onSave, onStartResearch, on
         {visibleTypes.map((type) => {
           const [, label, subtitle, color] = BABOK_REQUIREMENT_COLUMNS.find((item) => item[0] === type);
           const records = (registry.groups[type] || []).filter((record) => !needsClarification || record.quality !== 'Готово');
-          return <section key={type} id={`req-type-${type}`} tabIndex={-1} style={{ scrollMarginTop: '14rem' }} role="region" aria-label={label} className={`bg-white rounded-2xl border border-slate-200 border-t-4 ${color} px-5 py-5`}>
+          return <section key={type} id={`req-type-${type}`} tabIndex={-1} style={{ scrollMarginTop: '9rem' }} role="region" aria-label={label} className={`bg-white rounded-2xl border border-slate-200 border-t-4 ${color} px-5 py-5`}>
             <div className="flex items-start justify-between gap-3 mb-2"><div><div className="flex items-center gap-2"><span className="font-mono text-xs font-bold text-slate-500">{type}</span><h2 className="text-base font-bold text-slate-900">{label}</h2></div><p className="text-xs text-slate-500 mt-1">{subtitle}</p></div><span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500">{records.length}</span></div>
             <div className="divide-y divide-slate-200 mt-4">
               {records.map((item) => <BabokRequirementCard key={item.id} type={type} materials={registry.materials} onNavigate={navigateRecord} onDiscuss={jobId && discussionEnabled ? openDiscussion : undefined} manuallyEdited={editedRecordIds.has(item.id) || latestVersion?.revision?.manualDecisionMetadata?.editedRecordIds?.includes(item.id)} requirement={item} onEdit={(text, fields) => editRequirement(type, item.id, text, fields)} onDelete={() => deleteRequirement(type, item.id)} onDraftChange={(dirty) => setDraftDirty(`${type}:${item.id}`, dirty)} readOnly={readOnly} />)}
@@ -901,9 +901,9 @@ function BabokRegistryResult({ value, latestVersion, onSave, onStartResearch, on
       </>}
       </div>
       {reviewSection === 'report' && <Suspense fallback={<p role="status">Загрузка отчёта…</p>}><BabokSkillReport registry={registry} /></Suspense>}
-      {reviewSection === 'questions' || reviewSection === 'links'
+      {reviewSection !== 'requirements' && (reviewSection === 'questions' || reviewSection === 'links'
         ? <RequirementPreviewProvider index={requirementIndex}><RegistryAnalysis registry={registry} section={reviewSection} onNavigate={navigateRecord} onDiscuss={jobId && discussionEnabled ? openDiscussion : undefined} readOnly={readOnly} /></RequirementPreviewProvider>
-        : <RegistryAnalysis registry={registry} section={reviewSection} onNavigate={navigateRecord} onDiscuss={jobId && discussionEnabled ? openDiscussion : undefined} readOnly={readOnly} />}
+        : <RegistryAnalysis registry={registry} section={reviewSection} onNavigate={navigateRecord} onDiscuss={jobId && discussionEnabled ? openDiscussion : undefined} readOnly={readOnly} />)}
       <RecordFocus id={initialRecordId} />
       {discussionAnchor && <DiscussionPanel jobId={jobId} anchorId={discussionAnchor} anchorLabel={discussionAnchorLabel} baseVersionId={latestVersion?.versionId || null} draft={discussionContext.unsaved && discussionContext.registry ? { registry: discussionContext.registry, decisions: discussionContext.decisions } : null} proposalDecisions={review.state.decisions.review?.discussionProposals || {}} contextReady={Boolean(jobId && latestVersion?.versionId && !discussionContext.error)} contextError={discussionContext.error ? `${discussionContext.error.id}: ${discussionContext.error.message}` : !latestVersion?.versionId ? 'Сначала сохраните требования, чтобы открыть AI-обсуждение.' : ''} readOnly={readOnly} onClose={() => setDiscussionAnchor(null)} onApplyProposal={applyDiscussionProposal} onRejectProposal={rejectDiscussionProposal} />}
     </div></ReviewDraftProvider>
@@ -962,7 +962,7 @@ function DecompositionResult({ value, latestVersion, onSave, onStartResearch, on
       <RequirementTypeFilter columns={REQUIREMENT_COLUMNS} groups={requirements} value={typeFilter} onChange={setTypeFilter}><RequirementComposerMenu columns={REQUIREMENT_COLUMNS} onChoose={setTypeFilter} /></RequirementTypeFilter>
       {Object.values(requirements).every((items) => !items.length) && <p className="text-sm text-slate-600">Требований пока нет. Выберите тип, чтобы добавить требование.</p>}
       <div aria-label="Категории требований" className="grid gap-4 grid-cols-1">
-        {REQUIREMENT_COLUMNS.filter(([key]) => typeFilter === 'all' ? requirements[key].length > 0 : key === typeFilter).map(([key, title, subtitle, color]) => <section key={key} id={`req-type-${key}`} tabIndex={-1} style={{ scrollMarginTop: '14rem' }} aria-label={title} className={`bg-white rounded-2xl border border-slate-200 border-t-4 ${color} px-5 py-5`}>
+        {REQUIREMENT_COLUMNS.filter(([key]) => typeFilter === 'all' ? requirements[key].length > 0 : key === typeFilter).map(([key, title, subtitle, color]) => <section key={key} id={`req-type-${key}`} tabIndex={-1} style={{ scrollMarginTop: '9rem' }} aria-label={title} className={`bg-white rounded-2xl border border-slate-200 border-t-4 ${color} px-5 py-5`}>
           <div className="flex items-start justify-between gap-3 mb-2"><div><h2 className="text-base font-bold text-slate-900">{title}</h2><p className="text-xs text-slate-500 mt-1">{subtitle}</p></div><span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500">{requirements[key].length}</span></div>
           <div className="divide-y divide-slate-200 mt-4">
             {requirements[key].map((item) => <EditableRequirementCard key={item.id} type={key} requirement={item} onEdit={(text) => editRequirement(key, item.id, text)} onDelete={() => deleteRequirement(key, item.id)} onDraftChange={(dirty) => setDraftDirty(`${key}:${item.id}`, dirty)} />)}
@@ -1242,7 +1242,7 @@ function FinalRequirementsEditor({ latestVersion, onSave, onShowInsights, onShow
       </div>
       <RequirementTypeNav columns={REQUIREMENT_COLUMNS} groups={requirements} activeType={activeType} onSelect={selectType} />
       <div aria-label="Финальные требования по категориям" className="grid gap-4 grid-cols-1">
-        {REQUIREMENT_COLUMNS.filter(([key]) => layout !== 'rows' || key === activeType).map(([key, title, subtitle, color]) => <section key={key} id={`req-type-${key}`} tabIndex={-1} style={{ scrollMarginTop: '14rem' }} aria-label={title} className={`bg-white rounded-2xl border border-slate-200 border-t-4 ${color} px-5 py-5`}>
+        {REQUIREMENT_COLUMNS.filter(([key]) => layout !== 'rows' || key === activeType).map(([key, title, subtitle, color]) => <section key={key} id={`req-type-${key}`} tabIndex={-1} style={{ scrollMarginTop: '9rem' }} aria-label={title} className={`bg-white rounded-2xl border border-slate-200 border-t-4 ${color} px-5 py-5`}>
           <div className="flex items-start justify-between gap-3 mb-2"><div><h2 className="text-base font-bold text-slate-900">{title}</h2><p className="text-xs text-slate-500 mt-1">{subtitle}</p></div><span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500">{requirements[key].length}</span></div>
           <div className="divide-y divide-slate-200 mt-4">
             {requirements[key].map((item) => <EditableRequirementCard key={item.id} type={key} requirement={item} onEdit={(text) => editRequirement(key, item.id, text)} onDelete={() => deleteRequirement(key, item.id)} onDraftChange={(dirty) => setDraftDirty(`${key}:${item.id}`, dirty)} />)}

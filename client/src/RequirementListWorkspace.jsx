@@ -23,13 +23,12 @@ export default function RequirementListWorkspace({
         <input type="search" value={query} onChange={(event) => onFiltersChange({ query: event.target.value })} placeholder="ID или формулировка" className="min-h-10 w-full rounded-lg border border-slate-300 bg-white py-2 pl-9 pr-3 text-sm" />
       </label>
       <label className="flex min-h-10 items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={needsClarification} onChange={(event) => onFiltersChange({ needsClarification: event.target.checked })} />Нужно уточнить</label>
-      <div className="sm:ml-auto">{composerMenu}</div>
     </div>
     {typeFilter !== 'all' && <p className="text-sm font-semibold text-slate-600">{columns.find(([type]) => type === typeFilter)?.[1]}</p>}
     {composer}
     <div className="grid min-w-0 items-start gap-4 lg:grid-cols-[minmax(17.5rem,20rem)_minmax(0,1fr)]">
       <nav aria-label="Список требований" className="reqai-requirement-selector min-w-0 rounded-2xl border border-slate-200 bg-white p-2">
-        <div className="reqai-requirement-selector-heading top-0 z-10 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 bg-white px-3 py-2 text-xs font-semibold text-slate-500"><span className="uppercase tracking-[0.08em]">Требования</span><span className="flex items-center gap-2 tabular-nums">{total > 0 && <span className={reviewed === total ? 'text-emerald-700' : undefined}>Проверено {reviewed} из {total}</span>}{filtered && <span>Найдено: {entries.length}</span>}</span></div>
+        <div className="reqai-requirement-selector-heading top-0 z-10 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 bg-white px-3 py-2 text-xs font-semibold text-slate-500"><span className="flex flex-wrap items-center gap-x-2 gap-y-1"><span className="uppercase tracking-[0.08em]">Требования</span>{total > 0 && <span className={reviewed === total ? 'text-emerald-700' : undefined}>Проверено {reviewed} из {total}</span>}{filtered && <span>Найдено: {entries.length}</span>}</span>{composerMenu}</div>
         {entries.length ? <ul className="space-y-1">{entries.map(({ type, requirement }) => {
           const active = selected?.requirement.id === requirement.id;
           const ready = requirement.quality === 'Готово';

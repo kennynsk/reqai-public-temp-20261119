@@ -12,6 +12,7 @@ test('navigates traceability links and renders an empty-links explanation', () =
   const onNavigate = vi.fn();
   registry.analysis.traceability = [{ from: 'BR-001', to: 'FR-001', relation: 'Поддерживает', status: 'Полная' }];
   render(<RegistryAnalysis registry={registry} section="links" onNavigate={onNavigate} readOnly />);
+  expect(screen.queryByText('Приложения: контекст, материалы и анализ')).not.toBeInTheDocument();
 
   const link = screen.getByRole('link', { name: 'BR-001' });
   expect(link).toHaveAttribute('href', '#record-BR-001');
@@ -66,7 +67,7 @@ test('shows conclusions, material coverage and fallback text for analysis record
   registry.analysis.delta = [{ id: 'DELTA-1', baselineId: 'BR-001', newId: 'FR-001', text: 'Добавлено функциональное требование.' }];
   registry.materials.references = [{ artifactId: 'reference-1', role: 'reference', name: 'Справочник', status: 'AVAILABLE' }];
 
-  render(<RegistryAnalysis registry={registry} section="requirements" onNavigate={vi.fn()} readOnly />);
+  render(<RegistryAnalysis registry={registry} section="report" onNavigate={vi.fn()} readOnly />);
 
   expect(screen.getByText('Нужно уточнить владельца процесса.')).toBeInTheDocument();
   expect(screen.getByText('Бизнес-контекст')).toBeInTheDocument();
@@ -86,7 +87,7 @@ test('shows conclusions, material coverage and fallback text for analysis record
 test('baseline identifiers are displayed without linking to unrelated current records', () => {
   const registry = roomBookingRegistry();
   registry.analysis.delta = [{ id: 'DELTA-001', baselineId: 'FR-999', newId: 'FR-001', kind: 'изменено', comment: 'Изменён состав данных.' }];
-  render(<RegistryAnalysis registry={registry} section="requirements" readOnly />);
+  render(<RegistryAnalysis registry={registry} section="report" readOnly />);
   fireEvent.click(screen.getByText('Приложения: контекст, материалы и анализ'));
   fireEvent.click(screen.getByText('Сравнение с базовым набором · 1'));
   expect(screen.getByText('В базовом наборе: FR-999')).toBeInTheDocument();
