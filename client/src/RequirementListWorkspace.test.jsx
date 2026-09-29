@@ -175,6 +175,22 @@ test('a completed gap closes right from the requirement card', () => {
   expect(payload.decisions.review.gaps['GAP-001']).toMatchObject({ state: 'closed', closureKind: 'resolved', reason: expect.stringContaining('BR-001') });
 });
 
+test('marking a checklist item as no-change records a reasoned decision in a dialog', () => {
+  const registry = roomBookingRegistry();
+  const save = vi.fn();
+  const decisions = { review: { gaps: { 'GAP-001': { state: 'answered', answer: 'По количеству участников.' } } } };
+  render(<BabokRegistryResult value={registry} latestVersion={{ versionId: 'v1', registry, decisions }} onSave={save} />);
+  select('BR-001');
+  fireEvent.click(screen.getByText('Уточнения · 7'));
+  fireEvent.click(screen.getByRole('button', { name: 'Изменение не требуется для GAP-001 в BR-001' }));
+  const confirm = screen.getByRole('button', { name: 'Подтвердить' });
+  expect(confirm).toBeDisabled();
+  fireEvent.change(screen.getByRole('textbox', { name: 'Обоснование отсутствия изменения' }), { target: { value: 'Уже покрыто существующим правилом' } });
+  fireEvent.click(confirm);
+  fireEvent.click(screen.getByRole('button', { name: 'Сохранить изменения' }));
+  expect(save.mock.calls[0][0].decisions.review.gapRequirements['GAP-001']['BR-001']).toMatchObject({ state: 'no-change', reason: 'Уже покрыто существующим правилом' });
+});
+
 test('guided clarification runs from question to proposal, explicit acceptance and a saveable version', async () => {
   const registry = roomBookingRegistry();
   vi.spyOn(enterpriseApi, 'getRequirementDiscussion').mockResolvedValue({ discussionId: 'discussion', messages: [] });
