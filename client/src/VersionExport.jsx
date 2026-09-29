@@ -1,11 +1,10 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import ReviewDialog from './ReviewDialog.jsx';
 import { enterpriseApi } from './api/enterprise-api.js';
 
 export default function VersionExport({ version, isDirty, onSave, placement = 'bottom' }) {
   const menu = useRef(null);
-  const hintId = useId();
   const [pending, setPending] = useState(null);
   const [manual, setManual] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -39,7 +38,7 @@ export default function VersionExport({ version, isDirty, onSave, placement = 'b
     if (isDirty()) { menu.current.querySelector('summary').focus(); setPending({ action, version }); } else perform(action, version);
   }
   return <section aria-label="Экспорт сохранённой версии" className="relative text-sm">
-    {!version ? <><button disabled title="Сначала сохраните версию требований" aria-describedby={hintId} className="h-10 whitespace-nowrap rounded-lg border border-slate-200 px-4 py-2 font-semibold text-slate-400">Экспорт ▾</button><p id={hintId} className="sr-only">Сначала сохраните версию требований</p></> : <details ref={menu} onKeyDown={(event) => { if (event.key === 'Escape') { menu.current.open = false; menu.current.querySelector('summary').focus(); } }} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) menu.current.open = false; }}>
+    {!version ? <button type="button" onClick={() => setMessage('Сначала сохраните требования кнопкой «Сохранить требования» — затем экспортируйте сохранённую версию. Исходный AI-результат не подменяет сохранённую версию.')} className="h-10 whitespace-nowrap cursor-pointer rounded-lg border border-slate-200 bg-white px-4 py-2 font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">Экспорт ▾</button> : <details ref={menu} onKeyDown={(event) => { if (event.key === 'Escape') { menu.current.open = false; menu.current.querySelector('summary').focus(); } }} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) menu.current.open = false; }}>
     <summary role="button" onClick={() => { setMessage(''); menu.current?.querySelector('summary').focus(); }} className="list-none h-10 whitespace-nowrap cursor-pointer rounded-lg border border-slate-200 bg-white px-4 py-2 font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">Экспорт ▾</summary>
     <div className={`absolute ${placement === 'top' ? 'bottom-full mb-2' : 'top-full mt-2'} right-0 z-40 w-64 max-w-[calc(100vw-2rem)] rounded-xl border border-slate-200 bg-white p-2 shadow-lg`}>
     <p className="px-3 py-2 text-xs text-slate-500">{label}. Все требования и открытые вопросы.</p>

@@ -150,7 +150,7 @@ test('GAP answer and closure join the shared draft without rewriting the require
   fireEvent.change(answer, { target: { value: 'Уведомлять по электронной почте.' } });
   expect(screen.getByText('Дан ответ · ещё открыт')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: /^(Реестр · \d+|Требования)$/ }));
-  expect(screen.getByRole('button', { name: 'Перейти к финальной версии' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Перейти к финальной версии' })).toBeEnabled();
   fireEvent.click(within(screen.getByRole('group', { name: 'Разделы проверки' })).getByRole('button', { name: 'Вопросы · 7' }));
   expect(screen.getByRole('textbox', { name: 'Ответ на GAP-001' })).toHaveValue('Уведомлять по электронной почте.');
   fireEvent.click(within(screen.getByRole('textbox', { name: 'Ответ на GAP-001' }).closest('article')).getByRole('button', { name: 'Закрыть без изменения требований…' }));
@@ -224,10 +224,10 @@ test('adds a requirement without a completeness check and preserves historical r
 
 test('does not advertise a pending BABOK draft as saved or eligible for research', async () => {
   await openSavedRoomReview();
-  expect(screen.getByText('Есть несохранённые изменения')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Сохранить изменения' })).toBeInTheDocument();
   expect(screen.queryByText(/^Сохранено ·/)).not.toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'Улучшить требования с помощью AI' })).toBeDisabled();
-  expect(screen.getByRole('button', { name: 'Перейти к финальной версии' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Улучшить требования с помощью AI' })).toBeEnabled();
+  expect(screen.getByRole('button', { name: 'Перейти к финальной версии' })).toBeEnabled();
   expect(screen.getByRole('button', { name: 'Сохранить изменения' })).toBeEnabled();
 });
 
@@ -656,7 +656,7 @@ test('saves reviewed decomposition and starts linked research inside requirement
   fireEvent.click(contextSummary);
   expect(screen.getByRole('textbox', { name: 'Бизнес-контекст' })).toBeVisible();
   const researchButton = screen.getByRole('button', { name: 'Улучшить требования с помощью AI' });
-  expect(researchButton).toBeDisabled();
+  expect(researchButton).toBeEnabled();
   expect(researchButton.closest('header')).toHaveAttribute('aria-label', 'Работа с требованиями');
   expect(screen.queryByRole('tablist', { name: 'Категории требований' })).not.toBeInTheDocument();
   const businessColumn = screen.getByRole('region', { name: 'Бизнес-требования' });
@@ -1320,7 +1320,7 @@ test('tracks an empty reference selection without inventing a context draft', as
 test('guards a browser route change while a review draft is dirty', async () => {
   await openSavedRoomReview();
   mocks.getJob.mockResolvedValue({ jobId: 'next-job', type: 'RESEARCH', mode: 'AGENT_RESEARCH', status: 'RUNNING', progress: 5 });
-  await screen.findByText('Есть несохранённые изменения');
+  await screen.findByRole('button', { name: 'Сохранить изменения' });
 
   await act(() => {
     window.history.pushState({}, '', '/tasks/next-job');

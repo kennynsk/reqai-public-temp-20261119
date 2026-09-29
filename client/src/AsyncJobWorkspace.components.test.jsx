@@ -396,7 +396,7 @@ describe('AsyncJobWorkspace presentational branches', () => {
     fireEvent.change(within(functional).getByRole('textbox', { name: 'Новое требование: Функциональные требования' }), { target: { value: 'Черновая функция' } });
     fireEvent.click(screen.getByRole('button', { name: 'Сохранить требования' }));
     expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ baseVersionId: null, requirements: expect.objectContaining({ business: expect.arrayContaining([expect.objectContaining({ text: 'Новая цель' })]), functional: expect.arrayContaining([expect.objectContaining({ text: 'Черновая функция' })]) }) }));
-    expect(screen.getByRole('button', { name: 'Улучшить требования с помощью AI' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Улучшить требования с помощью AI' })).toBeEnabled();
     expect(onStartResearch).not.toHaveBeenCalled();
   });
 

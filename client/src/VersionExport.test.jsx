@@ -9,8 +9,10 @@ afterEach(() => { cleanup(); vi.clearAllMocks(); vi.unstubAllGlobals(); vi.useRe
 const version = { versionId: 'saved-v1', createdAt: '2026-08-28T12:00:00Z' };
 test('export without a saved version never substitutes the model result', () => {
   render(<VersionExport isDirty={() => false} />);
-  expect(screen.getByRole('button', { name: 'Экспорт ▾' })).toBeDisabled();
-  expect(screen.getByText('Сначала сохраните версию требований')).toBeInTheDocument();
+  const exportButton = screen.getByRole('button', { name: 'Экспорт ▾' });
+  expect(exportButton).toBeEnabled();
+  fireEvent.click(exportButton);
+  expect(screen.getByRole('status')).toHaveTextContent('Сначала сохраните требования');
   expect(mocks.exportRequirementsVersion).not.toHaveBeenCalled();
 });
 test('dirty copy requires explicit previous-version choice and falls back to selectable text', async () => {

@@ -26,12 +26,27 @@ test('completed child has one primary action and explicit repeat is secondary', 
   expect(repeat).toHaveBeenCalledOnce();
 });
 
-test('dirty changes disable downstream actions without falsely marking completeness', () => {
-  header({}, { dirty: true });
-  expect(screen.getByRole('button', { name: 'Сохранить изменения' })).toHaveClass('bg-indigo-600');
-  expect(screen.getByRole('button', { name: 'Перейти к финальной версии' })).toBeDisabled();
-  expect(screen.getByRole('button', { name: 'Улучшить требования с помощью AI' })).toBeDisabled();
-  expect(screen.getByRole('status')).toHaveTextContent('Есть несохранённые изменения');
+test('dirty changes keep downstream actions enabled and route them through save', async () => {
+  const save = vi.fn(() => Promise.resolve({ versionId: 'v2', createdAt: version.createdAt }));
+  const repeat = vi.fn(), finalize = vi.fn();
+  header({}, { dirty: true, onSave: save, onResearch: repeat, onFinal: finalize });
+  const saveButton = screen.getByRole('button', { name: 'Сохранить изменения' });
+  expect(saveButton).toHaveClass('bg-indigo-600');
+  const finalizeButton = screen.getByRole('button', { name: 'Перейти к финальной версии' });
+  expect(finalizeButton).toBeEnabled();
+  fireEvent.click(finalizeButton);
+  expect(finalize).toHaveBeenCalledOnce();
+  fireEvent.click(screen.getByRole('button', { name: 'Улучшить требования с помощью AI' }));
+  await waitFor(() => expect(repeat).toHaveBeenCalledWith('v2'));
+  expect(save).toHaveBeenCalledOnce();
+});
+
+test('a clean saved version shows a saved chip with timestamp and final as primary', () => {
+  header({});
+  expect(screen.getByText(/Сохранено · /)).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /Сохранить/ })).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Перейти к финальной версии' })).toHaveClass('bg-indigo-600');
+  expect(screen.getByRole('button', { name: 'Перейти к финальной версии' })).toBeEnabled();
 });
 
 test('an active older child remains openable and blocks new launch and finalization', () => {
@@ -73,10 +88,10 @@ test('legacy empty type is addable and pending drafts survive filtering and glob
 });
 
 
-test('a remote-version conflict prioritizes reconciliation without discarding local edits', () => {
+test('a remote-version conflict blocks saving and downstream actions without discarding local edits', () => {
   header({ conflict: true }, { dirty: true });
   expect(screen.getByRole('button', { name: 'Сохранить изменения' })).toBeDisabled();
   expect(screen.getByRole('button', { name: 'Сохранить изменения' })).not.toHaveClass('bg-indigo-600');
   expect(screen.getByRole('button', { name: 'Перейти к финальной версии' })).toBeDisabled();
-  expect(screen.getByRole('status')).toHaveTextContent('Есть несохранённые изменения');
+  expect(screen.getByRole('button', { name: 'Улучшить требования с помощью AI' })).toBeDisabled();
 });
