@@ -1,7 +1,7 @@
 import { useContext, useId } from 'react';
 import { Check, Loader2, Sparkles } from 'lucide-react';
 import { RequirementsReviewContext } from './requirements-review-context.js';
-import { researchPresentation, reviewPrimary } from './requirements-review-presentation.js';
+import { researchPresentation, reviewPrimary, formatRuDateTime } from './requirements-review-presentation.js';
 import { ResultExportAction } from './ResultExportContext.jsx';
 
 export default function RequirementsReviewHeader({ version, dirty, busy, researchBusy, onSave, onResearch, onFinal }) {
@@ -12,7 +12,7 @@ export default function RequirementsReviewHeader({ version, dirty, busy, researc
   const primary = reviewPrimary({ dirty, saved, busy, research, submitting: context.submitting, conflict: context.conflict });
   const gateBlocked = Boolean(context.conflict || busy || researchBusy || research.active);
   const gateHint = context.conflict ? 'Разрешите конфликт версий' : busy ? 'Подождите завершения операции' : researchBusy || research.active ? 'Дождитесь завершения AI-исследования' : '';
-  const savedAt = version?.createdAt ? new Date(version.createdAt).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+  const savedAt = formatRuDateTime(version?.createdAt);
   const buttonClass = (key) => `min-h-10 rounded-lg px-4 py-2 text-sm font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:cursor-not-allowed disabled:opacity-50 ${primary === key ? 'bg-indigo-600 text-white hover:bg-indigo-700' : 'text-slate-700 hover:bg-slate-100'}`;
   async function startResearch() {
     if (saved && !dirty) { onResearch(version.versionId); return; }

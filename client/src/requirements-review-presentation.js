@@ -13,6 +13,10 @@ export function babokTypeAccent(type) {
   return BABOK_TYPE_ACCENTS[type] || { dot: 'bg-slate-400', chip: 'bg-slate-100 text-slate-600' };
 }
 
+export function formatRuDateTime(value) {
+  return value ? new Date(value).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+}
+
 export function researchPresentation({ childId, child, versionId, submitting = false }) {
   const active = submitting || ACTIVE.has(child?.status);
   const previous = Boolean(child?.inputArtifactId && versionId && child.inputArtifactId !== versionId);

@@ -5,7 +5,7 @@ import RequirementsReviewHeader from './RequirementsReviewHeader.jsx';
 import RequirementTypeFilter from './RequirementTypeFilter.jsx';
 import DiscussionPanel from './DiscussionPanel.jsx';
 import { RequirementsReviewContext } from './requirements-review-context.js';
-import { researchPresentation } from './requirements-review-presentation.js';
+import { researchPresentation, formatRuDateTime } from './requirements-review-presentation.js';
 import { isBabokTextDraft } from '../../server/src/services/babok-text-draft.js';
 import { collectBabokQualityIssues } from '../../server/src/services/babok-requirements-contract.js';
 import ResearchEvidence from './ResearchEvidence.jsx';
@@ -188,7 +188,7 @@ function userFacingError(cause) {
   if (cause?.code === 'USER_ACTIVE_JOB_LIMIT') return 'Другая задача уже выполняется. Дождитесь её завершения и попробуйте снова.';
   if (cause?.status === 401 || cause?.status === 403) return 'Нет доступа. Проверьте вход и права пользователя.';
   if (cause?.status === 413) return 'Материал превышает допустимый размер.';
-  return 'Не удалось выполнить действие. Ваши данные сохранены в форме. Повторите попытку; подробности доступны в Debug.';
+  return 'Не удалось выполнить действие. Ваши данные сохранены в форме. Повторите попытку; если ошибка повторится, откройте «Debug» в верхней панели — там технические подробности.';
 }
 
 function failureMessage(job) {
@@ -831,7 +831,7 @@ function BabokRegistryResult({ value, latestVersion, onSave, onStartResearch, on
 
   const statusText = readOnly
     ? 'Только чтение · источник AI-исследования'
-    : busy ? 'Сохраняем…' : !hasSavedVersion ? 'Сохраните требования перед AI-исследованием' : hasUnsavedChanges ? 'Есть несохранённые изменения' : `Сохранено · ${latestVersion?.createdAt ? new Date(latestVersion.createdAt).toLocaleString() : 'только что'}`;
+    : busy ? 'Сохраняем…' : !hasSavedVersion ? 'Сохраните требования перед AI-исследованием' : hasUnsavedChanges ? 'Есть несохранённые изменения' : `Сохранено · ${latestVersion?.createdAt ? formatRuDateTime(latestVersion.createdAt) : 'только что'}`;
   return (
     <ReviewDraftProvider review={review} submit={saveRegistry} busy={busy}><div className={compact ? "space-y-2" : "space-y-5"}>
       {pendingDeletion && <ReviewDialog label="Удаление требования" onClose={() => setPendingDeletion(null)}><h2 className="text-lg font-bold">Удалить {pendingDeletion.id}?</h2><p className="my-3">Связанные записи: {pendingDeletion.affectedIds.join(', ') || 'нет'}. Связей в схеме: {pendingDeletion.links}. Ссылки на удалённое требование будут убраны. До сохранения удаление можно отменить.</p><div className="flex gap-3"><button className="rounded-lg border p-3" onClick={() => setPendingDeletion(null)}>Не удалять</button><button className="rounded-lg bg-red-700 text-white p-3" onClick={confirmDeletion}>Подтвердить удаление</button></div></ReviewDialog>}
@@ -1220,7 +1220,7 @@ function FinalRequirementsEditor({ latestVersion, onSave, onShowInsights, onShow
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
             <div className="flex items-center gap-2 flex-wrap"><CheckCircle2 className="w-5 h-5 text-emerald-600" /><h1 className="text-xl font-bold text-slate-900">Финальная версия требований</h1></div>
-            <p className="text-sm font-semibold text-emerald-700 mt-2">{busy ? 'Сохраняем…' : hasUnsavedChanges ? 'Есть несохранённые изменения' : `Сохранено · ${new Date(latestVersion.createdAt).toLocaleString()}`}</p>
+            <p className="text-sm font-semibold text-emerald-700 mt-2">{busy ? 'Сохраняем…' : hasUnsavedChanges ? 'Есть несохранённые изменения' : `Сохранено · ${formatRuDateTime(latestVersion.createdAt)}`}</p>
           </div>
           <div className="flex gap-2 flex-wrap">
             {onShowSource && onShowContext && <SourceDataMenu onShowContext={onShowContext} onShowRequirements={onShowSource} />}
@@ -1232,7 +1232,7 @@ function FinalRequirementsEditor({ latestVersion, onSave, onShowInsights, onShow
       </div>
 
       {hasUnsavedChanges && <div className="sticky top-16 z-30 -mx-4 px-4 py-3 bg-gray-50/95 backdrop-blur border-y border-slate-200 flex items-center justify-between gap-4 flex-wrap">
-        <div className="flex items-center gap-3"><span className={`w-8 h-8 rounded-full flex items-center justify-center ${hasUnsavedChanges ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>{hasUnsavedChanges ? <Pencil className="w-4 h-4" /> : <Check className="w-4 h-4" />}</span><div><p className="font-semibold text-slate-900">{hasUnsavedChanges ? 'Есть несохранённые изменения' : 'Изменения сохранены'}</p><p className="text-xs text-slate-500 mt-0.5">Редакция от {new Date(latestVersion.createdAt).toLocaleString()}</p></div></div>
+        <div className="flex items-center gap-3"><span className={`w-8 h-8 rounded-full flex items-center justify-center ${hasUnsavedChanges ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>{hasUnsavedChanges ? <Pencil className="w-4 h-4" /> : <Check className="w-4 h-4" />}</span><div><p className="font-semibold text-slate-900">{hasUnsavedChanges ? 'Есть несохранённые изменения' : 'Изменения сохранены'}</p><p className="text-xs text-slate-500 mt-0.5">Редакция от {formatRuDateTime(latestVersion.createdAt)}</p></div></div>
         <div className="flex flex-wrap items-center gap-2"><ResultExportAction /><button disabled={busy} onClick={() => saveReview()} className="w-full sm:w-auto px-5 py-2.5 bg-indigo-600 text-white text-sm font-semibold rounded-xl hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed">Сохранить изменения</button></div>
       </div>}
 

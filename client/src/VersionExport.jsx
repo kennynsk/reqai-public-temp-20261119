@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import ReviewDialog from './ReviewDialog.jsx';
 import { enterpriseApi } from './api/enterprise-api.js';
+import { formatRuDateTime } from './requirements-review-presentation.js';
 
 export default function VersionExport({ version, isDirty, onSave, placement = 'bottom' }) {
   const menu = useRef(null);
@@ -11,7 +12,7 @@ export default function VersionExport({ version, isDirty, onSave, placement = 'b
   const [message, setMessage] = useState('');
   const [printLink, setPrintLink] = useState(null);
   useEffect(() => () => { if (printLink) URL.revokeObjectURL(printLink.url); }, [printLink]);
-  const label = version ? `Редакция от ${new Date(version.createdAt).toLocaleString()}` : 'Сначала сохраните версию требований';
+  const label = version ? `Редакция от ${formatRuDateTime(version.createdAt)}` : 'Сначала сохраните версию требований';
   async function perform(action, selected) {
     setBusy(true); setMessage('');
     try {
@@ -49,7 +50,7 @@ export default function VersionExport({ version, isDirty, onSave, placement = 'b
       {printLink?.versionId === version?.versionId && printLink && <a href={printLink.url} target="_blank" rel="noopener noreferrer" className="mt-2 inline-block text-sm text-indigo-700 underline">Открыть печатное представление</a>}
       <button onClick={() => { setMessage(''); menu.current?.querySelector('summary').focus(); }} className="mt-2 block rounded-lg px-2 py-1 text-xs text-slate-600 hover:bg-slate-100">Скрыть уведомление</button>
     </div>}
-    {pending && createPortal(<ReviewDialog label="Экспорт при несохранённых изменениях" onClose={() => setPending(null)}><h2 className="text-lg font-bold">Есть несохранённые изменения</h2><p className="my-3 text-sm">Сохраните их перед экспортом или явно выгрузите предыдущую редакцию от {new Date(pending.version.createdAt).toLocaleString()}.</p><div className="flex gap-2 flex-wrap"><button className="p-3 border rounded-lg" onClick={async () => { const { action } = pending; setPending(null); try { const saved = await onSave(); if (saved?.versionId) perform(action, saved); } catch { setMessage('Сохранение не подтверждено. Экспорт не выполнен; проверьте черновик и повторите сохранение.'); } }}>Сохранить и экспортировать</button><button className="p-3 border rounded-lg" onClick={() => { const { action, version } = pending; setPending(null); perform(action, version); }}>Экспортировать предыдущую версию</button><button className="p-3 border rounded-lg" onClick={() => setPending(null)}>Отмена</button></div></ReviewDialog>, document.body)}
+    {pending && createPortal(<ReviewDialog label="Экспорт при несохранённых изменениях" onClose={() => setPending(null)}><h2 className="text-lg font-bold">Есть несохранённые изменения</h2><p className="my-3 text-sm">Сохраните их перед экспортом или явно выгрузите предыдущую редакцию от {formatRuDateTime(pending.version.createdAt)}.</p><div className="flex gap-2 flex-wrap"><button className="rounded-lg bg-indigo-600 p-3 text-white hover:bg-indigo-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600" onClick={async () => { const { action } = pending; setPending(null); try { const saved = await onSave(); if (saved?.versionId) perform(action, saved); } catch { setMessage('Сохранение не подтверждено. Экспорт не выполнен; проверьте черновик и повторите сохранение.'); } }}>Сохранить и экспортировать</button><button className="p-3 border rounded-lg" onClick={() => { const { action, version } = pending; setPending(null); perform(action, version); }}>Экспортировать предыдущую версию</button><button className="p-3 border rounded-lg" onClick={() => setPending(null)}>Отмена</button></div></ReviewDialog>, document.body)}
     {manual !== null && createPortal(<ReviewDialog label="Скопировать Markdown вручную" onClose={() => setManual(null)}><h2 className="font-bold">Markdown сохранённой версии</h2><textarea aria-label="Markdown для ручного копирования" readOnly value={manual} rows={14} className="w-full p-3 my-3 border rounded-lg font-mono text-xs" onFocus={(event) => event.target.select()} /><button className="p-3 border rounded-lg" onClick={() => setManual(null)}>Закрыть</button></ReviewDialog>, document.body)}
   </section>;
 }
