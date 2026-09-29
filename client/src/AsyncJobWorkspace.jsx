@@ -2327,7 +2327,7 @@ export default function AsyncJobWorkspace() {
       <nav className="bg-white/95 backdrop-blur border-b border-[var(--reqai-line)] sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4">
           <div className="flex items-center min-h-16 gap-3 sm:gap-6">
-            <span className="text-base font-extrabold text-slate-900 tracking-tight mr-auto sm:mr-3">ReqAI</span>
+            <span className="text-base font-extrabold tracking-tight mr-auto sm:mr-3"><span className="text-slate-900">Req</span><span className="text-indigo-600">AI</span></span>
             <button onClick={() => startNewTask()} aria-current="page" className="h-16 px-1 text-sm font-semibold border-b-2 border-indigo-600 text-indigo-600 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">Подготовка требований</button>
             {job && TERMINAL.has(job.status) && <button aria-label="Новая задача" onClick={startNewTask} className="p-2 sm:px-3 sm:py-2 rounded-lg text-sm font-semibold text-indigo-600 hover:bg-indigo-50 flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"><Plus className="w-4 h-4" /><span className="hidden sm:inline">Новая задача</span></button>}
             {backgroundActive && <BackgroundJobIndicator job={backgroundJob} onOpen={() => load(backgroundJob.jobId)} />}

@@ -1,5 +1,18 @@
 const ACTIVE = new Set(['ACCEPTED', 'QUEUED', 'RUNNING', 'RETRY_WAIT', 'CANCEL_REQUESTED']);
 
+const BABOK_TYPE_ACCENTS = {
+  BR: { dot: 'bg-blue-500', chip: 'bg-blue-50 text-blue-700' },
+  SR: { dot: 'bg-cyan-500', chip: 'bg-cyan-50 text-cyan-700' },
+  FR: { dot: 'bg-violet-500', chip: 'bg-violet-50 text-violet-700' },
+  NFR: { dot: 'bg-amber-500', chip: 'bg-amber-50 text-amber-700' },
+  TR: { dot: 'bg-orange-500', chip: 'bg-orange-50 text-orange-700' },
+  CON: { dot: 'bg-rose-500', chip: 'bg-rose-50 text-rose-700' },
+};
+
+export function babokTypeAccent(type) {
+  return BABOK_TYPE_ACCENTS[type] || { dot: 'bg-slate-400', chip: 'bg-slate-100 text-slate-600' };
+}
+
 export function researchPresentation({ childId, child, versionId, submitting = false }) {
   const active = submitting || ACTIVE.has(child?.status);
   const previous = Boolean(child?.inputArtifactId && versionId && child.inputArtifactId !== versionId);

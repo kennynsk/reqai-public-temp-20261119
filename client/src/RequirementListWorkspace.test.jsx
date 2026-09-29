@@ -33,6 +33,7 @@ test('registry header reports review progress and demotes empty type chips', () 
   expect(empty).not.toHaveClass('border-slate-200');
   expect(screen.getByRole('button', { name: /^NFR ·/ })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Все типы' })).toBeInTheDocument();
+  expect(within(detail()).getByText('BR · Бизнес-требования')).toHaveClass('bg-blue-50');
 });
 
 test('opens one detail, retains visible selection and combines type, search and quality filters', () => {
