@@ -31,6 +31,7 @@ test('registry header reports review progress and demotes empty type chips', () 
   const empty = screen.getByRole('button', { name: /^TR ·/ });
   expect(empty).toHaveClass('text-slate-400');
   expect(empty).not.toHaveClass('border-slate-200');
+  expect(empty.querySelector('span[aria-hidden="true"]')).toHaveClass('bg-slate-300');
   expect(screen.getByRole('button', { name: /^NFR ·/ })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Все типы' })).toBeInTheDocument();
   expect(within(detail()).getByText('BR · Бизнес-требования')).toHaveClass('bg-blue-50');
@@ -190,6 +191,17 @@ test('marking a checklist item as no-change records a reasoned decision in a dia
   fireEvent.click(confirm);
   fireEvent.click(screen.getByRole('button', { name: 'Сохранить изменения' }));
   expect(save.mock.calls[0][0].decisions.review.gapRequirements['GAP-001']['BR-001']).toMatchObject({ state: 'no-change', reason: 'Уже покрыто существующим правилом' });
+});
+
+test('a fully checked gap without an answer shows a route to the answer instead of a dead end', () => {
+  const registry = roomBookingRegistry();
+  const decisions = { review: { gapRequirements: { 'GAP-001': { 'BR-001': { state: 'incorporated', reason: '' } } } } };
+  render(<BabokRegistryResult value={registry} latestVersion={{ versionId: 'v1', registry, decisions }} onSave={vi.fn()} />);
+  select('BR-001');
+  fireEvent.click(screen.getByText('Уточнения · 7'));
+  expect(screen.getByText('Остался ответ')).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Закрыть как решённый' })).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Добавьте ответ к вопросу' })).toBeInTheDocument();
 });
 
 test('guided clarification runs from question to proposal, explicit acceptance and a saveable version', async () => {

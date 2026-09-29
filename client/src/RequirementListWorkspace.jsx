@@ -15,7 +15,7 @@ export default function RequirementListWorkspace({
         aria-label={type === 'all' ? label : `${type} · ${label} · ${groups[type]?.length || 0}`}
         title={label} onClick={() => onFiltersChange({ type })}
         className={`min-h-9 rounded-lg border px-3 py-2 text-sm font-semibold focus-visible:ring-2 focus-visible:ring-indigo-500 ${typeFilter === type ? 'border-indigo-600 bg-indigo-600 text-white' : !(groups[type]?.length || 0) ? 'border-transparent bg-transparent text-slate-400 hover:bg-slate-50' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}>
-        {type === 'all' ? 'Все типы' : <><span aria-hidden="true" className={`mr-1.5 inline-block h-1.5 w-1.5 rounded-full ${typeFilter === type ? 'bg-white' : babokTypeAccent(type).dot}`} />{type} · {groups[type]?.length || 0}</>}
+        {type === 'all' ? 'Все типы' : <><span aria-hidden="true" className={`mr-1.5 inline-block h-1.5 w-1.5 rounded-full ${typeFilter === type ? 'bg-white' : (groups[type]?.length || 0) ? babokTypeAccent(type).dot : 'bg-slate-300'}`} />{type} · {groups[type]?.length || 0}</>}
       </button>)}
     </div>
     <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
