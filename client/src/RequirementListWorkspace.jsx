@@ -6,12 +6,14 @@ export default function RequirementListWorkspace({
 }) {
   const filtered = typeFilter !== 'all' || query.trim() || needsClarification;
   const options = [['all', 'Все типы'], ...columns];
+  const total = columns.reduce((sum, [type]) => sum + (groups[type]?.length || 0), 0);
+  const reviewed = columns.reduce((sum, [type]) => sum + (groups[type] || []).filter((item) => item.quality === 'Готово').length, 0);
   return <section aria-label="Реестр требований: список и детали" className="space-y-3">
     <div role="group" aria-label="Типы требований" className="flex flex-wrap gap-2">
       {options.map(([type, label]) => <button key={type} type="button" aria-pressed={typeFilter === type}
         aria-label={type === 'all' ? label : `${type} · ${label} · ${groups[type]?.length || 0}`}
         title={label} onClick={() => onFiltersChange({ type })}
-        className={`min-h-9 rounded-lg border px-3 py-2 text-sm font-semibold focus-visible:ring-2 focus-visible:ring-indigo-500 ${typeFilter === type ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}>
+        className={`min-h-9 rounded-lg border px-3 py-2 text-sm font-semibold focus-visible:ring-2 focus-visible:ring-indigo-500 ${typeFilter === type ? 'border-indigo-600 bg-indigo-600 text-white' : !(groups[type]?.length || 0) ? 'border-transparent bg-transparent text-slate-400 hover:bg-slate-50' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}>
         {type === 'all' ? 'Все типы' : `${type} · ${groups[type]?.length || 0}`}
       </button>)}
     </div>
@@ -27,7 +29,7 @@ export default function RequirementListWorkspace({
     {composer}
     <div className="grid min-w-0 items-start gap-4 lg:grid-cols-[minmax(17.5rem,20rem)_minmax(0,1fr)]">
       <nav aria-label="Список требований" className="reqai-requirement-selector min-w-0 rounded-2xl border border-slate-200 bg-white p-2">
-        <div className="reqai-requirement-selector-heading top-0 z-10 flex items-center justify-between gap-3 bg-white px-3 py-2 text-xs font-semibold text-slate-500"><span className="uppercase tracking-[0.08em]">Требования</span>{filtered && <span>Найдено: {entries.length}</span>}</div>
+        <div className="reqai-requirement-selector-heading top-0 z-10 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 bg-white px-3 py-2 text-xs font-semibold text-slate-500"><span className="uppercase tracking-[0.08em]">Требования</span><span className="flex items-center gap-2 tabular-nums">{total > 0 && <span className={reviewed === total ? 'text-emerald-700' : undefined}>Проверено {reviewed} из {total}</span>}{filtered && <span>Найдено: {entries.length}</span>}</span></div>
         {entries.length ? <ul className="space-y-1">{entries.map(({ type, requirement }) => {
           const active = selected?.requirement.id === requirement.id;
           const ready = requirement.quality === 'Готово';

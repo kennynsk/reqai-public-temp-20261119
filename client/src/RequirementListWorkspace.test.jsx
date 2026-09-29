@@ -25,6 +25,16 @@ async function compose(type, label) {
   return screen.findByRole('textbox', { name: `Новое требование: ${type}` });
 }
 
+test('registry header reports review progress and demotes empty type chips', () => {
+  setup();
+  expect(screen.getByText(/^Проверено \d+ из \d+$/)).toBeInTheDocument();
+  const empty = screen.getByRole('button', { name: /^TR ·/ });
+  expect(empty).toHaveClass('text-slate-400');
+  expect(empty).not.toHaveClass('border-slate-200');
+  expect(screen.getByRole('button', { name: /^NFR ·/ })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Все типы' })).toBeInTheDocument();
+});
+
 test('opens one detail, retains visible selection and combines type, search and quality filters', () => {
   setup();
   expect(within(detail()).getByRole('heading')).toHaveTextContent('Сократить конфликты');
