@@ -21,6 +21,15 @@ export default function RequirementClarifications({ requirement, editing, readOn
   function markIncorporated(gap, requirementId) {
     updateCheck(gap, requirementId, { state: 'incorporated', reason: '' });
   }
+  function changeGap(id, patch) {
+    const prior = states[id] || { state: 'open', answer: '', reason: '' };
+    const next = { ...prior, ...patch };
+    delete next.actorUserId; delete next.recordedAt;
+    review.dispatch({ type: 'decisions', value: updateReviewMetadata(review.state.decisions, { gaps: { ...states, [id]: next } }) });
+  }
+  function resolveGap(gap) {
+    changeGap(gap.id, { state: 'closed', closureKind: 'resolved', reason: `Проверены все связанные требования: ${gapChecklist(review.content, gap, metadata).map((item) => item.requirementId).join(', ')}.` });
+  }
   return <details open={editing || undefined} className="mt-3 rounded-lg border border-amber-200 bg-amber-50/40">
     <summary className="cursor-pointer px-3 py-2 text-sm font-semibold text-slate-700">Уточнения · {gaps.length}</summary>
     <div className="divide-y divide-amber-200 px-3">
@@ -37,7 +46,7 @@ export default function RequirementClarifications({ requirement, editing, readOn
           {state.answer?.trim() ? <div><p className="font-semibold">Ваш ответ</p><p className="whitespace-pre-wrap break-words">{state.answer}</p></div> : <p className="text-slate-500">Ответ ещё не добавлен.</p>}
           {state.reason && <p className="text-slate-600">Причина закрытия: {state.reason}</p>}
           {checklist.length > 0 && <div className="rounded-lg border border-amber-200 bg-white/70 p-2.5"><div className="flex items-center justify-between gap-2"><p className="text-xs font-semibold text-slate-700">Проверка требований · {checklist.filter((item) => !item.unresolved && item.state !== 'pending').length} из {checklist.length}</p><span className="text-xs text-slate-500">{complete ? 'Готово к закрытию' : 'Нужно проверить все'}</span></div><div className="mt-2 space-y-1.5">{checklist.map((item) => <div key={item.requirementId} className="flex flex-wrap items-center justify-between gap-2"><button type="button" disabled={item.unresolved} onClick={() => onNavigate?.(item.requirementId, { edit: true })} className="text-indigo-700 underline underline-offset-2 disabled:text-red-700">{item.requirementId}</button><span className="flex items-center gap-1.5">{item.unresolved && <span className="text-xs font-semibold text-red-700">Связь не найдена</span>}{!item.unresolved && item.state === 'incorporated' && <span className="text-xs font-semibold text-emerald-700">Ответ учтён</span>}{!item.unresolved && item.state === 'no-change' && <span className="text-xs font-semibold text-slate-600">Изменение не требуется</span>}{item.state === 'pending' && !item.unresolved && !readOnly && <><button type="button" aria-label={`Ответ учтён для ${gap.id} в ${item.requirementId}`} disabled={editing || !state.answer?.trim()} onClick={() => markIncorporated(gap, item.requirementId)} className="rounded border border-indigo-200 px-2 py-1 text-xs font-semibold text-indigo-700 disabled:opacity-50">Ответ учтён</button><button type="button" aria-label={`Изменение не требуется для ${gap.id} в ${item.requirementId}`} disabled={editing} onClick={() => markNoChange(gap, item.requirementId)} className="rounded border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-600 disabled:opacity-50">Не требуется</button></>}{item.state !== 'pending' && !item.unresolved && !readOnly && <button type="button" onClick={() => updateCheck(gap, item.requirementId, { state: 'pending' })} className="px-1 text-xs text-slate-500 underline">Сбросить</button>}</span></div>)}</div></div>}
-          {!readOnly && complete && state.state !== 'closed' && state.answer?.trim() && <p className="text-xs text-emerald-700">Все связанные требования проверены. Закрытие выполняется во вкладке «Вопросы».</p>}
+          {!readOnly && complete && state.state !== 'closed' && state.answer?.trim() && <div className="flex flex-wrap items-center gap-2"><button type="button" onClick={() => resolveGap(gap)} className="min-h-9 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600">Закрыть как решённый</button><span className="text-xs text-emerald-700">Все связанные требования проверены</span></div>}
         </div>;
       })}
     </div>

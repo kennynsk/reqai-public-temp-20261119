@@ -161,6 +161,20 @@ test('selected record discussion keeps the original anchor and includes edits fr
   await waitFor(() => expect(send).toHaveBeenCalledWith('rooms', 'FR-001', expect.objectContaining({ baseVersionId: 'v1', draft: expect.objectContaining({ registry: expect.objectContaining({ groups: expect.objectContaining({ BR: [expect.objectContaining({ text: 'Уточнённая цель' })] }) }) }) }), expect.any(String)));
 });
 
+test('a completed gap closes right from the requirement card', () => {
+  const registry = roomBookingRegistry();
+  const save = vi.fn();
+  const decisions = { review: { gaps: { 'GAP-001': { state: 'answered', answer: 'По количеству участников.' } }, gapRequirements: { 'GAP-001': { 'BR-001': { state: 'incorporated', reason: '' } } } } };
+  render(<BabokRegistryResult value={registry} latestVersion={{ versionId: 'v1', registry, decisions }} onSave={save} />);
+  select('BR-001');
+  fireEvent.click(screen.getByText('Уточнения · 7'));
+  fireEvent.click(screen.getByRole('button', { name: 'Закрыть как решённый' }));
+  expect(screen.getAllByText('Закрыт', { exact: true }).length).toBeGreaterThan(0);
+  fireEvent.click(screen.getByRole('button', { name: 'Сохранить изменения' }));
+  const payload = save.mock.calls[0][0];
+  expect(payload.decisions.review.gaps['GAP-001']).toMatchObject({ state: 'closed', closureKind: 'resolved', reason: expect.stringContaining('BR-001') });
+});
+
 test('guided clarification runs from question to proposal, explicit acceptance and a saveable version', async () => {
   const registry = roomBookingRegistry();
   vi.spyOn(enterpriseApi, 'getRequirementDiscussion').mockResolvedValue({ discussionId: 'discussion', messages: [] });
