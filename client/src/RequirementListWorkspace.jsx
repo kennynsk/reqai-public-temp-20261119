@@ -1,5 +1,8 @@
+import { useState } from 'react';
 import { Search } from 'lucide-react';
 import { babokTypeAccent } from './requirements-review-presentation.js';
+
+const headingSeparator = 'shadow-[0_1px_0_0_theme(colors.slate.200),0_3px_10px_-4px_rgb(15_23_42/0.15)]';
 
 export default function RequirementListWorkspace({
   columns, groups, entries, selected, onSelect, typeFilter, query, needsClarification,
@@ -9,6 +12,7 @@ export default function RequirementListWorkspace({
   const options = [['all', 'Все типы'], ...columns];
   const total = columns.reduce((sum, [type]) => sum + (groups[type]?.length || 0), 0);
   const reviewed = columns.reduce((sum, [type]) => sum + (groups[type] || []).filter((item) => item.quality === 'Готово').length, 0);
+  const [scrolled, setScrolled] = useState(false);
   return <section aria-label="Реестр требований: список и детали" className="space-y-3">
     <div role="group" aria-label="Типы требований" className="flex flex-wrap gap-2">
       {options.map(([type, label]) => <button key={type} type="button" aria-pressed={typeFilter === type}
@@ -28,9 +32,9 @@ export default function RequirementListWorkspace({
     {typeFilter !== 'all' && <p className="text-sm font-semibold text-slate-600">{columns.find(([type]) => type === typeFilter)?.[1]}</p>}
     {composer}
     <div className="grid min-w-0 items-start gap-4 lg:grid-cols-[minmax(17.5rem,20rem)_minmax(0,1fr)]">
-      <nav aria-label="Список требований" className="reqai-requirement-selector min-w-0 rounded-2xl border border-slate-200 bg-white p-2">
-        <div className="reqai-requirement-selector-heading top-0 z-10 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 bg-white px-3 py-2 text-xs font-semibold text-slate-500"><span className="flex flex-wrap items-center gap-x-2 gap-y-1"><span className="uppercase tracking-[0.08em]">Реестр</span>{total > 0 && <span className={reviewed === total ? 'text-emerald-700' : undefined}>Проверено {reviewed} из {total}</span>}{filtered && <span>Найдено: {entries.length}</span>}</span>{composerMenu}</div>
-        {entries.length ? <ul className="space-y-1">{entries.map(({ type, requirement }) => {
+      <nav aria-label="Список требований" className="reqai-requirement-selector min-w-0 rounded-2xl border border-slate-200 bg-white p-2" onScroll={(event) => setScrolled(event.currentTarget.scrollTop > 2)}>
+        <div data-scrolled={scrolled ? 'true' : 'false'} className={`reqai-requirement-selector-heading top-0 z-10 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 bg-white px-3 py-2 text-xs font-semibold text-slate-500 ${scrolled ? headingSeparator : ''}`}><span className="flex flex-wrap items-center gap-x-2 gap-y-1"><span className="uppercase tracking-[0.08em]">Реестр</span>{total > 0 && <span className={reviewed === total ? 'text-emerald-700' : undefined}>Проверено {reviewed} из {total}</span>}{filtered && <span>Найдено: {entries.length}</span>}</span>{composerMenu}</div>
+        {entries.length ? <ul className="space-y-1 pt-1">{entries.map(({ type, requirement }) => {
           const active = selected?.requirement.id === requirement.id;
           const ready = requirement.quality === 'Готово';
           return <li key={requirement.id}><button type="button" aria-pressed={active} aria-controls="selected-requirement-detail" aria-label={`Выбрать ${requirement.id}: ${requirement.text}`} onClick={() => onSelect(requirement.id)}

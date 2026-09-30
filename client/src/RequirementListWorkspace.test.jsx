@@ -37,6 +37,28 @@ test('registry header reports review progress and demotes empty type chips', () 
   expect(within(detail()).getByText('BR · Бизнес-требования')).toHaveClass('bg-blue-50');
 });
 
+test('list reserves room above the first card so its selection ring clears the sticky heading', () => {
+  setup();
+  const list = document.querySelector('.reqai-requirement-selector ul');
+  expect(list).toHaveClass('pt-1');
+  expect(screen.getByRole('button', { name: /^Выбрать BR-001:/ })).toHaveClass('ring-2');
+});
+
+test('registry heading separates from cards only while the list is scrolled', () => {
+  setup();
+  const nav = document.querySelector('.reqai-requirement-selector');
+  const heading = nav.querySelector('.reqai-requirement-selector-heading');
+  expect(heading.dataset.scrolled).toBe('false');
+  expect(heading).not.toHaveClass('shadow-[0_1px_0_0_theme(colors.slate.200),0_3px_10px_-4px_rgb(15_23_42/0.15)]');
+  nav.scrollTop = 12;
+  fireEvent.scroll(nav);
+  expect(heading.dataset.scrolled).toBe('true');
+  expect(heading).toHaveClass('shadow-[0_1px_0_0_theme(colors.slate.200),0_3px_10px_-4px_rgb(15_23_42/0.15)]');
+  nav.scrollTop = 0;
+  fireEvent.scroll(nav);
+  expect(heading.dataset.scrolled).toBe('false');
+});
+
 test('opens one detail, retains visible selection and combines type, search and quality filters', () => {
   setup();
   expect(within(detail()).getByRole('heading')).toHaveTextContent('Сократить конфликты');
