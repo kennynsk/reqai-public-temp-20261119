@@ -54,6 +54,8 @@ test('original skill and every reference reach the model verbatim', async () => 
   await h.handlers.decomposeChunk(h.input);
   assert.equal(h.calls[0].messages[0].role, 'system');
   assert.equal(h.calls[0].messages[0].content, prompt);
+  assert.match(h.calls[0].messages[0].content, /groups\.\*\[\]\.text содержит только самостоятельную формулировку/);
+  assert.match(h.calls[0].messages[0].content, /Сам GAP и связь с требованием сохраняй/);
   assert.match(h.calls[0].messages[1].content, /Отдельный раздел решения/);
   assert.match(h.calls[0].messages[1].content, /Фрагмент/);
 });

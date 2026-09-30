@@ -183,12 +183,14 @@ describe('AsyncJobWorkspace compatibility helpers', () => {
       { targetType: 'business', text: 'Цель', sourceIndex: 0, targetIds: [] },
       { targetType: 'functional', text: 'Функция', sourceIndex: 1, targetIds: [] },
     ]);
-    expect(displayEnhancementsForInsight({ category: 'risks', title: 'Риск', summary: 'Проверить' })[0]).toMatchObject({ targetType: 'nonfunctional', text: 'Риск\n\nПроверить' });
+    // Historical insights without structured enhancements stay informational:
+    // their summary must not become an actionable requirement proposal.
+    expect(displayEnhancementsForInsight({ category: 'risks', title: 'Риск', summary: 'Проверить' })).toEqual([]);
     expect(displayEnhancementsForInsight({ category: 'standards', title: '', summary: '' })).toEqual([]);
     expect(displayBabokEnhancementsForInsight({ category: 'patterns', enhancements: [{ targetType: 'FR', relatedTo: ['BR-1'], text: ' Функция ' }, { targetType: 'invalid', text: 'Нет' }, { targetType: 'NFR', text: '' }] })).toEqual([{ targetType: 'FR', relatedTo: ['BR-1'], sourceIndex: 0, targetIds: ['BR-1'], text: 'Функция' }]);
-    expect(displayBabokEnhancementsForInsight({ category: 'risks', title: 'Риск', summary: 'Проверить' })[0]).toMatchObject({ targetType: 'NFR', targetIds: [], text: 'Риск\n\nПроверить' });
+    expect(displayBabokEnhancementsForInsight({ category: 'risks', title: 'Риск', summary: 'Проверить' })).toEqual([]);
     expect(displayBabokEnhancementsForInsight({ category: 'standards', title: '', summary: '' })).toEqual([]);
-    expect(displayBabokEnhancementsForInsight({ category: 'trends', title: 'Тренд', summary: 'Проверить' })[0]).toMatchObject({ targetType: 'FR', targetIds: [], text: 'Тренд\n\nПроверить' });
+    expect(displayBabokEnhancementsForInsight({ category: 'trends', title: 'Тренд', summary: 'Проверить' })).toEqual([]);
   });
 
   test('collects ids and applies accepted or rejected research enhancements', () => {

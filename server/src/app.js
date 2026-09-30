@@ -15,6 +15,10 @@ export function createApp({ siteId = 'local', readiness = createReadinessService
   const app = express();
 
   app.disable('x-powered-by');
+  // Dynamic tenant data must never be served from the browser's heuristic
+  // cache: a mid-generation snapshot (e.g. a running discussion attempt)
+  // would otherwise resurrect ghost state after a page reload.
+  app.use('/api/v1', (req, res, next) => { res.set('Cache-Control', 'private, no-store'); next(); });
   app.use(requestContext);
   app.use(telemetryMiddleware);
   app.use(createSystemRouter({ readiness, siteId }));

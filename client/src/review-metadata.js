@@ -4,11 +4,12 @@ export function updateReviewMetadata(decisions, patch) {
   if (patch.gaps || patch.omissions) review.acknowledgment = { ...previous.acknowledgment, confirm: false, stale: true };
   if (patch.gaps && previous.gapRequirements) {
     const checks = { ...(previous.gapRequirements || {}) };
-    // Callers often pass the complete gap map. Reset only the entries whose
-    // semantic value actually changed so an answer update does not invalidate
-    // confirmations for unrelated GAPs.
+    // Callers often pass the complete gap map. Reset only the confirmations
+    // whose basis actually changed — the answer text (the server also hashes
+    // the answer into every confirmation). State/closure/reason edits such as
+    // "Закрыть как решённый" keep the collected checklist intact.
     for (const [gapId, value] of Object.entries(patch.gaps)) {
-      if (JSON.stringify(value) !== JSON.stringify(previous.gaps?.[gapId])) delete checks[gapId];
+      if (String(value?.answer ?? '') !== String(previous.gaps?.[gapId]?.answer ?? '')) delete checks[gapId];
     }
     review.gapRequirements = checks;
   }
@@ -16,10 +17,37 @@ export function updateReviewMetadata(decisions, patch) {
   return { ...decisions, review };
 }
 
-export function invalidateReviewEvidence(decisions) {
+const stableValue = (value) => Array.isArray(value) ? value.map(stableValue) : value && typeof value === 'object'
+  ? Object.fromEntries(Object.keys(value).sort().map((key) => [key, stableValue(value[key])])) : value;
+const fingerprint = (value) => JSON.stringify(stableValue(value));
+const requirementBasisFields = ['id', 'text', 'quality', 'successIndicator', 'role', 'category', 'scope', 'verificationMethod', 'completionCriterion', 'obligation', 'relatedIds', 'relatedTo', 'source', 'provenance'];
+const evidenceRecord = (record) => record && /^(BR|SR|FR|NFR|TR|CON)-/.test(record.id)
+  ? Object.fromEntries(requirementBasisFields.map((field) => [field, record[field] ?? null])) : record;
+
+export function reviewEvidenceChanges(before, after) {
+  const records = (content) => [...allRecords(content), ...(content?.context || []),
+    ...['GAP', 'HYP', 'TERM'].flatMap((type) => content?.analysis?.[type] || [])];
+  const left = new Map(records(before).map((record) => [record.id, record]));
+  const right = new Map(records(after).map((record) => [record.id, record]));
+  const changedRecordIds = [...new Set([...left.keys(), ...right.keys()])].filter((id) => fingerprint(evidenceRecord(left.get(id))) !== fingerprint(evidenceRecord(right.get(id))));
+  const gaps = new Map([...(before?.analysis?.GAP || []), ...(after?.analysis?.GAP || [])].map((gap) => [gap.id, gap]));
+  const changedGapIds = [...gaps.keys()].filter((id) => {
+    const oldGap = left.get(id), newGap = right.get(id);
+    const linked = [...linkedRequirementIds(before, oldGap), ...linkedRequirementIds(after, newGap)];
+    const supporting = linked.flatMap((recordId) => [left.get(recordId), right.get(recordId)].filter(Boolean).flatMap((record) => [...(record.relatedIds || []), ...(record.relatedTo || [])]));
+    return changedRecordIds.includes(id)
+      || fingerprint([...linkedRequirementIds(before, oldGap)].sort()) !== fingerprint([...linkedRequirementIds(after, newGap)].sort())
+      || supporting.some((recordId) => changedRecordIds.includes(recordId))
+      || changedRecordIds.some((recordId) => /^CON-/.test(recordId))
+      || linked.some((recordId) => changedRecordIds.includes(recordId))
+      || [...(oldGap?.affectedIds || []), ...(newGap?.affectedIds || [])].some((recordId) => changedRecordIds.includes(recordId));
+  });
+  return { changedRecordIds, changedGapIds };
+}
+
+export function invalidateReviewEvidence(decisions, options = {}) {
   if (!decisions.review) return decisions;
   const previous = decisions.review;
-  const options = arguments[1] || {};
   const changedRecordIds = options.changedRecordIds ? new Set(options.changedRecordIds) : null;
   const changedGapIds = options.changedGapIds ? new Set(options.changedGapIds) : null;
   const gapRequirements = Object.fromEntries(Object.entries(previous.gapRequirements || {}).map(([gapId, entries]) => [gapId,

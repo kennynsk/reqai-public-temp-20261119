@@ -98,7 +98,7 @@ function shortLabel(record) {
   return `${record.id} ${label}`;
 }
 
-function renderTraceability(registry) {
+export function buildBabokTraceability(registry) {
   const records = [
     ...registry.groups.BR,
     ...registry.groups.SR,
@@ -109,62 +109,78 @@ function renderTraceability(registry) {
   ];
   const byId = new Map(records.map((record) => [record.id, record]));
   const children = new Map(records.map((record) => [record.id, []]));
-  for (const record of records) {
-    if (record.id.startsWith('BR-')) {
-      for (const child of record.relatedIds || []) if (children.has(child)) children.get(record.id).push(child);
-      continue;
-    }
-    for (const parent of record.relatedTo || []) if (children.has(parent)) children.get(parent).push(record.id);
-  }
   const hierarchy = (from, to) => (from.startsWith('BR-') && to.startsWith('SR-'))
     || (from.startsWith('SR-') && /^(SR|FR|NFR)-/.test(to))
     || (from.startsWith('FR-') && to.startsWith('NFR-'));
-  for (const link of registry.analysis.traceability) {
-    if (link.status === 'Подтверждено источником' && hierarchy(link.from, link.to) && children.has(link.from) && byId.has(link.to)
-      && !/конфликт|завис|замен|исключ/i.test(link.relation)) children.get(link.from).push(link.to);
-    if (link.status === 'Предполагается') {
-      // CON.relatedTo points in the reverse direction from a tree edge.
-      if (children.has(link.from)) children.set(link.from, children.get(link.from).filter((id) => id !== link.to));
-      if (children.has(link.to)) children.set(link.to, children.get(link.to).filter((id) => id !== link.from));
+  const crossRelation = (relation) => /конфликт|завис|замен|исключ|огранич|обеспеч/i.test(relation || '');
+  const links = [...registry.analysis.traceability];
+  // relatedTo is a generic relationship, not necessarily a parent pointer.
+  // Preserve untyped references without inventing evidence or hierarchy.
+  for (const record of records) {
+    const pairs = record.id.startsWith('BR-')
+      ? (record.relatedIds || []).map((id) => [record.id, id])
+      : (record.relatedTo || []).map((id) => hierarchy(id, record.id) ? [id, record.id] : [record.id, id]);
+    for (const [from, to] of pairs) {
+      if (!byId.has(from) || !byId.has(to) || links.some((link) =>
+        (link.from === from && link.to === to) || (link.from === to && link.to === from))) continue;
+      links.push({ from, to, relation: 'Связано с', status: 'Статус не указан' });
     }
   }
-  const lines = [];
-  const treeEdges = new Set();
+  const treeLinks = new Map();
+  for (const link of links) {
+    if (!hierarchy(link.from, link.to) || crossRelation(link.relation)
+      || !children.has(link.from) || !byId.has(link.to)) continue;
+    children.get(link.from).push(link.to);
+    treeLinks.set(`${link.from}|${link.to}`, link);
+  }
   const renderedIds = new Set();
-  const renderNode = (id, prefix = '', branch = '', tail = true, ancestors = new Set()) => {
-    if (ancestors.has(id) || renderedIds.has(id) || !byId.has(id)) return;
+  const treeEdges = new Set();
+  const visit = (id, incoming = null) => {
+    if (renderedIds.has(id) || !byId.has(id)) return null;
     renderedIds.add(id);
-    const record = byId.get(id);
+    const nodes = [];
+    for (const child of new Set(children.get(id) || [])) {
+      const node = visit(child, treeLinks.get(`${id}|${child}`));
+      if (node) { treeEdges.add(`${id}|${child}`); nodes.push(node); }
+    }
+    return { record: byId.get(id), incoming, children: nodes };
+  };
+  const forest = [];
+  for (const record of [...registry.groups.BR, ...records]) {
+    const node = visit(record.id);
+    if (node) forest.push(node);
+  }
+  const supplemental = links.filter((link) => link.status !== 'Подтверждено источником'
+    || !treeEdges.has(`${link.from}|${link.to}`) || crossRelation(link.relation));
+  return { forest, supplemental, links };
+}
+
+function renderTraceability(registry) {
+  const { forest, supplemental } = buildBabokTraceability(registry);
+  const lines = [];
+  const renderNode = (node, prefix = '', branch = '', tail = true) => {
+    const { record, incoming } = node;
+    const id = record.id;
     const gaps = gapIdsFor(registry, record);
     const partialCoverage = /^(BR|SR)-/.test(id) && registry.analysis.GAP.some((gap) => gaps.includes(gap.id) && /scope|полнот|состав/i.test(`${gap.kind || ''} ${gap.text}`));
     const gapLabel = partialCoverage ? 'покрытие частичное' : record.quality === 'Требует уточнения' ? 'требует уточнения' : 'связанные пробелы';
     const coverage = gaps.length ? ` — ${gapLabel} (${gaps.join(', ')})` : '';
-    const constraint = id.startsWith('CON-') ? ' — ограничивает' : '';
-    lines.push(`${prefix}${branch}${shortLabel(record)}${constraint}${coverage}`);
-    const next = [...new Set(children.get(id) || [])];
+    const edgeLabel = incoming ? ` — ${incoming.relation}${incoming.status !== 'Подтверждено источником' ? ` (${incoming.status})` : ''}` : '';
+    const placement = id.startsWith('CON-') ? ' — ограничение' : id.startsWith('TR-') ? ' — требование перехода' : '';
+    lines.push(`${prefix}${branch}${shortLabel(record)}${edgeLabel}${placement}${coverage}`);
     const childPrefix = `${prefix}${branch ? (tail ? '    ' : '│   ') : ''}`;
-    next.forEach((child, index) => {
-      if (!renderedIds.has(child) && !ancestors.has(child)) treeEdges.add(`${id}|${child}`);
-      renderNode(child, childPrefix, index === next.length - 1 ? '└── ' : '├── ', index === next.length - 1, new Set([...ancestors, id]));
-    });
+    node.children.forEach((child, index) => renderNode(child, childPrefix,
+      index === node.children.length - 1 ? '└── ' : '├── ', index === node.children.length - 1));
   };
-  const roots = registry.groups.BR.length ? registry.groups.BR.map((item) => item.id) : records.filter((record) => !(record.relatedTo || []).length).map((item) => item.id);
-  roots.forEach((id) => renderNode(id));
-  for (const record of records) if (!renderedIds.has(record.id)) renderNode(record.id);
+  forest.forEach((node) => renderNode(node));
   if (!registry.groups.NFR.length) {
     const gaps = registry.analysis.GAP.filter((gap) => /NFR|НФТ|нефункцион|производител|безопасност|доступност|восстановлен/i.test(`${gap.kind || ''} ${gap.text}`));
     lines.push(`NFR: не обнаружено${gaps.length ? ` (${gaps.map((gap) => gap.id).join(', ')})` : ''}`);
   }
-  const supplemental = registry.analysis.traceability.filter((link) => link.status === 'Предполагается'
-    || !treeEdges.has(`${link.from}|${link.to}`) || /конфликт|завис|замен|исключ/i.test(link.relation));
-  // Multi-parent relations not shown in the tree must remain visible.
-  for (const [parent, ids] of children) for (const child of new Set(ids)) {
-    if (!treeEdges.has(`${parent}|${child}`) && !supplemental.some((link) => link.from === parent && link.to === child)) {
-      supplemental.push({ from: parent, to: child, relation: 'Связано с', status: 'Подтверждено источником' });
-    }
-  }
   return [
     '## 9. Трассировка',
+    '',
+    'Дерево показывает основную иерархию BR → SR → FR/NFR. Предположительные связи помечены. Ограничения, переходные требования и связи вне дерева приведены отдельно. Строки без отступа — отдельные корни, а не дочерние требования предыдущей строки.',
     '',
     lines.length ? `\`\`\`text\n${lines.join('\n')}\n\`\`\`` : 'Не обнаружено',
     ...(supplemental.length ? ['', table(['От', 'К', 'Тип связи', 'Статус'], supplemental.map((link) => [link.from, link.to, link.relation, link.status]))] : ['', 'Дополнительные связи не обнаружены.']),

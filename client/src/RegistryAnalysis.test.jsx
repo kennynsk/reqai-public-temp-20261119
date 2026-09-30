@@ -14,7 +14,7 @@ test('navigates traceability links and renders an empty-links explanation', () =
   render(<RegistryAnalysis registry={registry} section="links" onNavigate={onNavigate} readOnly />);
   expect(screen.queryByText('Приложения: контекст, материалы и анализ')).not.toBeInTheDocument();
 
-  const link = screen.getByRole('link', { name: 'BR-001' });
+  const link = screen.getAllByRole('link', { name: 'BR-001' })[0];
   expect(link).toHaveAttribute('href', '#record-BR-001');
   fireEvent.click(link);
   expect(onNavigate).toHaveBeenCalledWith('BR-001');
@@ -22,25 +22,27 @@ test('navigates traceability links and renders an empty-links explanation', () =
 
   cleanup();
   registry.analysis.traceability = [];
+  Object.values(registry.groups).flat().forEach((record) => { record.relatedIds = []; record.relatedTo = []; });
   render(<RegistryAnalysis registry={registry} section="links" onNavigate={onNavigate} readOnly />);
   expect(screen.getByText('Отдельная схема связей не сформирована. Связанные записи доступны на карточках требований.')).toBeInTheDocument();
 });
 
-test('groups traceability links by source requirement', () => {
+test('renders nested requirement hierarchy and separates assumptions and non-parent references', () => {
   const registry = roomBookingRegistry();
+  registry.groups.SR = [{ id: 'SR-001', text: 'Пользователю нужна возможность бронирования.', quality: 'Готово', relatedTo: ['BR-001'] }];
   registry.analysis.traceability = [
-    { from: 'BR-001', to: 'FR-001', relation: 'Поддерживает', status: 'Полная' },
-    { from: 'BR-001', to: 'FR-002', relation: 'Реализует', status: 'Предполагается' },
-    { from: 'SR-001', to: 'FR-001', relation: 'Проверяет', status: 'Полная' },
+    { from: 'BR-001', to: 'SR-001', relation: 'обосновывает', status: 'Предполагается' },
+    { from: 'SR-001', to: 'FR-001', relation: 'реализует', status: 'Подтверждено источником' },
   ];
   render(<RegistryAnalysis registry={registry} section="links" onNavigate={vi.fn()} readOnly />);
-
-  const businessGroup = screen.getByRole('article', { name: 'Связи от BR-001' });
-  expect(within(businessGroup).getAllByRole('link', { name: 'BR-001' })).toHaveLength(1);
-  expect(within(businessGroup).getByRole('link', { name: 'FR-001' })).toBeInTheDocument();
-  expect(within(businessGroup).getByRole('link', { name: 'FR-002' })).toBeInTheDocument();
-  expect(within(businessGroup).getByText('2 связи')).toBeInTheDocument();
-  expect(screen.getByRole('article', { name: 'Связи от SR-001' })).toBeInTheDocument();
+  const tree = screen.getByRole('list', { name: 'Иерархия требований' });
+  const stakeholder = within(tree).getByRole('link', { name: 'SR-001' }).closest('li');
+  expect(within(stakeholder).getByRole('link', { name: 'FR-001' })).toBeInTheDocument();
+  expect(within(tree).getByText('Предполагается')).toBeInTheDocument();
+  const supplemental = screen.getByRole('region', { name: 'Дополнительные связи' });
+  const assumption = within(supplemental).getByRole('link', { name: 'SR-001' }).closest('li');
+  expect(within(assumption).getByRole('link', { name: 'BR-001' })).toBeInTheDocument();
+  expect(within(assumption).getByText('Предполагается')).toBeInTheDocument();
 });
 
 test('renders questions section with read-only answers and sources', () => {
@@ -48,7 +50,7 @@ test('renders questions section with read-only answers and sources', () => {
   registry.analysis.GAP = [{ ...registry.analysis.GAP[0], source: registry.groups.BR[0].source }];
   render(<RegistryAnalysis registry={registry} section="questions" onNavigate={vi.fn()} readOnly />);
 
-  expect(screen.getByRole('heading', { name: /Вопросы для уточнения · 1/ })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: /Пробелы для уточнения · открытых: 1/ })).toBeInTheDocument();
   expect(screen.getByText('GAP-001 · Канал уведомлений')).toBeInTheDocument();
   expect(screen.getByText('Как определить: Канал уведомлений?')).toBeInTheDocument();
   expect(screen.getByText('Бриф переговорных')).toBeInTheDocument();

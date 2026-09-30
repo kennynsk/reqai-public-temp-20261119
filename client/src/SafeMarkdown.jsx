@@ -15,6 +15,14 @@ const components = {
   pre: ({ children }) => <pre tabIndex={0} className="my-4 max-w-full overflow-x-auto rounded-lg bg-slate-50 p-4 text-xs leading-relaxed text-slate-800">{children}</pre>,
 };
 
-export default function SafeMarkdown({ children }) {
-  return <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]} components={components}>{children}</ReactMarkdown>;
+// Chat bubbles are compact: tighter block spacing and the bubble's own text color.
+const chatComponents = {
+  ...components,
+  p: ({ children }) => <p className="my-2 text-sm leading-relaxed text-slate-800">{children}</p>,
+  ul: ({ children }) => <ul className="my-2 list-disc space-y-1 pl-5 text-sm text-slate-800">{children}</ul>,
+  ol: ({ children }) => <ol className="my-2 list-decimal space-y-1 pl-5 text-sm text-slate-800">{children}</ol>,
+};
+
+export default function SafeMarkdown({ children, chat = false }) {
+  return <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]} components={chat ? chatComponents : components}>{children}</ReactMarkdown>;
 }

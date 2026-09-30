@@ -145,13 +145,13 @@ test('keeps an open BABOK draft across type switches', async () => {
 test('GAP answer and closure join the shared draft without rewriting the requirement', async () => {
   await openSavedRoomReview();
   fireEvent.click(screen.getByRole('button', { name: 'Отмена', exact: true }));
-  fireEvent.click(within(screen.getByRole('group', { name: 'Разделы проверки' })).getByRole('button', { name: 'Вопросы · 7' }));
+  fireEvent.click(within(screen.getByRole('group', { name: 'Разделы проверки' })).getByRole('button', { name: 'Вопросы' }));
   const answer = screen.getByRole('textbox', { name: 'Ответ на GAP-001' });
   fireEvent.change(answer, { target: { value: 'Уведомлять по электронной почте.' } });
   expect(screen.getByText('Дан ответ · ещё открыт')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: /^(Реестр · \d+|Требования)$/ }));
   expect(screen.getByRole('button', { name: 'Перейти к финальной версии' })).toBeEnabled();
-  fireEvent.click(within(screen.getByRole('group', { name: 'Разделы проверки' })).getByRole('button', { name: 'Вопросы · 7' }));
+  fireEvent.click(within(screen.getByRole('group', { name: 'Разделы проверки' })).getByRole('button', { name: 'Вопросы' }));
   expect(screen.getByRole('textbox', { name: 'Ответ на GAP-001' })).toHaveValue('Уведомлять по электронной почте.');
   fireEvent.click(within(screen.getByRole('textbox', { name: 'Ответ на GAP-001' }).closest('article')).getByRole('button', { name: 'Закрыть без изменения требований…' }));
   expect(screen.getByRole('button', { name: 'Подтвердить решение' })).toBeDisabled();
@@ -167,7 +167,7 @@ test('GAP answer and closure join the shared draft without rewriting the require
 
 test('GAP answer follows the user into editing and closes with the applied requirement in one save', async () => {
   await openSavedRoomReview();
-  fireEvent.click(screen.getByRole('button', { name: 'Вопросы · 7' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Вопросы' }));
   const answer = screen.getByRole('textbox', { name: 'Ответ на GAP-001' });
   fireEvent.change(answer, { target: { value: 'Уведомлять по электронной почте.' } });
   fireEvent.click(within(answer.closest('article')).getByRole('button', { name: 'Редактировать BR-001' }));
@@ -178,15 +178,16 @@ test('GAP answer follows the user into editing and closes with the applied requi
   expect(within(card).getByRole('button', { name: 'Ответ учтён для GAP-001 в BR-001' })).toBeDisabled();
   fireEvent.change(editor, { target: { value: 'Сократить конфликты бронирования с уведомлением по электронной почте.' } });
   fireEvent.click(within(card).getByRole('button', { name: 'Применить к черновику' }));
-  const disclosure = within(card).getByText(/Уточнения ·/).closest('details');
-  if (!disclosure.open) fireEvent.click(within(card).getByText(/Уточнения ·/));
+  const disclosure = within(card).getByText('Вопросы и учёт ответов').closest('details');
+  if (!disclosure.open) fireEvent.click(within(card).getByText('Вопросы и учёт ответов'));
   fireEvent.click(within(card).getByRole('button', { name: 'Ответ учтён для GAP-001 в BR-001' }));
   expect(within(card).getAllByText('Ответ учтён').length).toBeGreaterThan(0);
-  fireEvent.click(screen.getByRole('button', { name: 'Вопросы · 7' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Вопросы' }));
   const questionsCard = screen.getByText('GAP-001 · Канал уведомлений').closest('article');
   expect(within(questionsCard).getByRole('button', { name: 'Закрыть как решённый' })).toBeEnabled();
   fireEvent.click(within(questionsCard).getByRole('button', { name: 'Закрыть как решённый' }));
-  expect(within(questionsCard).getByText('Закрыт')).toBeVisible();
+  fireEvent.change(screen.getByRole('combobox', { name: 'Статус вопросов' }), { target: { value: 'closed' } });
+  expect(within(document.getElementById('record-GAP-001')).getByText('Закрыт', { exact: true })).toBeVisible();
   mocks.saveRequirementsVersion.mockImplementation(async (payload) => ({ ...payload, versionId: 'gap-applied', createdAt: new Date().toISOString() }));
   fireEvent.click(screen.getByRole('button', { name: 'Сохранить изменения' }));
   await waitFor(() => expect(mocks.saveRequirementsVersion).toHaveBeenCalled());
@@ -341,8 +342,8 @@ test('confirms deletion, supports undo, and does not reuse the deleted identifie
 
 test('question references open a preview without losing edits', async () => {
       await openSavedRoomReview();
-      fireEvent.click(within(screen.getByRole('group', { name: 'Разделы проверки' })).getByRole('button', { name: 'Вопросы · 7' }));
-      expect(screen.getByRole('heading', { name: 'Вопросы для уточнения · 7' })).toBeInTheDocument();
+      fireEvent.click(within(screen.getByRole('group', { name: 'Разделы проверки' })).getByRole('button', { name: 'Вопросы' }));
+      expect(screen.getByRole('heading', { name: /Пробелы для уточнения · открытых: \d+/ })).toBeInTheDocument();
       fireEvent.click(screen.getAllByRole('button', { name: 'BR-001' })[0]);
       const dialog = await screen.findByRole('dialog', { name: /Бизнес-требование · BR-001/ });
       expect(dialog).toHaveTextContent('Сократить конфликты бронирования.');
@@ -816,6 +817,19 @@ test('keeps an unavailable deep link stable without opening another remembered j
   expect(mocks.getJob).not.toHaveBeenCalledWith('other-job', expect.anything());
 });
 
+test('transient deep-link failure offers retry for the same task instead of suggesting missing access', async () => {
+  window.history.replaceState({}, '', '/tasks/retry-job');
+  mocks.getJob.mockRejectedValueOnce(Object.assign(new Error('HTTP 503'), { status: 503 }))
+    .mockResolvedValue({ jobId: 'retry-job', type: 'DECOMPOSITION', mode: 'DECOMPOSITION', status: 'CANCELLED' });
+  render(<AsyncJobWorkspace />);
+  expect(await screen.findByRole('heading', { name: 'Не удалось загрузить задачу' })).toBeInTheDocument();
+  expect(screen.queryByText(/Проверьте адрес или права доступа/)).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Повторить загрузку' }));
+  expect(await screen.findByRole('heading', { name: 'Задача отменена' })).toBeInTheDocument();
+  expect(window.location.pathname).toBe('/tasks/retry-job');
+  expect(mocks.getJob.mock.calls.every(([id]) => id === 'retry-job')).toBe(true);
+});
+
 test('ignores a stale route load after browser navigation selects another task', async () => {
   window.history.replaceState({}, '', '/tasks/slow-job');
   let resolveSlow;
@@ -1104,7 +1118,7 @@ test('reviews a BABOK registry by type, preserves evidence and saves a complete 
   fireEvent.click(await screen.findByRole('button', { name: 'Сохранить с открытыми вопросами' }));
   await waitFor(() => expect(mocks.saveRequirementsVersion).toHaveBeenNthCalledWith(2, expect.objectContaining({ baseVersionId: 'babok-v1', decisions: expect.objectContaining({ skippedResearch: true }), registry: expect.any(Object) })));
   expect(await screen.findByRole('heading', { name: 'Финальная версия требований' })).toBeInTheDocument();
-  expect(screen.getByText('Система сохраняет историю статусов')).toBeInTheDocument();
+  expect(screen.getAllByText('Система сохраняет историю статусов')[0]).toBeInTheDocument();
 });
 
 test.each([false, true])('keeps BABOK target types and original decision indices when filtering unsupported proposals: %s', async (unsupportedFirst) => {

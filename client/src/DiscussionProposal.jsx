@@ -1,13 +1,17 @@
+import { lazy, Suspense } from 'react';
+
+const SafeMarkdown = lazy(() => import('./SafeMarkdown.jsx'));
+
 const fieldLabels = { text: 'Формулировка', role: 'Роль', successIndicator: 'Критерий успеха', category: 'Категория', scope: 'Область действия', verificationMethod: 'Проверка', completionCriterion: 'Критерий завершения', obligation: 'Обязательство' };
 
-export default function DiscussionProposal({ proposal, applied, rejected, stale, disabled, onApply, onReject }) {
+export default function DiscussionProposal({ proposal, applied, saved = false, gapState, rejected, stale, disabled, onApply, onReject }) {
   const clarification = proposal.clarification;
   const changes = proposal.changes || [];
   const actionLabel = clarification ? clarification.canResolve ? 'Применить уточнение и закрыть вопрос' : 'Применить уточнение' : 'Применить к черновику';
   return <section className="mt-4 space-y-4 rounded-xl border border-indigo-200 bg-indigo-50/40 p-4" aria-label="Предложение изменений">
     <div>
       <h3 className="font-semibold text-slate-900">{clarification ? 'Проверьте уточнение' : `Предложение изменений · ${changes.length}`}</h3>
-      <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">{proposal.explanation}</p>
+      <details open={!applied} className="mt-1 break-words text-sm text-slate-700 [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"><summary className="cursor-pointer font-semibold">Обоснование AI</summary><Suspense fallback={<p className="my-2 text-sm text-slate-500">Форматируем ответ…</p>}><SafeMarkdown chat>{proposal.explanation}</SafeMarkdown></Suspense></details>
     </div>
     {clarification && <div className="rounded-lg bg-white p-3">
       <h4 className="text-sm font-semibold text-slate-900">Ваше решение</h4>
@@ -35,11 +39,11 @@ export default function DiscussionProposal({ proposal, applied, rejected, stale,
     </div>}
     {stale && <p role="status" className="text-sm text-amber-900">Предложение устарело. Попросите AI подготовить новый вариант с учётом текущих правок.</p>}
     <div className="flex flex-wrap gap-2">
-      <button type="button" disabled={disabled || stale || applied || rejected} onClick={onApply} className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">{applied ? 'Принято в черновик' : stale ? 'Предложение устарело' : actionLabel}</button>
+      <button type="button" disabled={disabled || stale || applied || rejected} onClick={onApply} className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">{applied ? saved ? 'Принято и сохранено' : 'Принято в черновик' : stale ? 'Предложение устарело' : actionLabel}</button>
       <button type="button" disabled={disabled || applied || rejected} onClick={onReject} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 disabled:opacity-50">{rejected ? 'Пакет отклонён' : 'Отклонить пакет'}</button>
     </div>
     <p role={applied ? 'status' : undefined} className="text-sm text-slate-600">{clarification
-      ? applied ? `${clarification.canResolve ? 'Вопрос закрыт' : 'Ответ учтён, вопрос ещё открыт'} в черновике. Сохраните изменения на основном экране.`
+      ? applied ? saved ? `${gapState === 'closed' ? 'Вопрос закрыт' : 'Ответ сохранён; вопрос открыт'}. Решение сохранено в версии требований.` : `${clarification.canResolve ? 'Вопрос закрыт' : 'Ответ учтён, вопрос ещё открыт'} в черновике. Сохраните изменения на основном экране.`
         : `${clarification.canResolve ? 'При принятии подтвердятся ответ и его учёт во всех связанных требованиях; вопрос закроется' : 'При принятии сохранятся ответ и показанные правки; вопрос останется открытым'} в черновике. Версия сохранится общей кнопкой сохранения.`
       : 'Применение не закрывает GAP и не сохраняет версию автоматически.'}</p>
   </section>;

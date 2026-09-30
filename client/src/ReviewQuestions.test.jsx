@@ -48,8 +48,10 @@ test('edits answers, shows priorities, navigates links, and records open/close d
   const registry = makeRegistry();
   render(<DraftContext.Provider value={makeReview(dispatch)}><ReviewQuestions registry={registry} onNavigate={onNavigate} /></DraftContext.Provider>);
 
-  expect(screen.getByRole('heading', { name: 'Вопросы для уточнения · 4' })).toBeInTheDocument();
-  expect(screen.getByText(/AI поможет разобраться/)).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: 'Пробелы для уточнения · открытых: 2 · закрытых: 1' })).toBeInTheDocument();
+  expect(screen.getByText(/AI поможет уточнить недостающие сведения/)).toBeInTheDocument();
+  expect(screen.queryByText('GAP-CLOSED · Закрытый вопрос')).not.toBeInTheDocument();
+  fireEvent.change(screen.getByRole('combobox', { name: 'Статус вопросов' }), { target: { value: 'all' } });
   expect(screen.getByText('Открыт')).toBeInTheDocument();
   expect(screen.getByText('Дан ответ · ещё открыт')).toBeInTheDocument();
   expect(screen.getByText('Закрыт')).toBeInTheDocument();
@@ -113,5 +115,5 @@ test('filters closed and open questions and renders read-only answers', () => {
 
 test('shows a safe empty state when there are no questions', () => {
   render(<DraftContext.Provider value={null}><ReviewQuestions registry={{ analysis: { GAP: [], questions: [] }, materials: {} }} readOnly onNavigate={vi.fn()} /></DraftContext.Provider>);
-  expect(screen.getByText('В этом списке нет вопросов.')).toBeInTheDocument();
+  expect(screen.getByText('В этом списке нет пробелов для уточнения.')).toBeInTheDocument();
 });

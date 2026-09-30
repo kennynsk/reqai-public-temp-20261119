@@ -63,7 +63,7 @@ test('keeps the selected result detail complete while filtering the split view',
   fireEvent.click(screen.getByRole('button', { name: 'Риски · 1' }));
 
   expect(screen.getByRole('heading', { name: 'Конфликт бронирований' })).toBeInTheDocument();
-  expect(screen.getByRole('option', { name: /Конфликт бронирований/ })).toHaveAttribute('aria-selected', 'true');
+  expect(screen.getByRole('button', { name: /Конфликт бронирований/ })).toHaveAttribute('aria-pressed', 'true');
   expect(screen.queryByRole('heading', { name: 'Бронирование с подтверждением' })).not.toBeInTheDocument();
 });
 

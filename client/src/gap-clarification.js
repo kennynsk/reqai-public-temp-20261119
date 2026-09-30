@@ -15,7 +15,7 @@ export function clarificationIsCurrent(content, decisions, proposal) {
   if (!same((content.analysis.questions || []).filter((question) => question.gapId === gap.id), item.questionsBefore)) return false;
   const ids = linkedRequirementIds(content, gap).sort();
   if (!same(ids, [...item.linkedRequirementIds].sort())) return false;
-  const contextual = [...(content.context || []), ...Object.values(content.analysis || {}).filter(Array.isArray).flat()];
+  const contextual = [...Object.values(content.groups || {}).flat(), ...(content.context || []), ...Object.values(content.analysis || {}).filter(Array.isArray).flat()];
   if ((item.contextBases || []).some((basis) => !same(contextual.find((record) => record.id === basis.id), basis))) return false;
   const records = new Map(Object.values(content.groups).flat().map((record) => [record.id, record]));
   for (const [id, basis] of Object.entries(item.recordBases)) {

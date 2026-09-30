@@ -119,3 +119,48 @@ test('reversing an added proposal restores links, traceability, delta, and rejec
   expect(reversed.content.analysis.delta).toEqual([{ id: 'DELTA-2', newId: 'FR-001' }]);
   expect(reversed.decisions.rejectedEnhancementKeys).toContain(enhancement.key);
 });
+
+function confirmedGapState() {
+  const value = state();
+  value.content.analysis.GAP = [{ id: 'GAP-001', text: 'Уточнить правило', affectedIds: ['FR-001'] }];
+  value.decisions.review = { schemaVersion: 1,
+    gaps: { 'GAP-001': { state: 'closed', answer: 'Согласовано', closureKind: 'resolved' } },
+    gapRequirements: { 'GAP-001': { 'FR-001': { state: 'no-change', reason: 'Уже отражено' } } },
+    acknowledgment: { confirm: true }, completeness: { check: true },
+  };
+  return value;
+}
+
+test('unrelated research additions and reversals preserve closed GAP evidence through reload', () => {
+  const original = confirmedGapState();
+  const enhancement = { key: 'unrelated', targetIds: ['BR-001'], text: 'Отдельная функция' };
+  const accepted = applyProposal(original, enhancement, { operation: 'add', targetType: 'FR', text: enhancement.text, fields: {} });
+  const reversed = reverseProposal(JSON.parse(JSON.stringify(accepted)), enhancement.key, false);
+  for (const value of [accepted, reversed]) {
+    expect(value.decisions.review.gaps).toEqual(original.decisions.review.gaps);
+    expect(value.decisions.review.gapRequirements).toEqual(original.decisions.review.gapRequirements);
+    expect(value.decisions.review.acknowledgment.confirm).toBe(false);
+    expect(value.decisions.review.completeness.check).toBe(false);
+  }
+});
+
+test('replacing a linked requirement reopens only its GAP and keeps the answer', () => {
+  const accepted = applyProposal(confirmedGapState(), { key: 'linked', text: 'Новое правило' }, { operation: 'replace', targetType: 'FR', targetId: 'FR-001', text: 'Новое правило', fields: {} });
+  expect(accepted.decisions.review.gaps['GAP-001']).toMatchObject({ state: 'answered', answer: 'Согласовано', stale: true });
+  expect(accepted.decisions.review.gapRequirements['GAP-001']['FR-001'].state).toBe('pending');
+});
+
+test('adding a new requirement linked to a closed GAP invalidates the old membership check', () => {
+  const accepted = applyProposal(confirmedGapState(), { key: 'new-linked', targetIds: ['GAP-001'], text: 'Дополнительное правило' }, { operation: 'add', targetType: 'FR', text: 'Дополнительное правило', fields: {} });
+  expect(accepted.decisions.review.gaps['GAP-001'].state).toBe('answered');
+  expect(accepted.decisions.review.gapRequirements['GAP-001']['FR-001'].state).toBe('pending');
+});
+
+test('retaining a linked requirement as manual content preserves confirmations when only AI lineage changes', () => {
+  const original = confirmedGapState();
+  const record = original.content.groups.FR[0];
+  const accepted = applyProposal(original, { key: 'lineage', text: record.text }, { operation: 'replace', targetType: 'FR', targetId: record.id, text: record.text, fields: {} });
+  const retained = reverseProposal(accepted, 'lineage', true);
+  expect(retained.decisions.review.gaps).toEqual(original.decisions.review.gaps);
+  expect(retained.decisions.review.gapRequirements).toEqual(original.decisions.review.gapRequirements);
+});

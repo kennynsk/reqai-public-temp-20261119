@@ -4,7 +4,10 @@ const retryRequested = defineSignal('retryRequested');
 const activityOptions = {
   startToCloseTimeout: '10 minutes',
   scheduleToCloseTimeout: '30 minutes',
-  heartbeatTimeout: '1 minute',
+  // SDK 1.22 throttles outbound heartbeats to 0.8 × heartbeatTimeout (48s for a
+  // 1-minute timeout). LLM activities sit minutes on the provider call, and the
+  // 12s margin caused heartbeat-timeout retries that re-ran paid model calls.
+  heartbeatTimeout: '3 minutes',
   retry: {
     maximumAttempts: 3,
     initialInterval: '2 seconds',

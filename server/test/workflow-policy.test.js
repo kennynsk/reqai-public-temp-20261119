@@ -17,6 +17,11 @@ test('workflow bundle contains durable decomposition/research graphs and version
   const workflowsPath = fileURLToPath(new URL('../src/workflows/index.js', import.meta.url));
   const source = await readFile(workflowsPath, 'utf8');
   assert.match(source, /nonRetryableErrorTypes:\s*\[\s*'ProviderError'/);
+  // Temporal SDK 1.22 throttles outbound heartbeats to 0.8 × heartbeatTimeout, so
+  // the timeout must leave enough margin for LLM activities that mostly wait on
+  // the provider (a 1-minute timeout produced spurious heartbeat-timeout retries
+  // that re-ran paid model calls).
+  assert.match(source, /heartbeatTimeout:\s*'3 minutes'/);
   assert.match(source, /mode !== 'REQUIREMENTS_INSIGHTS'/);
   assert.match(source, /generateRequirementsInsights/);
   assert.match(source, /sourceArtifactId: chunk\.artifactId/);

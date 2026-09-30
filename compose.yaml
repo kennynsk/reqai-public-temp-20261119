@@ -31,6 +31,13 @@ x-app-service: &app-service
     context: .
     dockerfile: server/Dockerfile
   restart: unless-stopped
+  # VPN/corporate networks often block UDP 53 to public resolvers, which breaks
+  # the Docker embedded DNS (127.0.0.11) forwarding and fails all LLM calls
+  # with EAI_AGAIN. Point containers at a reachable resolver via .env:
+  # REQAI_DNS_1=10.50.50.52
+  dns:
+    - "${REQAI_DNS_1:-8.8.8.8}"
+    - "${REQAI_DNS_2:-1.1.1.1}"
   environment: *app-environment
   depends_on:
     migrate:

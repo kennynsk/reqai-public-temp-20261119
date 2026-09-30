@@ -27,9 +27,9 @@ async function compose(type, label) {
 
 test('registry header reports review progress and demotes empty type chips', () => {
   setup();
-  expect(screen.getByText(/^Проверено \d+ из \d+$/)).toBeInTheDocument();
+  expect(screen.getByText(/^Готово \d+ из \d+$/)).toBeInTheDocument();
   const empty = screen.getByRole('button', { name: /^TR ·/ });
-  expect(empty).toHaveClass('text-slate-400');
+  expect(empty).toHaveClass('text-slate-600');
   expect(empty).not.toHaveClass('border-slate-200');
   expect(empty.querySelector('span[aria-hidden="true"]')).toHaveClass('bg-slate-300');
   expect(screen.getByRole('button', { name: /^NFR ·/ })).toBeInTheDocument();
@@ -103,7 +103,7 @@ test('reveals and focuses invalid structured fields after switching section and 
   fireEvent.change(screen.getByRole('textbox', { name: 'Категория NFR-001' }), { target: { value: '' } });
   filter('BR');
   fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'BR-' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Вопросы · 7' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Вопросы' }));
   fireEvent.click(screen.getByRole('button', { name: 'Сохранить изменения' }));
   await waitFor(() => expect(screen.getByRole('textbox', { name: 'Категория NFR-001' })).toHaveFocus());
   expect(screen.getByRole('searchbox')).toHaveValue('');
@@ -161,12 +161,16 @@ test('initial record opens its detail and preserves read-only and final-editor c
   expect(screen.getByRole('button', { name: /^Выбрать FR-002:/ })).toHaveAttribute('aria-pressed', 'true');
   cleanup();
   setup({ readOnly: true });
-  expect(screen.queryByRole('navigation', { name: 'Список требований' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Добавить требование' })).not.toBeInTheDocument();
+  select('FR-001');
+  expect(screen.getByLabelText('Детали требования FR-001')).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Действия для FR-001' })).not.toBeInTheDocument();
+  expect(screen.getByRole('navigation', { name: 'Список требований' })).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Редактировать' })).not.toBeInTheDocument();
   cleanup();
   setup({ finalVersion: true });
-  expect(screen.queryByRole('navigation', { name: 'Список требований' })).not.toBeInTheDocument();
-  expect(screen.getByRole('group', { name: 'Вид требований' })).toBeInTheDocument();
+  expect(screen.getByRole('navigation', { name: 'Список требований' })).toBeInTheDocument();
+  expect(screen.queryByRole('group', { name: 'Вид требований' })).not.toBeInTheDocument();
 });
 
 
@@ -235,7 +239,10 @@ test('guided clarification runs from question to proposal, explicit acceptance a
     const messages = [{ messageId: 'assistant', role: 'assistant', text: 'Как измерить результат?', status: 'completed' }];
     if (++turns === 1) return { messages, proposal: null };
     const snapshot = buildDiscussionContext({ content: body.draft?.registry || registry, decisions: body.draft?.decisions || {}, anchorId, baseVersionId: 'v1' });
-    return { messages, proposal: { proposalId: 'guided-workspace-001', ...validateDiscussionProposal({ explanation: 'Уточнить показатель', changes: [{ targetId: 'BR-001', before: { successIndicator: '' }, after: { successIndicator: '0 конфликтов бронирования за месяц' }, rationale: 'Целевой показатель пользователя' }], clarification: { gapId: anchorId, answer: '0 конфликтов за месяц', remainingQuestions: [], checks: [{ requirementId: 'BR-001', state: 'incorporated', reason: 'Показатель добавлен к бизнес-цели' }] } }, { content: snapshot }) } };
+    const validated = { proposalId: 'guided-workspace-001', ...validateDiscussionProposal({ explanation: 'Уточнить показатель', changes: [{ targetId: 'BR-001', before: { successIndicator: '' }, after: { successIndicator: '0 конфликтов бронирования за месяц' }, rationale: 'Целевой показатель пользователя' }], clarification: { gapId: anchorId, answer: '0 конфликтов за месяц', remainingQuestions: [], checks: [{ requirementId: 'BR-001', state: 'incorporated', reason: 'Показатель добавлен к бизнес-цели' }] } }, { content: snapshot }) };
+    // jsonb storage reorders object keys (answer before question); acceptance
+    // must compare bases semantically, not by serialized key order.
+    return { messages, proposal: { ...validated, gapBases: Object.fromEntries(Object.entries(validated.gapBases || {}).map(([gapId, basis]) => [gapId, { answer: basis.answer, question: basis.question }])) } };
   });
   const save = vi.fn();
   render(<BabokRegistryResult value={registry} latestVersion={{ versionId: 'v1', registry, decisions: {} }} jobId="rooms" initialRecordId="GAP-007" onSave={save} />);
@@ -251,6 +258,8 @@ test('guided clarification runs from question to proposal, explicit acceptance a
   fireEvent.click(accept);
   expect(screen.getByRole('button', { name: 'Принято в черновик' })).toBeDisabled();
   fireEvent.click(screen.getAllByRole('button', { name: 'Закрыть обсуждение' }).at(-1));
+  fireEvent.change(screen.getByRole('combobox', { name: 'Статус вопросов' }), { target: { value: 'closed' } });
+  fireEvent.click(within(gap()).getByText('Ответ и учёт в требованиях'));
   expect(within(gap()).getByText('Закрыт', { exact: true })).toBeInTheDocument();
   expect(within(gap()).getByRole('textbox', { name: 'Ответ на GAP-007' })).toHaveValue('0 конфликтов за месяц');
   fireEvent.click(screen.getByRole('button', { name: 'Сохранить изменения' }));
@@ -258,4 +267,16 @@ test('guided clarification runs from question to proposal, explicit acceptance a
   expect(payload.registry.groups.BR[0]).toMatchObject({ successIndicator: '0 конфликтов бронирования за месяц', source: registry.groups.BR[0].source });
   const saved = normalizeReviewMetadata({ supplied: payload.decisions.review, content: payload.registry, allowedGaps: payload.registry.analysis.GAP, contextId: 'source', actorId: 'alice', now: new Date(), baseVersionId: 'v1' });
   expect(saved.gaps['GAP-007'].state).toBe('closed');
+});
+
+test('focused card groups AI with clarifications and keeps editing in the action menu', () => {
+  setup({ jobId: 'rooms' });
+  const card = within(detail());
+  const ai = card.getByRole('button', { name: 'Уточнить с AI', exact: true });
+  expect(ai.parentElement).toHaveTextContent('Уточнения ·');
+  const edit = card.getByRole('button', { name: 'Редактировать', hidden: true, exact: true });
+  expect(edit.closest('details')).toContainElement(card.getByRole('button', { name: 'Действия для BR-001' }));
+  fireEvent.click(card.getByRole('button', { name: 'Действия для BR-001' }));
+  fireEvent.click(edit);
+  expect(screen.getByRole('textbox', { name: 'Текст требования BR-001' })).toBeInTheDocument();
 });

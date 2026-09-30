@@ -240,7 +240,7 @@ describe('AsyncJobWorkspace presentational branches', () => {
       analysis: { GAP: [], HYP: [], TERM: [] },
     };
     render(<ReviewHarness content={content}><BabokRequirementCard type="NFR" requirement={babokRecord('NFR', { quality: 'Требует уточнения', fromResearch: true, researchEnhancementKey: 'i:0' })} materials={{ primary: { artifactId: 'primary-artifact' } }} manuallyEdited onEdit={onEdit} onDelete={vi.fn()} onDraftChange={vi.fn()} onNavigate={vi.fn()} /></ReviewHarness>);
-    expect(screen.getByText('Изменено вручную')).toBeInTheDocument();
+    expect(screen.getByText('Изменено', { exact: true })).toBeInTheDocument();
     expect(screen.getByText('AI-предложение')).toBeInTheDocument();
     expect(screen.getByText('решение сохранено')).toBeInTheDocument();
     fireEvent.click(screen.getByText('Источник, качество и связи'));
@@ -328,7 +328,7 @@ describe('AsyncJobWorkspace presentational branches', () => {
     };
     render(<SessionContext.Provider value={{ view: 'insights', requestView: vi.fn() }}><BabokRequirementsInsightsResult value={value} latestVersion={{ registry, decisions: {} }} businessContext="Контекст" onSaveFinal={vi.fn()} onDirtyChange={vi.fn()} /></SessionContext.Provider>);
     expect(screen.getByRole('button', { name: 'Риски · 1' })).toBeInTheDocument();
-    expect(screen.getByText('Стандарты и нормативы · 1')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Стандарты и нормативы · 1' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Другие результаты · 1' })).toBeInTheDocument();
     expect(screen.getAllByText('Оценка не указана')).toHaveLength(3);
     fireEvent.click(screen.getByRole('button', { name: 'Риски · 1' }));
@@ -484,10 +484,10 @@ describe('AsyncJobWorkspace presentational branches', () => {
     cleanup();
 
     render(<BabokRegistryResult value={registry} latestVersion={{ registry, decisions: {} }} readOnly initialRecordId="GAP-001" onBack={vi.fn()} />);
-    expect(screen.getByRole('heading', { name: /Вопросы для уточнения/ })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Пробелы для уточнения/ })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'MISSING-001' }));
     expect(await screen.findByRole('dialog', { name: /Запись требования · MISSING-001/ })).toHaveTextContent('Запись недоступна');
-    expect(screen.getByRole('heading', { name: /Вопросы для уточнения/ })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Пробелы для уточнения/ })).toBeInTheDocument();
   });
 
   test('uses previews only for requirement references in questions and traceability', async () => {
@@ -495,10 +495,10 @@ describe('AsyncJobWorkspace presentational branches', () => {
     registry.analysis.traceability = [{ from: 'BR-001', to: 'FR-001', relation: 'Поддерживает', status: 'Полная' }];
     render(<BabokRegistryResult value={registry} latestVersion={{ registry, decisions: {} }} readOnly />);
 
-    const business = screen.getByRole('region', { name: 'Бизнес-требования' });
+    const business = screen.getByLabelText('Детали требования BR-001');
     expect(within(business).getByRole('link', { name: 'BR-001' })).toHaveAttribute('href', '#record-BR-001');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Вопросы · 7' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Вопросы' }));
     const questions = screen.getByRole('region', { name: 'Вопросы для уточнения' });
     fireEvent.click(within(questions).getAllByRole('button', { name: 'BR-001' })[0]);
     expect(await screen.findByRole('dialog', { name: /Бизнес-требование · BR-001/ })).toHaveTextContent('Сократить конфликты бронирования.');
@@ -506,7 +506,7 @@ describe('AsyncJobWorkspace presentational branches', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Связи' }));
     const links = screen.getByRole('region', { name: 'Связи требований' });
-    fireEvent.click(within(links).getByRole('button', { name: 'FR-001' }));
+    fireEvent.click(within(links).getAllByRole('button', { name: 'FR-001' })[0]);
     expect(await screen.findByRole('dialog', { name: /Функциональное требование · FR-001/ })).toHaveTextContent('Система запрещает пересекающиеся бронирования.');
   });
 

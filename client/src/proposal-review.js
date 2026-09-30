@@ -1,5 +1,5 @@
 import { STRUCTURED_FIELDS } from './review-fields.js';
-import { updateReviewMetadata, invalidateReviewEvidence } from './review-metadata.js';
+import { updateReviewMetadata, invalidateReviewEvidence, reviewEvidenceChanges } from './review-metadata.js';
 
 export const proposalWarnings = (text) => [
   ...(/[\u3400-\u9fff]/u.test(text || '') ? ['В тексте есть фрагмент на другом языке. Проверьте формулировку.'] : []),
@@ -38,7 +38,7 @@ export function applyProposal(state, enhancement, plan) {
   groups[plan.targetType] = original ? groups[plan.targetType].map((record) => record.id === id ? after : record) : [...groups[plan.targetType], after];
   if (content.groups) content.summary.counts[plan.targetType] = groups[plan.targetType].length;
   const accepted = [...new Set([...(state.decisions.acceptedEnhancementKeys || []), enhancement.key])];
-  const decisions = updateReviewMetadata(invalidateReviewEvidence(state.decisions), { proposals: { ...state.decisions.review?.proposals, [enhancement.key]: { operation: plan.operation, targetType: plan.targetType, targetId: id, originalText: enhancement.text, before: prior?.before ?? (plan.operation === 'replace' ? original : null), after, decision: 'accepted' } } });
+  const decisions = updateReviewMetadata(invalidateReviewEvidence(state.decisions, reviewEvidenceChanges(state.content, content)), { proposals: { ...state.decisions.review?.proposals, [enhancement.key]: { operation: plan.operation, targetType: plan.targetType, targetId: id, originalText: enhancement.text, before: prior?.before ?? (plan.operation === 'replace' ? original : null), after, decision: 'accepted' } } });
   return { ...state, content, reservedIds: [...new Set([...(state.reservedIds || []), id])], decisions: { ...decisions, acceptedEnhancementKeys: accepted, rejectedEnhancementKeys: (state.decisions.rejectedEnhancementKeys || []).filter((key) => key !== enhancement.key) } };
 }
 export function reverseProposal(state, key, retain) {
@@ -61,6 +61,6 @@ export function reverseProposal(state, key, retain) {
     content.analysis.delta = content.analysis.delta.filter((item) => !removed.has(item.newId));
     content.summary.counts.DELTA = content.analysis.delta.length;
   }
-  const decisions = updateReviewMetadata(invalidateReviewEvidence(state.decisions), { proposals: { ...state.decisions.review?.proposals, ...(prior ? { [key]: { ...prior, decision: 'rejected', reversal: retain ? 'retain-manual' : 'restore-before' } } : {}) } });
+  const decisions = updateReviewMetadata(invalidateReviewEvidence(state.decisions, reviewEvidenceChanges(state.content, content)), { proposals: { ...state.decisions.review?.proposals, ...(prior ? { [key]: { ...prior, decision: 'rejected', reversal: retain ? 'retain-manual' : 'restore-before' } } : {}) } });
   return { ...state, content, decisions: { ...decisions, acceptedEnhancementKeys: (state.decisions.acceptedEnhancementKeys || []).filter((id) => id !== key), rejectedEnhancementKeys: [...new Set([...(state.decisions.rejectedEnhancementKeys || []), key])] } };
 }

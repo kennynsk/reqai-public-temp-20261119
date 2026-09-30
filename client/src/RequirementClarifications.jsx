@@ -1,10 +1,11 @@
 import { useContext, useState } from 'react';
+import { MessageCircle } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { DraftContext } from './review-context.js';
 import ReviewDialog from './ReviewDialog.jsx';
 import { gapChecklist, updateReviewMetadata } from './review-metadata.js';
 
-export default function RequirementClarifications({ requirement, editing, readOnly, onNavigate }) {
+export default function RequirementClarifications({ requirement, editing, readOnly, onNavigate, onDiscuss }) {
   const review = useContext(DraftContext);
   const [noChange, setNoChange] = useState(null);
   const gaps = (review?.content.analysis?.GAP || []).filter((gap) => (gap.affectedIds || []).includes(requirement.id)
@@ -33,8 +34,13 @@ export default function RequirementClarifications({ requirement, editing, readOn
     changeGap(gap.id, { state: 'closed', closureKind: 'resolved', reason: `Проверены все связанные требования: ${gapChecklist(review.content, gap, metadata).map((item) => item.requirementId).join(', ')}.` });
   }
   return <>
-    <details open={editing || undefined} className="mt-3 rounded-lg border border-amber-200 bg-amber-50/40">
-      <summary className="cursor-pointer px-3 py-2 text-sm font-semibold text-slate-700">Уточнения · {gaps.length}</summary>
+    <div className="mt-3 space-y-2">
+      {onDiscuss && <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm font-semibold text-slate-700">Уточнения · {gaps.length}</p>
+        <button type="button" onClick={() => onDiscuss(requirement.id)} className="inline-flex min-h-10 items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-50 focus-visible:ring-2 focus-visible:ring-indigo-500"><MessageCircle aria-hidden="true" className="h-4 w-4" />Уточнить с AI</button>
+      </div>}
+    <details open={editing || undefined} className="rounded-lg border border-amber-200 bg-amber-50/40">
+      <summary className="cursor-pointer px-3 py-2 text-sm font-semibold text-slate-700">{onDiscuss ? 'Вопросы и учёт ответов' : `Уточнения · ${gaps.length}`}</summary>
       <div className="divide-y divide-amber-200 px-3">
         {gaps.map((gap) => {
           const state = states[gap.id] || { state: 'open', answer: '' };
@@ -56,6 +62,7 @@ export default function RequirementClarifications({ requirement, editing, readOn
         })}
       </div>
     </details>
+    </div>
     {noChange && createPortal(<ReviewDialog label="Подтверждение требования" onClose={() => setNoChange(null)}><h2 className="text-lg font-bold">{noChange.requirementId}: изменение не требуется</h2><label className="block text-sm mt-3">Обоснование<textarea aria-label="Обоснование отсутствия изменения" value={noChange.reason} maxLength={5000} onChange={(event) => setNoChange({ ...noChange, reason: event.target.value })} className="block w-full border rounded-lg p-3 my-2" /></label><p className="text-sm text-slate-600">Это подтверждение относится только к выбранному требованию. Решение станет частью черновика.</p><div className="mt-4 flex gap-2"><button onClick={() => setNoChange(null)} className="border rounded-lg p-3">Отмена</button><button disabled={!noChange.reason.trim()} onClick={() => { const gap = review.content.analysis.GAP.find((item) => item.id === noChange.gapId); updateCheck(gap, noChange.requirementId, { state: 'no-change', reason: noChange.reason.trim() }); setNoChange(null); }} className="rounded-lg bg-indigo-600 text-white p-3 disabled:bg-slate-400">Подтвердить</button></div></ReviewDialog>, document.body)}
   </>;
 }

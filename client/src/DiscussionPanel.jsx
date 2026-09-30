@@ -1,7 +1,14 @@
-import { useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { Loader2, MessageCircle, Send, X } from 'lucide-react';
 import DiscussionProposal from './DiscussionProposal.jsx';
 import { enterpriseApi } from './api/enterprise-api.js';
+
+const SafeMarkdown = lazy(() => import('./SafeMarkdown.jsx'));
+
+function MessageText({ role, text }) {
+  if (role !== 'assistant') return <p className="mt-1 whitespace-pre-wrap break-words text-sm text-slate-800">{text}</p>;
+  return <div className="mt-1 break-words text-sm text-slate-800 [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"><Suspense fallback={<p className="my-2 text-sm text-slate-500">Форматируем ответ…</p>}><SafeMarkdown chat>{text}</SafeMarkdown></Suspense></div>;
+}
 
 const statusLabel = {
   pending: 'Готовится ответ…',
@@ -21,13 +28,15 @@ function errorText(error) {
   }
   if (error?.code === 'DISCUSSION_CONTEXT_LIMIT') return 'Связанные материалы не помещаются в лимит контекста. Сузьте вопрос или сохраните текущую редакцию.';
   if (error?.code === 'DISCUSSION_GENERATION_ACTIVE') return 'В этом обсуждении уже готовится ответ.';
+  if (error?.code === 'DISCUSSION_VERSION_REQUIRED') return 'Сначала сохраните требования, чтобы открыть AI-обсуждение.';
   return error?.message || 'Не удалось загрузить обсуждение.';
 }
 
-export default function DiscussionPanel({ jobId, anchorId, anchorLabel = '', baseVersionId, draft, contextReady = true, contextError = '', readOnly = false, onClose, onApplyProposal, onRejectProposal, proposalDecisions }) {
+export default function DiscussionPanel({ jobId, anchorId, anchorLabel = '', baseVersionId, draft, contextReady = true, contextError = '', readOnly = false, onClose, onApplyProposal, onRejectProposal, proposalDecisions, savedProposalDecisions = {}, gapStates = {}, onSaveContext, savingContext = false }) {
   const panelRef = useRef(null);
   const latestMessageRef = useRef(null);
   const sendLock = useRef(false);
+  const focusAfterSend = useRef(false);
   const pendingMessage = useRef(null);
   const requestScope = useRef(`${jobId}:${anchorId}:${baseVersionId}`);
   useEffect(() => { requestScope.current = `${jobId}:${anchorId}:${baseVersionId}`; }, [jobId, anchorId, baseVersionId]);
@@ -37,11 +46,19 @@ export default function DiscussionPanel({ jobId, anchorId, anchorLabel = '', bas
   const [loading, setLoading] = useState(true);
   const [loadRevision, setLoadRevision] = useState(0);
   const [sending, setSending] = useState(false);
+  useEffect(() => {
+    if (!sending && focusAfterSend.current) {
+      focusAfterSend.current = false;
+      panelRef.current?.querySelector('textarea:not(:disabled)')?.focus();
+    }
+  }, [sending]);
   const [error, setError] = useState('');
   const [applied, setApplied] = useState(new Set());
   const [rejected, setRejected] = useState(new Set());
   const [staleProposal, setStaleProposal] = useState(false);
   const message = drafts[anchorId] || '';
+  const closeRef = useRef(onClose);
+  useEffect(() => { closeRef.current = onClose; }, [onClose]);
   const latestMessageId = discussion?.messages?.at(-1)?.messageId;
   useEffect(() => { latestMessageRef.current?.scrollIntoView?.({ block: 'start' }); }, [latestMessageId]);
 
@@ -50,9 +67,9 @@ export default function DiscussionPanel({ jobId, anchorId, anchorLabel = '', bas
     const node = panelRef.current;
     const focusable = () => [...node?.querySelectorAll('button:not(:disabled), textarea:not(:disabled), a[href], [tabindex="0"]') || []];
     const first = () => focusable()[0] || node;
-    requestAnimationFrame(() => first()?.focus());
+    const frame = requestAnimationFrame(() => { if (!node?.contains(document.activeElement)) first()?.focus(); });
     const keyboard = (event) => {
-      if (event.key === 'Escape') { event.preventDefault(); onClose?.(); return; }
+      if (event.key === 'Escape') { event.preventDefault(); closeRef.current?.(); return; }
       if (event.key !== 'Tab') return;
       const items = focusable();
       if (!items.length) { event.preventDefault(); node?.focus(); return; }
@@ -60,8 +77,8 @@ export default function DiscussionPanel({ jobId, anchorId, anchorLabel = '', bas
       else if (!event.shiftKey && document.activeElement === items.at(-1)) { event.preventDefault(); items[0].focus(); }
     };
     node?.addEventListener('keydown', keyboard);
-    return () => { node?.removeEventListener('keydown', keyboard); if (previous?.isConnected) previous.focus(); };
-  }, [anchorId, onClose]);
+    return () => { cancelAnimationFrame(frame); node?.removeEventListener('keydown', keyboard); if (previous?.isConnected) previous.focus(); };
+  }, [anchorId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -75,7 +92,9 @@ export default function DiscussionPanel({ jobId, anchorId, anchorLabel = '', bas
         try { value = await enterpriseApi.getRequirementDiscussion(jobId, anchorId, { signal: controller.signal }); }
         catch (cause) {
           if (cause?.status !== 404) throw cause;
-          if (readOnly) { if (!cancelled) setDiscussion({ messages: [], nextCursor: null }); return; }
+          // Without a saved base version the discussion cannot be created; the
+          // contextError banner explains the prerequisite instead of a doomed request.
+          if (readOnly || !baseVersionId) { if (!cancelled) setDiscussion({ messages: [], nextCursor: null }); return; }
           value = await enterpriseApi.openRequirementDiscussion(jobId, anchorId, { baseVersionId }, { signal: controller.signal });
         }
         if (!cancelled) setDiscussion(value);
@@ -102,7 +121,14 @@ export default function DiscussionPanel({ jobId, anchorId, anchorLabel = '', bas
         if (controller.signal.aborted) return;
         const data = event?.data || {};
         if (event?.type === 'attempt.started') {
-          setDiscussion((current) => ({ ...(current || {}), attempt: { ...(current?.attempt || {}), ...data, status: 'running' } }));
+          setDiscussion((current) => {
+            // Replayed history can carry attempt.started for an attempt the
+            // loaded state already reports as finished; a dropped completion
+            // event must not resurrect it as a phantom running generation.
+            const known = current?.attempt;
+            if (known?.attemptId && known.attemptId === data.attemptId && ['completed', 'failed', 'cancelled'].includes(known.status)) return current;
+            return { ...(current || {}), attempt: { ...(known || {}), ...data, status: 'running' } };
+          });
         }
         if (['message.completed', 'attempt.failed', 'attempt.cancelled'].includes(event?.type)) await refresh();
       },
@@ -141,8 +167,9 @@ export default function DiscussionPanel({ jobId, anchorId, anchorLabel = '', bas
       setError(errorText(cause));
     }
     finally {
-      sendLock.current = false; setSending(false);
-      if (requestScope.current === scope) requestAnimationFrame(() => panelRef.current?.querySelector('textarea')?.focus());
+      sendLock.current = false;
+      focusAfterSend.current = requestScope.current === scope;
+      setSending(false);
     }
   }
 
@@ -187,8 +214,8 @@ export default function DiscussionPanel({ jobId, anchorId, anchorLabel = '', bas
       <div className="flex-1 overflow-y-auto px-5 py-4">
         {loading && <p role="status" className="flex items-center gap-2 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin" />Загружаем историю…</p>}
         {error && <div role="alert" className="mb-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}{!discussion && !loading && <button type="button" onClick={() => setLoadRevision((value) => value + 1)} className="mt-2 block font-semibold underline">Повторить загрузку</button>}</div>}
-        {contextError && <div role="status" className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">{contextError}</div>}
-        {discussion?.contextSummary && <details className="mb-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm"><summary className="cursor-pointer font-semibold text-slate-700">Что учитывает AI</summary><div className="mt-2 space-y-1 text-xs text-slate-600"><p>Версия: {discussion.contextSummary.baseVersionId || 'текущий черновик'}</p><p>Включены записи: {(discussion.contextSummary.manifest?.includedIds || []).join(', ') || '—'}</p><p>Размер: {discussion.contextSummary.includedBytes || 0} байт</p><p>Несохранённая редакция: {discussion.contextSummary.unsavedDraft ? 'да' : 'нет'}</p>{discussion.contextSummary.omitted?.length > 0 && <p>Исключено: {discussion.contextSummary.omitted.join(', ')}</p>}</div></details>}
+        {contextError && <div role="status" className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">{contextError}{onSaveContext && <button type="button" disabled={savingContext} onClick={() => onSaveContext()} className="mt-2 block rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">{savingContext ? 'Сохраняем…' : 'Сохранить и начать уточнение'}</button>}</div>}
+        {discussion?.contextSummary && <details className="mb-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm"><summary className="cursor-pointer font-semibold text-slate-700">Что учитывает AI</summary><div className="mt-2 space-y-1 text-xs text-slate-600"><p>Включены записи: {(discussion.contextSummary.manifest?.includedIds || []).join(', ') || '—'}</p><p>Несохранённая редакция: {discussion.contextSummary.unsavedDraft ? 'да' : 'нет'}</p>{discussion.contextSummary.omitted?.length > 0 && <p>Исключено: {discussion.contextSummary.omitted.join(', ')}</p>}</div></details>}
         {retryableAttempt && <button type="button" disabled={sending || readOnly || !contextReady} onClick={() => retry(retryableAttempt.attemptId)} className="mb-3 rounded-lg border border-indigo-200 px-3 py-2 text-xs font-semibold text-indigo-700 disabled:opacity-50">Повторить ответ</button>}
         {!loading && !messages.length && <div className="space-y-3 rounded-xl bg-slate-50 p-4 text-sm text-slate-600">
           <p>{readOnly ? 'История пуста.' : guided ? 'Начните с разбора вопроса или напишите то, что уже знаете. AI спросит недостающие сведения по одному и подготовит уточнения связанных требований.' : 'Спросите, что нужно уточнить, попросите объяснить требование или предложить новую формулировку.'}</p>
@@ -197,10 +224,12 @@ export default function DiscussionPanel({ jobId, anchorId, anchorLabel = '', bas
         <div className="space-y-3">
           {messages.map((item, index) => <article ref={index === messages.length - 1 ? latestMessageRef : undefined} key={item.messageId || `${item.role}-${item.createdAt}`} className={`rounded-xl border p-3 ${item.role === 'user' ? 'ml-6 border-indigo-100 bg-indigo-50/60' : 'mr-2 border-slate-200 bg-slate-50'}`}>
             <p className="text-xs font-semibold text-slate-500">{item.role === 'user' ? 'Вы' : 'AI'}{statusLabel[item.status] ? ` · ${statusLabel[item.status]}` : ''}</p>
-            {item.text && <p className="mt-1 whitespace-pre-wrap break-words text-sm text-slate-800">{item.text}</p>}
+            {item.text && (item.role === 'assistant' && proposal && item.text === proposal.explanation
+              ? <details><summary className="cursor-pointer text-sm font-semibold text-slate-700">Ответ AI с предложением</summary><MessageText role={item.role} text={item.text} /></details>
+              : <MessageText role={item.role} text={item.text} />)}
           </article>)}
         </div>
-        {proposal && <DiscussionProposal proposal={proposal} applied={proposalApplied} rejected={proposalRejected} stale={staleProposal} disabled={readOnly || sending || Boolean(activeAttempt) || !contextReady}
+        {proposal && <DiscussionProposal proposal={proposal} applied={proposalApplied} saved={savedProposalDecisions[proposal.proposalId]?.decision === 'accepted'} gapState={gapStates[proposal.clarification?.gapId]?.state} rejected={proposalRejected} stale={staleProposal} disabled={readOnly || sending || Boolean(activeAttempt) || !contextReady}
           onApply={() => { const ok = onApplyProposal?.(proposal); if (ok !== false) setApplied((current) => new Set(current).add(proposal.proposalId)); else setStaleProposal(true); }}
           onReject={() => { const ok = onRejectProposal?.(proposal); if (ok !== false) setRejected((current) => new Set(current).add(proposal.proposalId)); }} />}
 

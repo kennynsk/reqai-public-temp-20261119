@@ -2,18 +2,24 @@ import { acceptGapClarification, reconcileDiscussionReceipts } from './gap-clari
 import { useContext, useEffect, useReducer, useState } from 'react';
 import { DraftContext, SessionContext } from './review-context.js';
 import { STRUCTURED_FIELDS, validateReviewContent } from './review-fields.js';
-import { invalidateReviewEvidence, updateReviewMetadata } from './review-metadata.js';
+import { invalidateReviewEvidence, updateReviewMetadata, reviewEvidenceChanges } from './review-metadata.js';
 
 const PREFIX = 'reqai.reviewDraft:';
 export const DRAFT_TTL = 24 * 60 * 60 * 1000;
 const copy = (value) => JSON.parse(JSON.stringify(value));
 const recordIds = (content) => Object.values(content.groups || content).filter(Array.isArray).flat().map((item) => item.id).filter(Boolean);
 
-function changedRecordIds(before, after) {
-  const records = (content) => Object.values(content?.groups || content || {}).filter(Array.isArray).flat().filter((item) => item?.id);
-  const left = new Map(records(before).map((item) => [item.id, item]));
-  const right = new Map(records(after).map((item) => [item.id, item]));
-  return [...new Set([...left.keys(), ...right.keys()].filter((id) => JSON.stringify(left.get(id)) !== JSON.stringify(right.get(id))))];
+// The version editor remounts after saving, while its session survives.
+// Keep navigation separately from the requirement draft and its base version.
+export function useReviewUiState(key, initialValue) {
+  const session = useContext(SessionContext);
+  const [value, setValue] = useState(() => session?.ui?.has(key) ? session.ui.get(key) : typeof initialValue === 'function' ? initialValue() : initialValue);
+  const update = (next) => setValue((current) => {
+    const resolved = typeof next === 'function' ? next(current) : next;
+    if (session?.ui) session.ui.set(key, resolved);
+    return resolved;
+  });
+  return [value, update];
 }
 
 function mergeDecisionChanges(base, local, remote, changes, path = '') {
@@ -56,20 +62,14 @@ export function reviewReducer(state, action) {
   switch (action.type) {
     case 'content': {
       const content = typeof action.value === 'function' ? action.value(state.content) : action.value;
-      const changed = changedRecordIds(state.content, content);
       const sameContent = JSON.stringify(content) === JSON.stringify(state.content);
-      const beforeGaps = new Map((state.content?.analysis?.GAP || []).map((gap) => [gap.id, JSON.stringify(gap)]));
-      const afterGaps = new Map((content?.analysis?.GAP || []).map((gap) => [gap.id, JSON.stringify(gap)]));
-      const changedGaps = [...new Set([...beforeGaps.keys(), ...afterGaps.keys()].filter((id) => beforeGaps.get(id) !== afterGaps.get(id)))];
-      return { ...state, content, decisions: sameContent ? state.decisions : invalidateReviewEvidence(state.decisions, { changedRecordIds: changed, changedGapIds: changedGaps }), reservedIds: [...new Set([...(state.reservedIds || []), ...recordIds(state.content), ...recordIds(content)])] };
+      const evidenceChanges = reviewEvidenceChanges(state.content, content);
+      return { ...state, content, decisions: sameContent ? state.decisions : invalidateReviewEvidence(state.decisions, evidenceChanges), reservedIds: [...new Set([...(state.reservedIds || []), ...recordIds(state.content), ...recordIds(content)])] };
     }
     case 'proposal': {
       const content = typeof action.value === 'function' ? action.value(state.content) : action.value;
-      const changed = changedRecordIds(state.content, content);
-      const beforeGaps = new Map((state.content?.analysis?.GAP || []).map((gap) => [gap.id, JSON.stringify(gap)]));
-      const afterGaps = new Map((content?.analysis?.GAP || []).map((gap) => [gap.id, JSON.stringify(gap)]));
-      const changedGaps = [...new Set([...beforeGaps.keys(), ...afterGaps.keys()].filter((id) => beforeGaps.get(id) !== afterGaps.get(id)))];
-      let decisions = invalidateReviewEvidence(state.decisions, { changedRecordIds: changed, changedGapIds: changedGaps });
+      const evidenceChanges = reviewEvidenceChanges(state.content, content);
+      let decisions = invalidateReviewEvidence(state.decisions, evidenceChanges);
       if (action.clarification) decisions = acceptGapClarification(decisions, action.clarification);
       const proposal = action.proposal;
       const nextDecisions = proposal

@@ -46,7 +46,7 @@ import {
 } from 'lucide-react';
 import { enterpriseApi, subscribeJobEvents } from './api/enterprise-api.js';
 import { EXECUTION_PHASES, executionPhaseIndex, focusMessageForJob, waitingTipForJob, progressAriaText, progressPresentationForJob } from './job-progress.js';
-import { assembleReview, clearReviewDrafts, rebaseReview, useDraftField, useReviewState } from './review-state.js';
+import { assembleReview, clearReviewDrafts, rebaseReview, useDraftField, useReviewState, useReviewUiState } from './review-state.js';
 import { SessionContext } from './review-context.js';
 import RegistryAnalysis, { RecordLinks } from './RegistryAnalysis.jsx';
 import RequirementTypeNav from './RequirementTypeNav.jsx';
@@ -69,6 +69,14 @@ import RequirementListWorkspace from './RequirementListWorkspace.jsx';
 import { filterRequirementList, selectedRequirementEntry } from './requirement-list.js';
 import { buildBabokRequirementIndex, buildLegacyRequirementIndex } from './research-review.js';
 import { RequirementPreviewProvider } from './RequirementPreview.jsx';
+
+function formatQuestionGapCount(questions, gaps) {
+  const form = (count, one, few, many) => {
+    const category = new Intl.PluralRules('ru').select(count);
+    return category === 'one' ? one : category === 'few' ? few : many;
+  };
+  return `${questions} ${form(questions, 'вопрос', 'вопроса', 'вопросов')} по ${gaps} ${form(gaps, 'пробелу', 'пробелам', 'пробелам')}`;
+}
 
 const TERMINAL = new Set(['SUCCEEDED', 'FAILED', 'CANCELLED']);
 const SafeMarkdown = lazy(() => import('./SafeMarkdown.jsx'));
@@ -500,7 +508,7 @@ function BabokRequirementCard({ type, requirement, onEdit, onDelete, onDraftChan
       <div className="flex items-start justify-between gap-4 mb-2">
         <div className="flex items-center gap-2 flex-wrap">
           <RecordLinks ids={[requirement.id]} onNavigate={onNavigate} />
-          {(manuallyEdited || requirement.manuallyEdited) && <span className="text-xs text-slate-600">Изменено вручную</span>}
+          {(manuallyEdited || requirement.manuallyEdited) && <span className="text-xs text-slate-600">Изменено</span>}
           {focused && requirement.quality === 'Готово' && <span className="text-xs font-semibold text-emerald-700">Готово</span>}
           {requirement.quality !== 'Готово' && <span className="text-xs rounded bg-amber-50 px-2 py-1 text-amber-800">{BABOK_QUALITY_LABELS[requirement.quality] || 'Нужно уточнить'}</span>}
           {requirement.fromResearch && <span className="inline-flex items-center gap-1 text-xs font-bold text-indigo-600"><Sparkles className="w-3.5 h-3.5" />AI-предложение</span>}
@@ -509,9 +517,9 @@ function BabokRequirementCard({ type, requirement, onEdit, onDelete, onDraftChan
         {!editing && (onDiscuss || !readOnly) && <details className="relative">
           <summary role="button" aria-label={`Действия для ${requirement.id}`} title="Действия" className="list-none cursor-pointer rounded-lg p-1.5 text-slate-600 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"><MoreHorizontal className="w-5 h-5" /></summary>
           <div className="absolute right-0 top-full mt-1 z-20 w-44 rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg">
-            {!focused && onDiscuss && <button type="button" onClick={(event) => { onDiscuss(requirement.id); event.currentTarget.closest('details').removeAttribute('open'); }} className="w-full rounded-lg px-3 py-2 text-left text-sm text-indigo-700 hover:bg-indigo-50 flex items-center gap-2"><MessageCircle className="w-4 h-4" />Обсудить с AI</button>}
+            {onDiscuss && <button type="button" onClick={(event) => { onDiscuss(requirement.id); event.currentTarget.closest('details').removeAttribute('open'); }} className="w-full rounded-lg px-3 py-2 text-left text-sm text-indigo-700 hover:bg-indigo-50 flex items-center gap-2"><MessageCircle className="w-4 h-4" />Обсудить с AI</button>}
             {!readOnly && <>
-            {!focused && <button onClick={(event) => { setEditing(true); event.currentTarget.closest('details').removeAttribute('open'); }} className="w-full rounded-lg px-3 py-2 text-left text-sm text-slate-600 hover:bg-slate-50 flex items-center gap-2"><Pencil className="w-4 h-4" />Редактировать</button>}
+            <button onClick={(event) => { setEditing(true); event.currentTarget.closest('details').removeAttribute('open'); }} className="w-full rounded-lg px-3 py-2 text-left text-sm text-slate-600 hover:bg-slate-50 flex items-center gap-2"><Pencil className="w-4 h-4" />Редактировать</button>
             <button onClick={onDelete} className="w-full rounded-lg px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"><Trash2 className="w-4 h-4" />Удалить</button>
             </>}
           </div>
@@ -532,12 +540,8 @@ function BabokRequirementCard({ type, requirement, onEdit, onDelete, onDraftChan
             <button onClick={cancel} className="text-xs px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200">Отмена</button>
           </div>
         </div>
-      ) : focused ? <h2 className="text-xl font-bold leading-snug text-slate-950 sm:text-2xl">{requirement.text}</h2> : <p className="text-[15px] text-slate-700 leading-7 w-full">{requirement.text}</p>}
-      {focused && !editing && <div className="mt-4 flex flex-wrap items-center gap-2">
-        {!readOnly && <button type="button" onClick={() => setEditing(true)} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"><Pencil aria-hidden="true" className="h-4 w-4" />Редактировать</button>}
-        {onDiscuss && <button type="button" onClick={() => onDiscuss(requirement.id)} className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-50"><MessageCircle aria-hidden="true" className="h-4 w-4" />Обсудить с AI</button>}
-      </div>}
-      <RequirementClarifications requirement={requirement} editing={editing} readOnly={readOnly} onNavigate={onNavigate} />
+      ) : focused ? <h2 className="text-lg font-semibold leading-relaxed text-slate-900 sm:text-xl">{requirement.text}</h2> : <p className="text-[15px] text-slate-700 leading-7 w-full">{requirement.text}</p>}
+      <RequirementClarifications requirement={requirement} editing={editing} readOnly={readOnly} onNavigate={onNavigate} onDiscuss={focused && !editing ? onDiscuss : undefined} />
       <details open={focused || undefined} className="mt-3 rounded-lg border border-slate-100 bg-slate-50/70 group/evidence">
         <summary className="cursor-pointer list-none px-3 py-2 text-xs font-semibold text-slate-600 flex items-center justify-between gap-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">
           <span>Источник, качество и связи</span><ChevronDown className="w-3.5 h-3.5 group-open/evidence:hidden" /><ChevronUp className="w-3.5 h-3.5 hidden group-open/evidence:block" />
@@ -646,30 +650,24 @@ function BabokRegistryResult({ value, latestVersion, onSave, onStartResearch, on
   const [pendingDeletion, setPendingDeletion] = useState(null);
   const [lastDeletion, setLastDeletion] = useState(null);
   const compact = !readOnly && !finalVersion && !latestVersion?.decisions?.skippedResearch;
-  const [typeFilter, setTypeFilter] = useState('all');
-  const [query, setQuery] = useState('');
-  const [selectedRecordId, setSelectedRecordId] = useState(initialRecordId);
+  const [typeFilter, setTypeFilter] = useReviewUiState('registryType', 'all');
+  const [query, setQuery] = useReviewUiState('registryQuery', '');
+  const [selectedRecordId, setSelectedRecordId] = useReviewUiState('registrySelection', initialRecordId);
   const [composerType, setComposerType] = useState(null);
-  const [activeType, setActiveType] = useState(() => BABOK_REQUIREMENT_TYPES.find((key) => value.groups[key]?.some((record) => record.id === initialRecordId)) || 'BR');
-  const [needsClarification, setNeedsClarification] = useState(false);
-  const [reviewSection, setReviewSection] = useState(/^(GAP|QUESTION)-/.test(initialRecordId || '') ? 'questions' : 'requirements');
-  const [discussionAnchor, setDiscussionAnchor] = useState(null);
+  const [needsClarification, setNeedsClarification] = useReviewUiState('registryNeedsClarification', false);
+  const [reviewSection, setReviewSection] = useReviewUiState('registrySection', /^(GAP|QUESTION)-/.test(initialRecordId || '') ? 'questions' : 'requirements');
+  const [discussionAnchor, setDiscussionAnchor] = useReviewUiState('discussionAnchor', null);
   const navigateRecord = (id, { edit = false } = {}) => {
     const type = BABOK_REQUIREMENT_TYPES.find((key) => registry.groups[key].some((record) => record.id === id));
     if (type && edit && !readOnly && !review.state.drafts[`${type}:${id}`]) { const record = registry.groups[type].find((item) => item.id === id); review.field(`${type}:${id}`, { group: type, id, text: record.text, initialText: record.text, isNew: false }); }
-    if (type) { setReviewSection('requirements'); setActiveType(type); setTypeFilter(type); setNeedsClarification(false); setQuery(''); setSelectedRecordId(id); }
+    if (type) { setReviewSection('requirements'); setTypeFilter(type); setNeedsClarification(false); setQuery(''); setSelectedRecordId(id); }
     else if (/^(GAP|QUESTION)-/.test(id)) setReviewSection('questions');
     requestAnimationFrame(() => { const target = document.getElementById(`record-${id}`); let parent = target?.parentElement; while (parent) { if (parent.tagName === 'DETAILS') parent.open = true; parent = parent.parentElement; } target?.scrollIntoView?.({ block: 'center' }); target?.focus(); if (edit) target?.querySelector('textarea')?.focus(); });
   };
-  const selectType = (type) => { setActiveType(type); if (layout === 'columns') requestAnimationFrame(() => { const target = document.getElementById(`req-type-${type}`); target?.scrollIntoView?.({ block: 'start' }); target?.focus(); }); };
-  const [layout, setLayout] = useRequirementsLayout();
   const finalMode = finalVersion || latestVersion?.decisions?.skippedResearch;
   const hasSavedVersion = readOnly || Boolean(latestVersion?.versionId);
   const baseline = latestVersion?.registry || value;
   const hasUnsavedChanges = !readOnly && (review.dirty || !latestVersion?.versionId || JSON.stringify(registry) !== JSON.stringify(baseline));
-  const activeMeta = BABOK_REQUIREMENT_COLUMNS.find(([type]) => type === activeType) || BABOK_REQUIREMENT_COLUMNS[0];
-  const visibleTypes = layout === 'rows' ? [activeType] : BABOK_REQUIREMENT_TYPES;
-
   const entries = filterRequirementList(BABOK_REQUIREMENT_COLUMNS, registry.groups, { type: typeFilter, query, needsClarification });
   const selectedEntry = selectedRequirementEntry(entries, selectedRecordId);
   function changeFilters(patch) {
@@ -728,7 +726,7 @@ function BabokRegistryResult({ value, latestVersion, onSave, onStartResearch, on
 
   function addRequirement(type, text) {
     const id = stableBabokId(registry.groups[type], type, review.state.reservedIds);
-    setActiveType(type); setTypeFilter(type); setReviewSection('requirements');
+    setTypeFilter(type); setReviewSection('requirements');
     setQuery(''); setNeedsClarification(false); setSelectedRecordId(id); setComposerType(null);
     markEdited(id);
     setRegistry((current) => {
@@ -743,7 +741,7 @@ function BabokRegistryResult({ value, latestVersion, onSave, onStartResearch, on
     const assembled = assembleReview({ ...review.state, decisions }, (type, text, records) => createBabokManualRecord(type, stableBabokId(records, type, review.state.reservedIds), text, { sourceArtifactId: registry.materials.primary.artifactId }), withBabokCounts);
     setValidationError(assembled.error || null);
     if (assembled.error) {
-      setActiveType(assembled.error.type); setTypeFilter(assembled.error.type); setReviewSection('requirements'); setNeedsClarification(false); setQuery(''); setSelectedRecordId(assembled.error.id);
+      setTypeFilter(assembled.error.type); setReviewSection('requirements'); setNeedsClarification(false); setQuery(''); setSelectedRecordId(assembled.error.id);
       if (assembled.error.id.startsWith('new-')) setComposerType(assembled.error.type);
       else {
         const record = registry.groups[assembled.error.type]?.find((item) => item.id === assembled.error.id);
@@ -806,7 +804,10 @@ function BabokRegistryResult({ value, latestVersion, onSave, onStartResearch, on
     if (proposal.gapBases) {
       const currentGapBases = discussionGapBases(assembled, discussionContext.decisions);
       for (const [gapId, basis] of Object.entries(proposal.gapBases)) {
-        if (JSON.stringify(currentGapBases[gapId] || null) !== JSON.stringify(basis)) {
+        // jsonb storage reorders object keys, so bases must be compared field
+        // by field rather than by serialized key order.
+        const currentBasis = currentGapBases[gapId] || null;
+        if (!currentBasis || currentBasis.question !== basis.question || currentBasis.answer !== basis.answer) {
           setValidationError({ id: gapId, message: 'Предложение устарело: ответ или формулировка GAP изменились. Запросите новый вариант.' });
           return false;
         }
@@ -838,12 +839,12 @@ function BabokRegistryResult({ value, latestVersion, onSave, onStartResearch, on
       {lastDeletion && <p role="status" className="rounded-xl bg-amber-50 p-3">Удалено {lastDeletion.id}. <button className="font-semibold text-indigo-700 underline p-2" onClick={undoDeletion}>Отменить удаление</button></p>}
       {validationError && <p role="alert" className="text-sm text-red-700">{validationError.id}: {validationError.message}</p>}
       {compact ? <RequirementsReviewHeader version={latestVersion} dirty={hasUnsavedChanges} busy={busy} researchBusy={researchBusy} onSave={() => saveRegistry()} onResearch={(savedVersionId) => onStartResearch?.({ requirementsVersionId: savedVersionId })} onFinal={() => saveRegistry({ ...review.state.decisions, skippedResearch: true })} /> : <>
-      <div className="rounded-xl border border-slate-200 bg-white p-4 flex flex-col gap-3">
+      <div className="rounded-xl border border-slate-200 bg-white p-4 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex items-center gap-3 min-w-0">
           {hasSavedVersion && !hasUnsavedChanges && <span className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0"><Check className="w-4 h-4" /></span>}
-          <div className="min-w-0"><h1 className="text-base font-semibold text-slate-900">{title || (finalMode ? 'Финальная версия требований' : 'Проверка требований')}</h1><p id="babok-save-status" role="status" className={`text-xs mt-0.5 ${hasSavedVersion && !hasUnsavedChanges ? 'text-emerald-700' : 'text-slate-600'}`}>{statusText}</p></div>
+          <div className="min-w-0"><h1 className="text-base font-semibold text-slate-900">{title || (finalMode ? 'Финальная версия требований' : 'Проверка требований')}</h1><p id="babok-save-status" role="status" className={`text-xs mt-0.5 ${hasSavedVersion && !hasUnsavedChanges ? 'text-emerald-700' : 'text-slate-600'}`}>{statusText}</p>{finalMode && <p className="mt-1 text-xs text-slate-600">Готово требований: {BABOK_REQUIREMENT_TYPES.flatMap((type) => registry.groups[type]).filter((record) => record.quality === 'Готово').length} из {BABOK_REQUIREMENT_TYPES.flatMap((type) => registry.groups[type]).length}</p>}</div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 lg:justify-end">
           {onBack && <button onClick={onBack} className="h-10 shrink-0 whitespace-nowrap px-4 py-2 border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 hover:bg-slate-50 flex items-center justify-center gap-2"><ArrowLeft className="w-4 h-4" />К результатам AI-исследования</button>}
         {!readOnly && <>
           <ResultExportAction />
@@ -858,54 +859,33 @@ function BabokRegistryResult({ value, latestVersion, onSave, onStartResearch, on
 
 
       <CoverageWarning registry={registry} />
-      <div role="group" aria-label="Разделы проверки" className={compact ? "flex flex-wrap gap-1" : "flex flex-wrap gap-2"}>{[['requirements', 'Требования'], ['questions', 'Вопросы'], ['links', 'Связи'], ['report', 'Полный отчёт']].map(([key, label]) => <button key={key} aria-pressed={reviewSection === key} onClick={() => setReviewSection(key)} className={compact ? `border-b-2 px-1.5 py-2 text-xs sm:text-sm font-semibold ${reviewSection === key ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-600 hover:text-slate-900'}` : `rounded-lg border px-4 py-2 text-sm font-semibold ${reviewSection === key ? 'bg-indigo-600 text-white' : 'bg-white text-slate-700'}`}>{compact && key === 'requirements' ? `Реестр · ${BABOK_REQUIREMENT_TYPES.reduce((total, type) => total + registry.groups[type].length, 0)}` : label}{key === 'questions' ? ` · ${registry.analysis.questions.length}` : ''}</button>)}</div>
-      {!compact && <p className="text-sm text-slate-600">Требований: {BABOK_REQUIREMENT_TYPES.reduce((total, type) => total + registry.groups[type].length, 0)} · Пробелов: {registry.analysis.GAP.length} · Вопросов: {registry.analysis.questions.length}{registry.scope.partial ? ' · Частичная обработка' : ''}</p>}
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+      <div role="group" aria-label="Разделы проверки" className={compact ? "flex flex-wrap gap-1" : "flex flex-wrap gap-2"}>{[['requirements', 'Требования'], ['questions', 'Вопросы'], ['links', 'Связи'], ['report', 'Полный отчёт']].map(([key, label]) => <button key={key} aria-pressed={reviewSection === key} onClick={() => setReviewSection(key)} className={compact ? `border-b-2 px-1.5 py-2 text-xs sm:text-sm font-semibold ${reviewSection === key ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-600 hover:text-slate-900'}` : `rounded-lg border px-4 py-2 text-sm font-semibold ${reviewSection === key ? 'bg-indigo-600 text-white' : 'bg-white text-slate-700'}`}>{compact && key === 'requirements' ? `Реестр · ${BABOK_REQUIREMENT_TYPES.reduce((total, type) => total + registry.groups[type].length, 0)}` : label}</button>)}</div>
+      {!compact && <p className="text-xs text-slate-600 lg:ml-auto">Требований: {BABOK_REQUIREMENT_TYPES.reduce((total, type) => total + registry.groups[type].length, 0)} · {formatQuestionGapCount(registry.analysis.questions.length, registry.analysis.GAP.length)}{registry.scope.partial ? ' · Частичная обработка' : ''}</p>}
+      </div>
 
       <div hidden={reviewSection !== 'requirements'} className="space-y-4">
-      {compact ? <RequirementListWorkspace
+      {<RequirementListWorkspace
         columns={BABOK_REQUIREMENT_COLUMNS} groups={registry.groups} entries={entries} selected={selectedEntry}
         onSelect={setSelectedRecordId} typeFilter={typeFilter} query={query} needsClarification={needsClarification}
         onFiltersChange={changeFilters} qualityLabels={BABOK_QUALITY_LABELS} drafts={review.state.drafts}
-        composerMenu={<RequirementComposerMenu columns={BABOK_REQUIREMENT_COLUMNS} onChoose={(type) => { changeFilters({ type, query: '', needsClarification: false }); setComposerType(type); }} />}
-        composer={composerType && <section id={`req-type-${composerType}`} aria-label={`Добавление: ${composerType}`} className="rounded-xl border border-slate-200 bg-white p-3">
+        composerMenu={!readOnly && <RequirementComposerMenu columns={BABOK_REQUIREMENT_COLUMNS} onChoose={(type) => { changeFilters({ type, query: '', needsClarification: false }); setComposerType(type); }} />}
+        composer={!readOnly && composerType && <section id={`req-type-${composerType}`} aria-label={`Добавление: ${composerType}`} className="rounded-xl border border-slate-200 bg-white p-3">
           <BabokAddRequirementForm key={composerType} type={composerType} categoryLabel={BABOK_REQUIREMENT_COLUMNS.find(([type]) => type === composerType)?.[1]} onAdd={(text) => addRequirement(composerType, text)} onDraftChange={(dirty) => setDraftDirty(`${composerType}:new`, dirty)} />
         </section>}
-        renderDetail={({ type, requirement }) => <BabokRequirementCard key={requirement.id} focused type={type} requirement={requirement} materials={registry.materials}
-          onNavigate={navigateRecord} onDiscuss={jobId && discussionEnabled ? openDiscussion : undefined}
+        renderDetail={({ type, requirement }) => <BabokRequirementCard key={requirement.id} focused readOnly={readOnly} type={type} requirement={requirement} materials={registry.materials}
+          onNavigate={navigateRecord} onDiscuss={!readOnly && jobId && discussionEnabled ? openDiscussion : undefined}
           manuallyEdited={editedRecordIds.has(requirement.id) || latestVersion?.revision?.manualDecisionMetadata?.editedRecordIds?.includes(requirement.id)}
           onEdit={(text, fields) => editRequirement(type, requirement.id, text, fields)} onDelete={() => deleteRequirement(type, requirement.id)}
           onDraftChange={(dirty) => setDraftDirty(`${type}:${requirement.id}`, dirty)} />}
-      /> : <>
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div><h2 className="text-base font-bold text-slate-900">Типы требований</h2><p className="text-xs text-slate-500 mt-1">Выберите тип, чтобы сфокусироваться на его записях. Стабильные ID сохраняются при ревизиях.</p></div>
-        <RequirementsLayoutToggle layout={layout} onChange={setLayout} />
-      </div>
-      <RequirementTypeNav columns={BABOK_REQUIREMENT_COLUMNS} groups={registry.groups} activeType={activeType} onSelect={selectType} />
-      <label className="flex items-center gap-2 text-sm text-slate-700 p-2"><input type="checkbox" checked={needsClarification} onChange={(event) => setNeedsClarification(event.target.checked)} />Нужно уточнить</label>
-
-      <div id="babok-requirements" aria-label="Реестр требований" className="grid gap-4 grid-cols-1">
-        {visibleTypes.map((type) => {
-          const [, label, subtitle, color] = BABOK_REQUIREMENT_COLUMNS.find((item) => item[0] === type);
-          const records = (registry.groups[type] || []).filter((record) => !needsClarification || record.quality !== 'Готово');
-          return <section key={type} id={`req-type-${type}`} tabIndex={-1} style={{ scrollMarginTop: '9rem' }} role="region" aria-label={label} className={`bg-white rounded-2xl border border-slate-200 border-t-4 ${color} px-5 py-5`}>
-            <div className="flex items-start justify-between gap-3 mb-2"><div><div className="flex items-center gap-2"><span className="font-mono text-xs font-bold text-slate-500">{type}</span><h2 className="text-base font-bold text-slate-900">{label}</h2></div><p className="text-xs text-slate-500 mt-1">{subtitle}</p></div><span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500">{records.length}</span></div>
-            <div className="divide-y divide-slate-200 mt-4">
-              {records.map((item) => <BabokRequirementCard key={item.id} type={type} materials={registry.materials} onNavigate={navigateRecord} onDiscuss={jobId && discussionEnabled ? openDiscussion : undefined} manuallyEdited={editedRecordIds.has(item.id) || latestVersion?.revision?.manualDecisionMetadata?.editedRecordIds?.includes(item.id)} requirement={item} onEdit={(text, fields) => editRequirement(type, item.id, text, fields)} onDelete={() => deleteRequirement(type, item.id)} onDraftChange={(dirty) => setDraftDirty(`${type}:${item.id}`, dirty)} readOnly={readOnly} />)}
-              {!records.length && <p className="py-6 text-sm text-slate-600">Нет сформированных требований</p>}
-            </div>
-            {!readOnly && <div className="mt-4 pt-3 border-t border-slate-100"><BabokAddRequirementForm type={type} categoryLabel={label} onAdd={(text) => addRequirement(type, text)} onDraftChange={(dirty) => setDraftDirty(`${type}:new`, dirty)} /></div>}
-          </section>;
-        })}
-      </div>
-      {layout === 'rows' && <p className="text-xs text-slate-500">Сейчас выбран тип {activeMeta[0]} · {activeMeta[1]}. Переключите вкладку, чтобы просмотреть другой тип.</p>}
-      </>}
+      />}
       </div>
       {reviewSection === 'report' && <Suspense fallback={<p role="status">Загрузка отчёта…</p>}><BabokSkillReport registry={registry} /></Suspense>}
       {reviewSection !== 'requirements' && (reviewSection === 'questions' || reviewSection === 'links'
-        ? <RequirementPreviewProvider index={requirementIndex}><RegistryAnalysis registry={registry} section={reviewSection} onNavigate={navigateRecord} onDiscuss={jobId && discussionEnabled ? openDiscussion : undefined} readOnly={readOnly} /></RequirementPreviewProvider>
-        : <RegistryAnalysis registry={registry} section={reviewSection} onNavigate={navigateRecord} onDiscuss={jobId && discussionEnabled ? openDiscussion : undefined} readOnly={readOnly} />)}
+        ? <RequirementPreviewProvider index={requirementIndex}><RegistryAnalysis registry={registry} section={reviewSection} onNavigate={navigateRecord} onDiscuss={!readOnly && jobId && discussionEnabled ? openDiscussion : undefined} readOnly={readOnly} /></RequirementPreviewProvider>
+        : <RegistryAnalysis registry={registry} section={reviewSection} onNavigate={navigateRecord} onDiscuss={!readOnly && jobId && discussionEnabled ? openDiscussion : undefined} readOnly={readOnly} />)}
       <RecordFocus id={initialRecordId} />
-      {discussionAnchor && <DiscussionPanel jobId={jobId} anchorId={discussionAnchor} anchorLabel={discussionAnchorLabel} baseVersionId={latestVersion?.versionId || null} draft={discussionContext.unsaved && discussionContext.registry ? { registry: discussionContext.registry, decisions: discussionContext.decisions } : null} proposalDecisions={review.state.decisions.review?.discussionProposals || {}} contextReady={Boolean(jobId && latestVersion?.versionId && !discussionContext.error)} contextError={discussionContext.error ? `${discussionContext.error.id}: ${discussionContext.error.message}` : !latestVersion?.versionId ? 'Сначала сохраните требования, чтобы открыть AI-обсуждение.' : ''} readOnly={readOnly} onClose={() => setDiscussionAnchor(null)} onApplyProposal={applyDiscussionProposal} onRejectProposal={rejectDiscussionProposal} />}
+      {discussionAnchor && <DiscussionPanel jobId={jobId} anchorId={discussionAnchor} anchorLabel={discussionAnchorLabel} baseVersionId={latestVersion?.versionId || null} draft={discussionContext.unsaved && discussionContext.registry ? { registry: discussionContext.registry, decisions: discussionContext.decisions } : null} proposalDecisions={review.state.decisions.review?.discussionProposals || {}} savedProposalDecisions={latestVersion?.decisions?.review?.discussionProposals || {}} gapStates={review.state.decisions.review?.gaps || {}} onSaveContext={!latestVersion?.versionId && !readOnly ? saveRegistry : undefined} savingContext={busy} contextReady={Boolean(jobId && latestVersion?.versionId && !discussionContext.error)} contextError={discussionContext.error ? `${discussionContext.error.id}: ${discussionContext.error.message}` : !latestVersion?.versionId ? 'Сначала сохраните требования, чтобы открыть AI-обсуждение.' : ''} readOnly={readOnly} onClose={() => setDiscussionAnchor(null)} onApplyProposal={applyDiscussionProposal} onRejectProposal={rejectDiscussionProposal} />}
     </div></ReviewDraftProvider>
   );
 }
@@ -1537,7 +1517,7 @@ function ActiveJobPanel({ job, onCancel, onBackground }) {
         <p className="text-sm text-slate-500 shrink-0" aria-label={`Прошло ${formatElapsed(elapsedMs)}, ${durationHint}`}><span className="font-mono font-semibold text-slate-700">{formatElapsed(elapsedMs)}</span> · {durationHint}</p>
       </div>
       {focusMessage && <div role="status" aria-live="polite" className="mt-3 rounded-lg bg-indigo-50/60 px-3 py-2 flex items-center gap-3 overflow-hidden">
-        <span className="flex gap-1 shrink-0" aria-hidden="true"><span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-bounce" /><span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-bounce [animation-delay:150ms]" /><span className="w-1.5 h-1.5 rounded-full bg-indigo-300 animate-bounce [animation-delay:300ms]" /></span>
+        <span className="flex gap-1 shrink-0" aria-hidden="true"><span className="w-1.5 h-1.5 rounded-full bg-indigo-500 motion-safe:animate-bounce" /><span className="w-1.5 h-1.5 rounded-full bg-indigo-400 motion-safe:animate-bounce [animation-delay:150ms]" /><span className="w-1.5 h-1.5 rounded-full bg-indigo-300 motion-safe:animate-bounce [animation-delay:300ms]" /></span>
         <div className="min-w-0"><p className="text-sm font-medium text-indigo-900">{focusMessage}</p>{waitingTip && <p aria-live="off" title="Формулировки сменяются автоматически и описывают задачи анализа. Текущий этап подтверждается отдельно." className="mt-1 text-sm leading-5 text-slate-500">{waitingTip}</p>}</div>
       </div>}
       <ExecutionTimeline job={job} />
@@ -1765,6 +1745,7 @@ export default function AsyncJobWorkspace() {
   const [busy, setBusy] = useState(false);
   const [contextFormOpen, setContextFormOpen] = useState(() => !routeJobId);
   const [routeUnavailable, setRouteUnavailable] = useState(false);
+  const [routeRetry, setRouteRetry] = useState(0);
   const [debugOpen, setDebugOpen] = useState(false);
   const [debugRefreshKey, setDebugRefreshKey] = useState(0);
   const [sseObservations, setSseObservations] = useState([]);
@@ -1781,7 +1762,7 @@ export default function AsyncJobWorkspace() {
   const linkedResearchComplete = linkedResearch && job?.status === 'SUCCEEDED';
   const finalVersionReady = linkedResearchComplete && requirementsVersions.some((item) => item.sourceJobId === result?.jobId);
   const directFinalReady = Boolean(decompositionReady && requirementsVersions[0]?.sourceJobId === result?.jobId && requirementsVersions[0]?.decisions?.skippedResearch);
-  const currentStage = finalVersionReady || directFinalReady ? 4 : linkedResearch ? 3 : decompositionReady ? 2 : 1;
+  const currentStage = linkedResearch && activeReviewView && activeReviewView !== 'final' ? 3 : finalVersionReady || directFinalReady ? 4 : linkedResearch ? 3 : decompositionReady ? 2 : 1;
   const completedStage = finalVersionReady || directFinalReady ? 4 : linkedResearchComplete ? 3 : linkedResearch ? 2 : decompositionReady ? 1 : 0;
   const handleEditorDirty = useCallback((dirty) => { editorDirtyRef.current = dirty; }, []);
 
@@ -2024,11 +2005,14 @@ export default function AsyncJobWorkspace() {
         if (selected.status === 'SUCCEEDED') await loadResult(routeJobId, controller.signal);
       } catch (cause) {
         if (controller.signal.aborted) return;
-        if (routeJobIdRef.current === routeJobId) { setRouteUnavailable(true); setJob(null); setError(userFacingError(cause)); }
+        if (routeJobIdRef.current === routeJobId) {
+          setRouteUnavailable({ permanent: [401, 403, 404].includes(cause.status) || ['JOB_NOT_FOUND', 'FORBIDDEN', 'UNAUTHORIZED'].includes(cause.code) });
+          setJob(null); setError(userFacingError(cause));
+        }
       }
     })();
     return () => controller.abort();
-  }, [loadResult, routeJobId]);
+  }, [loadResult, routeJobId, routeRetry]);
 
   useEffect(() => {
     if (!jobId) return undefined;
@@ -2338,7 +2322,7 @@ export default function AsyncJobWorkspace() {
         </div>
       </nav>
 
-      {routeUnavailable ? <main className="max-w-3xl mx-auto px-4 py-16"><section className="rounded-2xl border border-red-200 bg-white p-8 text-center"><AlertTriangle className="w-10 h-10 text-red-500 mx-auto mb-3" /><h1 className="text-xl font-bold text-slate-900">Задача недоступна</h1><p className="text-sm text-slate-500 mt-2">Проверьте адрес или права доступа. Другая задача не была открыта автоматически.</p><button onClick={() => navigate(null)} className="mt-5 px-4 py-2.5 rounded-lg bg-indigo-600 text-white text-sm font-semibold">Создать новую задачу</button></section></main> : legacyJob ? (
+      {routeUnavailable ? <main className="max-w-3xl mx-auto px-4 py-16"><section className="rounded-2xl border border-red-200 bg-white p-8 text-center"><AlertTriangle className="w-10 h-10 text-red-500 mx-auto mb-3" /><h1 className="text-xl font-bold text-slate-900">{routeUnavailable.permanent ? 'Задача недоступна' : 'Не удалось загрузить задачу'}</h1><p className="text-sm text-slate-600 mt-2">{routeUnavailable.permanent ? 'Проверьте адрес или права доступа. Другая задача не была открыта автоматически.' : 'Сервер временно недоступен или соединение прервалось. Повторите загрузку этой задачи.'}</p><div className="mt-5 flex flex-wrap justify-center gap-3"><button onClick={() => setRouteRetry((value) => value + 1)} className="px-4 py-2.5 rounded-lg bg-indigo-600 text-white text-sm font-semibold focus-visible:ring-2 focus-visible:ring-indigo-500">Повторить загрузку</button><button onClick={() => navigate(null)} className="px-4 py-2.5 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold focus-visible:ring-2 focus-visible:ring-indigo-500">Создать новую задачу</button></div></section></main> : legacyJob ? (
         <main className="max-w-5xl mx-auto px-4 py-6 space-y-6">
           {progressingJob && <ActiveJobPanel job={job} onCancel={cancelActiveJob} onBackground={continueInBackground} />}
           <JobStateCard job={job} onCancel={cancelActiveJob} onRetry={linkedResearch && job?.inputArtifactId ? retryResearch : undefined} retryBusy={researchRetryBusy} />

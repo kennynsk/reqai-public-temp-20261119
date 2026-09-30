@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { access, mkdir, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -24,6 +24,11 @@ const bundles = [
 
 for (const bundle of bundles) {
   const dir = resolve(root, bundle.id, '1.0.0');
+  try {
+    await access(resolve(dir, 'manifest.json'));
+    console.log(`Retaining immutable release ${bundle.id}@1.0.0`);
+    continue;
+  } catch (error) { if (error.code !== 'ENOENT') throw error; }
   await mkdir(dir, { recursive: true });
   const templates = {};
   for (const [step, value] of Object.entries(bundle.templates)) {

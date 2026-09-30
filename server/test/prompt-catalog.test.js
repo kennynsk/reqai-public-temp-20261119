@@ -15,7 +15,7 @@ const policy = {
   'requirements-insights': { active: '1.0.0', released: ['1.0.0'] },
 };
 
-test('supported prompt bundles render byte-for-byte like their builders', () => {
+test('decomposition matches its builder and the historical insights release remains immutable', () => {
   const catalog = createPromptCatalog({ rootDir: defaultPromptBundleRoot() });
   const resolver = createPromptProfileResolver({ catalog, policy });
   const decomposition = resolver.resolve({ type: 'DECOMPOSITION', mode: 'DECOMPOSITION' });
@@ -27,7 +27,11 @@ test('supported prompt bundles render byte-for-byte like their builders', () => 
   assert.equal(insights.id, 'requirements-insights');
   const requirements = { business: [{ id: 'BT-1', text: 'Рост' }], functional: [], nonfunctional: [] };
   const section = `\nТекущие требования:\n${JSON.stringify(requirements, null, 2)}`;
-  assert.equal(catalog.render(insights, 'insights', { businessContext: 'Контекст', requirementsSection: section }).text, buildInsightsPrompt('Контекст', requirements));
+  const historical = catalog.render(insights, 'insights', { businessContext: 'Контекст', requirementsSection: section }).text;
+  assert.ok(historical.includes(section));
+  assert.match(historical, /массив может быть пустым если инсайт только усиливает существующие/);
+  // The unversioned builder evolved; do not rewrite retained 1.0.0 to match it.
+  assert.notEqual(historical, buildInsightsPrompt('Контекст', requirements));
 
   assert.throws(() => resolver.resolve({ type: 'RESEARCH', mode: 'AGENT_RESEARCH' }), (error) => error.code === 'PROMPT_PROFILE_UNSUPPORTED');
 });

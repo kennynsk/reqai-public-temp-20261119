@@ -89,12 +89,19 @@ test('discussion service scopes anchors and versions, replays idempotently, and 
   const versionService = { get: async () => version, list: async () => ({ items: [version] }) };
   const jobRepository = { findVisibleById: async ({ jobId }) => jobId === 'job-1' ? { id: jobId } : null };
   let calls = 0;
-  const service = createRequirementDiscussionService({ repository, jobRepository, versionService, generator: async () => { calls += 1; return { text: JSON.stringify({ explanation: 'Уточнить', changes: [{ targetId: 'FR-005', before: { text: 'Показывать статус' }, after: { text: 'Показывать текущий статус' }, rationale: 'Ответ' }] }) }; } });
+  let capturedMessages;
+  const service = createRequirementDiscussionService({ repository, jobRepository, versionService, generator: async ({ messages }) => { capturedMessages = messages; calls += 1; return { text: JSON.stringify({ explanation: 'Уточнить', changes: [{ targetId: 'FR-005', before: { text: 'Показывать статус' }, after: { text: 'Показывать текущий статус' }, rationale: 'Ответ' }] }) }; } });
   await assert.rejects(() => service.open({ auth: serviceAuth, jobId: 'job-1', anchorId: 'FR-999', baseVersionId: 'v1' }), { code: 'DISCUSSION_ANCHOR_NOT_FOUND' });
   const opened = await service.open({ auth: serviceAuth, jobId: 'job-1', anchorId: 'GAP-002', baseVersionId: 'v1' });
   assert.equal(opened.messages.length, 0);
   const first = await service.generate({ auth: serviceAuth, jobId: 'job-1', anchorId: 'GAP-002', body: { message: 'Как уточнить?', clientMessageId: 'client-0001', baseVersionId: 'v1' } });
   assert.equal(first.proposal.changes[0].targetId, 'FR-005');
+  const system = capturedMessages.filter((item) => item.role === 'system').map((item) => item.content).join('\n');
+  for (const path of ['SKILL.md', 'references/classification.md', 'references/requirements-quality.md', 'references/output-template.md']) assert.ok(system.includes(`<skill-file path="${path}">`));
+  assert.match(system, /Сохраняй действующих исполнителей/);
+  assert.match(system, /TERM\/CTX\/HYP в интерфейсе доступны только для просмотра/);
+  assert.match(system, /Не обещай автоматическое закрытие GAP/);
+  assert.match(system, /changes: \[\]/);
   assert.equal(calls, 1);
   const replay = await service.generate({ auth: serviceAuth, jobId: 'job-1', anchorId: 'GAP-002', body: { message: 'Как уточнить?', clientMessageId: 'client-0001', baseVersionId: 'v1' } });
   assert.equal(replay.replayed, true);
@@ -136,6 +143,24 @@ test('provider failure preserves its reason for actionable client errors', async
   });
 });
 
+test('a model reply that prefixes the JSON payload with prose still yields a proposal without leaking raw JSON', async () => {
+  const repository = new MemoryDiscussionRepository();
+  const service = createRequirementDiscussionService({
+    repository,
+    jobRepository: { findVisibleById: async () => ({ id: 'job-1' }) },
+    versionService: { get: async () => ({ versionId: 'v1', sourceJobId: 'job-1', registry, decisions: {} }) },
+    generator: async () => ({
+      text: 'Пакет готов. Обратите внимание: отдельного требования про веб-канал нет, это отражено в rationale.\n{"explanation":"Пакет уточнений по ответу владельца","changes":[{"targetId":"FR-005","before":{"text":"Показывать статус"},"after":{"text":"Показывать текущий статус"},"rationale":"Ответ владельца"}]}',
+    }),
+  });
+  const turn = await service.generate({ auth: serviceAuth, jobId: 'job-1', anchorId: 'GAP-002', body: { message: 'Вот ответ', clientMessageId: 'client-preamble-1', baseVersionId: 'v1' } });
+  assert.equal(turn.proposal.changes[0].targetId, 'FR-005');
+  assert.equal(turn.proposal.explanation, 'Пакет уточнений по ответу владельца');
+  const stored = turn.messages.find((item) => item.role === 'assistant');
+  assert.ok(!stored.text.includes('"changes"'));
+  assert.ok(stored.text.includes('Пакет уточнений'));
+});
+
 test('guided prompt persists no-change resolutions and a subsequent question never revives the old proposal', async () => {
   let call = 0;
   const captured = [];
@@ -152,11 +177,99 @@ test('guided prompt persists no-change resolutions and a subsequent question nev
   });
   const first = await service.generate({ auth: serviceAuth, jobId: 'job-1', anchorId: 'GAP-002', body: { message: 'Согласовано', clientMessageId: 'guided-turn-001', baseVersionId: 'v1' } });
   assert.equal(first.proposal.clarification.canResolve, true);
-  assert.equal(first.attempt.promptVersion, '2.0.0');
+  assert.equal(first.attempt.promptVersion, '3.0.0');
   assert.ok(captured[0].some((message) => message.content.includes('За один ход задавай только один')));
   assert.ok(captured[0].some((message) => message.content.includes('Не выдумывай')));
   await service.generate({ auth: serviceAuth, jobId: 'job-1', anchorId: 'GAP-002', body: { message: 'Продолжим', clientMessageId: 'guided-turn-002', baseVersionId: 'v1' } });
   const reloaded = await service.get({ auth: serviceAuth, jobId: 'job-1', anchorId: 'GAP-002' });
   assert.equal(reloaded.proposal, undefined);
   assert.equal(reloaded.messages.at(-1).text, 'Какой следующий шаг?');
+});
+
+test('malformed packages never expose raw JSON or salvage nested requirement fragments as a response', async () => {
+  for (const text of [
+    '{"explanation":"Вопрос автоматически закроется","changes":[{"targetId":"FR-005","before":{"text":"Показывать статус"},"after":{"text":"Новый статус"}],"rationale":"Ответ"}]}',
+    'Пакет готов. {"explanation":"Вопрос автоматически закроется","changes":[{"before":{"text":"Показывать статус"}}',
+    '{"changes":[INVALID],"clarification":{"answer":"Вопрос автоматически закроется"}}',
+  ]) {
+    const repository = new MemoryDiscussionRepository();
+    let calls = 0;
+    const service = createRequirementDiscussionService({ repository,
+      jobRepository: { findVisibleById: async () => ({ id: 'job-1' }) },
+      versionService: { get: async () => ({ versionId: 'v1', sourceJobId: 'job-1', registry, decisions: {} }) },
+      generator: async () => { calls += 1; return { text }; },
+    });
+    const turn = await service.generate({ auth: serviceAuth, jobId: 'job-1', anchorId: 'GAP-002', body: { message: 'Подготовь уточнение', clientMessageId: 'malformed-turn-001', baseVersionId: 'v1' } });
+    assert.equal(turn.proposal, null);
+    assert.equal(repository.proposals.size, 0);
+    assert.equal(calls, 2);
+    assert.match(turn.assistantMessage.text, /не прошли проверку/);
+    assert.doesNotMatch(turn.assistantMessage.text, /"changes"|"before"|автоматически закроется/);
+  }
+});
+
+test('one syntax repair can recover a full package but cannot bypass semantic validation', async () => {
+  for (const targetId of ['FR-005', 'FR-999']) {
+    let calls = 0;
+    const repository = new MemoryDiscussionRepository();
+    const service = createRequirementDiscussionService({ repository,
+      jobRepository: { findVisibleById: async () => ({ id: 'job-1' }) },
+      versionService: { get: async () => ({ versionId: 'v1', sourceJobId: 'job-1', registry, decisions: {} }) },
+      generator: async ({ messages }) => {
+        calls += 1;
+        if (calls === 1) return { text: '{"explanation":"Уточнить","changes":[' };
+        assert.match(messages[0].content, /Исправь только синтаксис/);
+        return { text: JSON.stringify({ explanation: 'Уточнить', changes: [{ targetId, before: { text: 'Показывать статус' }, after: { text: 'Показывать текущий статус' }, rationale: 'Ответ владельца' }] }) };
+      },
+    });
+    const turn = await service.generate({ auth: serviceAuth, jobId: 'job-1', anchorId: 'GAP-002', body: { message: 'Подготовь уточнение', clientMessageId: 'syntax-repair-001', baseVersionId: 'v1' } });
+    assert.equal(calls, 2);
+    if (targetId === 'FR-005') assert.equal(turn.proposal.changes[0].targetId, targetId);
+    else { assert.equal(turn.proposal, null); assert.equal(repository.proposals.size, 0); }
+  }
+});
+
+test('plain prose remains readable without inventing a change package', async () => {
+  const repository = new MemoryDiscussionRepository();
+  const service = createRequirementDiscussionService({ repository,
+    jobRepository: { findVisibleById: async () => ({ id: 'job-1' }) },
+    versionService: { get: async () => ({ versionId: 'v1', sourceJobId: 'job-1', registry, decisions: {} }) },
+    generator: async () => ({ text: 'Какой канал получения статуса согласован?' }),
+  });
+  const turn = await service.generate({ auth: serviceAuth, jobId: 'job-1', anchorId: 'GAP-002', body: { message: 'Что уточнить?', clientMessageId: 'plain-turn-001', baseVersionId: 'v1' } });
+  assert.equal(turn.assistantMessage.text, 'Какой канал получения статуса согласован?');
+  assert.equal(turn.proposal, null);
+});
+
+test('cancelling during syntax repair prevents its late result from becoming a proposal', async () => {
+  const repository = new MemoryDiscussionRepository();
+  let calls = 0;
+  let release;
+  const service = createRequirementDiscussionService({ repository,
+    jobRepository: { findVisibleById: async () => ({ id: 'job-1' }) },
+    versionService: { get: async () => ({ versionId: 'v1', sourceJobId: 'job-1', registry, decisions: {} }) },
+    generator: async () => {
+      if (++calls === 1) return { text: '{"explanation":"Уточнить","changes":[' };
+      return new Promise((resolve) => { release = () => resolve({ text: JSON.stringify({ explanation: 'Уточнить', changes: [{ targetId: 'FR-005', after: { text: 'Текущий статус' } }] }) }); });
+    },
+  });
+  const pending = service.generate({ auth: serviceAuth, jobId: 'job-1', anchorId: 'GAP-002', body: { message: 'Подготовь уточнение', clientMessageId: 'cancel-repair-001', baseVersionId: 'v1' } });
+  while (!release) await new Promise((resolve) => setTimeout(resolve, 0));
+  await service.cancel({ auth: serviceAuth, jobId: 'job-1', attemptId: repository.latestAttempt({ discussionId: 'd-1' }).attemptId });
+  release();
+  const turn = await pending;
+  assert.equal(turn.attempt.status, 'cancelled');
+  assert.equal(repository.proposals.size, 0);
+});
+
+test('GAP context preserves parent roles and scope constraints as read-only evidence', () => {
+  const content = structuredClone(registry);
+  content.groups.FR[0].relatedTo = ['SR-PARENT'];
+  content.groups.SR.push({ id: 'SR-PARENT', text: 'Работает только оператор', role: 'Оператор', relatedTo: [] });
+  content.groups.CON = [{ id: 'CON-001', text: 'Только интерфейс оператора' }];
+  const value = buildDiscussionContext({ content, anchorId: 'GAP-002' });
+  assert.ok(value.content.contextRecords.some((record) => record.id === 'SR-PARENT' && record.role === 'Оператор'));
+  assert.ok(value.content.contextRecords.some((record) => record.id === 'CON-001'));
+  assert.ok(!value.manifest.requirementIds.includes('SR-PARENT'));
+  assert.throws(() => validateDiscussionProposal({ explanation: 'Уточнение', changes: [{ targetId: 'SR-PARENT', after: { role: 'Сотрудник' } }] }, { content: value }), { code: 'DISCUSSION_PROPOSAL_INVALID' });
 });

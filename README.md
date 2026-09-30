@@ -4,7 +4,7 @@
 [![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=000)](https://react.dev/)
 [![Vite](https://img.shields.io/badge/Vite-7-646CFF?logo=vite&logoColor=white)](https://vitejs.dev/)
 
-ReqAI превращает бизнес-контекст в проверенные требования. Текущий продукт состоит из одного управляемого workflow поверх асинхронных jobs, immutable artifacts, PostgreSQL, Kafka и Temporal; LLM-ключи доступны только workflow workers.
+ReqAI превращает бизнес-контекст в проверенные требования. Текущий продукт состоит из одного управляемого workflow поверх асинхронных jobs, immutable artifacts, PostgreSQL, Kafka и Temporal; LLM-ключи доступны workflow workers и API, который выполняет AI-обсуждение требований; event и maintenance workers их не получают.
 
 ## Основной workflow «Подготовка требований»
 

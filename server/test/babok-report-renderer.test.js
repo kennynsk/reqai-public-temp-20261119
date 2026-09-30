@@ -58,3 +58,24 @@ test('report preserves GAP annotations, confirmed conflicts and shared parent li
   assert.match(report, /Требует уточнения \(GAP-001\)/);
   assert.match(report, /\| FR-001 \| NFR-001 \| конфликтует \| Подтверждено источником \|/);
 });
+
+test('traceability uses the same assumed hierarchy as the table and keeps non-parent references separate', () => {
+  const registry = JSON.parse(readFileSync(new URL('./fixtures/babok-requirements-v1.complete.json', import.meta.url), 'utf8'));
+  registry.analysis.traceability = [
+    { from: 'BR-001', to: 'SR-001', relation: 'обосновывает', status: 'Предполагается', source: null },
+    { from: 'SR-001', to: 'FR-001', relation: 'реализует', status: 'Подтверждено источником', source: null },
+    { from: 'TR-001', to: 'FR-001', relation: 'обеспечивает', status: 'Предполагается', source: null },
+  ];
+  registry.groups.TR[0].relatedTo = ['FR-001'];
+  registry.groups.FR.push({ ...structuredClone(registry.groups.FR[0]), id: 'FR-002', text: 'Новое требование.', relatedTo: ['FR-001'] });
+  registry.summary.counts.FR = registry.groups.FR.length;
+  const report = renderBabokReport(registry);
+  const tree = report.match(/```text\n([\s\S]*?)\n```/)[1];
+  assert.match(tree, /[├└]── SR-001[^\n]*обосновывает \(Предполагается\)/);
+  assert.match(tree, /\nTR-001/);
+  assert.match(tree, /\nFR-002/);
+  assert.doesNotMatch(tree, /[├└]── (TR-001|FR-002)/);
+  assert.match(report, /\| BR-001 \| SR-001 \| обосновывает \| Предполагается \|/);
+  assert.match(report, /\| TR-001 \| FR-001 \| обеспечивает \| Предполагается \|/);
+  assert.match(report, /\| FR-002 \| FR-001 \| Связано с \| Статус не указан \|/);
+});

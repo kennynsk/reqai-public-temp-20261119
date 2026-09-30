@@ -1,3 +1,4 @@
+import { buildBabokTraceability } from '../../server/src/services/babok-report-renderer.js';
 import ReviewQuestions from './ReviewQuestions.jsx';
 import { MaterialCoverage, SourceEvidence } from './SourceEvidence.jsx';
 import { RequirementPreviewContext, RequirementPreviewLink } from './RequirementPreview.jsx';
@@ -10,51 +11,40 @@ export function RecordLinks({ ids = [], onNavigate }) {
     : <a key={id} href={`#record-${id}`} onClick={(event) => { if (onNavigate) { event.preventDefault(); onNavigate(id); } }} className="inline-block rounded bg-indigo-50 px-2 py-1 text-xs font-semibold text-indigo-700 underline underline-offset-2">{id}</a>)} </span>;
 }
 
-function groupTraceabilityLinks(links = []) {
-  return links.reduce((groups, link) => {
-    const sourceId = link.from || '';
-    const group = groups.find((item) => item.sourceId === sourceId);
-    if (group) group.links.push(link);
-    else groups.push({ sourceId, links: [link] });
-    return groups;
-  }, []);
-}
-
-function linkCountLabel(count) {
-  if (count % 10 === 1 && count % 100 !== 11) return 'связь';
-  if ([2, 3, 4].includes(count % 10) && ![12, 13, 14].includes(count % 100)) return 'связи';
-  return 'связей';
-}
-
-function TraceabilityGroup({ group, onNavigate }) {
-  return <article aria-label={group.sourceId ? `Связи от ${group.sourceId}` : 'Связи без исходного требования'} className="p-4">
-    <div className="flex items-center justify-between gap-3">
-      <div className="flex min-w-0 items-center gap-2">
-        <span className="text-xs font-semibold text-slate-500">Из</span>
-        {group.sourceId ? <RecordLinks ids={[group.sourceId]} onNavigate={onNavigate} /> : <span className="text-sm text-slate-600">Источник не указан</span>}
+function TraceabilityNode({ node, registry, onNavigate }) {
+  const { record, incoming, children } = node;
+  const gaps = registry.analysis.GAP.filter((gap) => gap.affectedIds.includes(record.id));
+  return <li className="min-w-0">
+    <div className="py-2">
+      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+        <RecordLinks ids={[record.id]} onNavigate={onNavigate} />
+        {incoming && <span className="text-xs text-slate-500">{incoming.relation}</span>}
+        {incoming && incoming.status !== 'Подтверждено источником' && <span className="rounded bg-amber-50 px-2 py-1 text-xs text-amber-900">{incoming.status}</span>}
+        {gaps.length > 0 && <span className="text-xs text-amber-900">{ /^(BR|SR)-/.test(record.id) ? 'Покрытие требует уточнения' : 'Есть пробелы' }</span>}
       </div>
-      <span className="shrink-0 text-xs text-slate-500">{group.links.length} {linkCountLabel(group.links.length)}</span>
+      <p className="mt-1 break-words text-sm leading-6 text-slate-700">{record.text}</p>
     </div>
-    <div className="mt-3 divide-y divide-slate-100">
-      {group.links.map((link, index) => <div key={`${link.from || 'unknown'}-${link.to || 'unknown'}-${index}`} className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 border-t border-slate-100 py-3 first:border-t-0 first:pt-0 last:pb-0">
-        <span aria-hidden="true" className="text-slate-400">→</span>
-        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-          <span className="text-xs font-semibold text-slate-500">К</span>
-          {link.to ? <RecordLinks ids={[link.to]} onNavigate={onNavigate} /> : <span className="text-sm text-slate-600">Цель не указана</span>}
-          {link.relation && <span className="text-sm text-slate-700">{link.relation}</span>}
-        </div>
-        {link.status && <span className="text-right text-xs text-slate-600">{link.status}</span>}
-      </div>)}
-    </div>
-  </article>;
+    {children.length > 0 && <ul className="ml-3 border-l border-slate-200 pl-3 sm:ml-5 sm:pl-5">{children.map((child) => <TraceabilityNode key={child.record.id} node={child} registry={registry} onNavigate={onNavigate} />)}</ul>}
+  </li>;
 }
 
-function TraceabilityLinks({ links, onNavigate }) {
-  return <section aria-label="Связи требований" className="space-y-3">
+function TraceabilityLinks({ registry, onNavigate }) {
+  const { forest, supplemental, links } = buildBabokTraceability(registry);
+  return <section aria-label="Связи требований" className="space-y-4">
     <h2 className="text-lg font-bold">Связи требований · {links.length}</h2>
-    {links.length > 0
-      ? <div className="rounded-xl border border-slate-200 bg-white divide-y divide-slate-200">{groupTraceabilityLinks(links).map((group) => <TraceabilityGroup key={group.sourceId || 'unknown-source'} group={group} onNavigate={onNavigate} />)}</div>
-      : <p className="text-sm text-slate-600">Отдельная схема связей не сформирована. Связанные записи доступны на карточках требований.</p>}
+    <p className="text-sm text-slate-600">Бизнес-результат → потребность роли → поведение и качество решения. Предположительные связи помечены; отдельные корни не означают вложенность.</p>
+    {links.length === 0 && <p className="text-sm text-slate-600">Отдельная схема связей не сформирована. Связанные записи доступны на карточках требований.</p>}
+    {forest.length > 0 && <ul aria-label="Иерархия требований" className="min-w-0 rounded-xl border border-slate-200 bg-white p-3 sm:p-4 space-y-3">{forest.map((node) => <TraceabilityNode key={node.record.id} node={node} registry={registry} onNavigate={onNavigate} />)}</ul>}
+    {supplemental.length > 0 && <section aria-label="Дополнительные связи" className="space-y-2">
+      <h3 className="text-base font-semibold text-slate-900">Ограничения и дополнительные связи</h3>
+      <p className="text-xs text-slate-600">Связи вне дерева и предположения для проверки. Ссылка без указанного типа связи не считается подтверждённой.</p>
+      <ul className="divide-y divide-slate-200 rounded-xl border border-slate-200 bg-white px-3 sm:px-4">{supplemental.map((link, index) => <li key={index} className="flex flex-wrap items-center gap-x-2 gap-y-1 py-3">
+        <RecordLinks ids={[link.from]} onNavigate={onNavigate} />
+        <span className="text-sm text-slate-600">{link.relation}</span>
+        <RecordLinks ids={[link.to]} onNavigate={onNavigate} />
+        <span className={`rounded px-2 py-1 text-xs ${link.status === 'Предполагается' ? 'bg-amber-50 text-amber-900' : 'bg-slate-100 text-slate-600'}`}>{link.status}</span>
+      </li>)}</ul>
+    </section>}
   </section>;
 }
 
@@ -62,7 +52,7 @@ export default function RegistryAnalysis({ registry, section, onNavigate, onDisc
   const analysis = registry.analysis;
   return <div className="space-y-4">
     {section === 'questions' && <ReviewQuestions registry={registry} onNavigate={onNavigate} onDiscuss={onDiscuss} readOnly={readOnly} />}
-    {section === 'links' && <TraceabilityLinks links={analysis.traceability} onNavigate={onNavigate} />}
+    {section === 'links' && <TraceabilityLinks registry={registry} onNavigate={onNavigate} />}
     {section === 'report' && <details className="rounded-xl border bg-white p-4"><summary className="cursor-pointer font-semibold text-sm p-1">Приложения: контекст, материалы и анализ</summary><div className="mt-4 space-y-4">
       {registry.summary?.conclusions?.length > 0 && <ul className="list-disc pl-5 text-sm">{registry.summary.conclusions.map((text, index) => <li key={index}>{text}</li>)}</ul>}
       <MaterialCoverage materials={registry.materials} scope={registry.scope} />

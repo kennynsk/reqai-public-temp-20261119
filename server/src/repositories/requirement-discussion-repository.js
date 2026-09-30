@@ -106,7 +106,7 @@ export class RequirementDiscussionRepository {
         JOIN ${this.schema}.requirement_discussions d ON d.id=m.discussion_id AND d.tenant_id=m.tenant_id
         WHERE m.tenant_id=$1 AND m.discussion_id=$2 AND ($3::text IS NULL OR d.owner_user_id=$3)
           AND ($4::timestamptz IS NULL OR m.created_at < $4::timestamptz)
-        ORDER BY m.created_at DESC,m.id DESC LIMIT $5`, [tenantId, discussionId, ownerUserId, cursor, parsedLimit + 1]);
+        ORDER BY m.created_at DESC,(m.role = 'user') ASC,m.id DESC LIMIT $5`, [tenantId, discussionId, ownerUserId, cursor, parsedLimit + 1]);
       const rows = result.rows.slice(0, parsedLimit).reverse();
       const nextCursor = result.rows.length > parsedLimit ? rows[0]?.created_at || null : null;
       return { items: rows.map(mapMessage), nextCursor };

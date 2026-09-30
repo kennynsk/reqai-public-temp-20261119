@@ -58,6 +58,21 @@ describe('review metadata', () => {
     });
   });
 
+  test('keeps confirmations when only the gap state or closure changes (resolve keeps the checklist)', () => {
+    const check = { state: 'incorporated', reason: '' };
+    const decisions = {
+      review: {
+        schemaVersion: 1,
+        gaps: { 'GAP-1': { state: 'answered', answer: 'Канал — сайт банка' } },
+        gapRequirements: { 'GAP-1': { 'FR-1': check, 'FR-2': check } },
+      },
+    };
+    const next = updateReviewMetadata(decisions, {
+      gaps: { 'GAP-1': { state: 'closed', closureKind: 'resolved', answer: 'Канал — сайт банка', reason: 'Проверены все связанные требования: FR-1, FR-2.' } },
+    });
+    expect(next.review.gapRequirements).toEqual({ 'GAP-1': { 'FR-1': check, 'FR-2': check } });
+  });
+
   test('invalidates only evidence that exists and is a no-op without a review', () => {
     const withoutReview = { BR: [] };
     expect(invalidateReviewEvidence(withoutReview)).toBe(withoutReview);
