@@ -117,3 +117,29 @@ test('shows a safe empty state when there are no questions', () => {
   render(<DraftContext.Provider value={null}><ReviewQuestions registry={{ analysis: { GAP: [], questions: [] }, materials: {} }} readOnly onNavigate={vi.fn()} /></DraftContext.Provider>);
   expect(screen.getByText('В этом списке нет пробелов для уточнения.')).toBeInTheDocument();
 });
+
+test('a partial AI clarification stays open despite completed requirement checks and explains what remains', () => {
+  const registry = makeRegistry();
+  registry.groups = { BR: [{ id: 'BR-1', text: 'Цель' }] };
+  const review = makeReview();
+  review.content = registry;
+  review.state.decisions.review.gaps['GAP-OPEN'] = { state: 'answered', answer: 'Частичный ответ' };
+  review.state.decisions.review.gapRequirements = { 'GAP-OPEN': { 'BR-1': { state: 'no-change', reason: 'Проверено' } } };
+  review.state.decisions.review.discussionProposals = {
+    'partial-001': { decision: 'accepted', clarification: { gapId: 'GAP-OPEN', answer: 'Частичный ответ', canResolve: false, remainingQuestions: ['За какой период измеряем цель?'] } },
+  };
+  const result = render(<DraftContext.Provider value={review}><ReviewQuestions registry={registry} /></DraftContext.Provider>);
+  const article = screen.getByText('GAP-OPEN · Открытый вопрос').closest('article');
+  expect(within(article).getByRole('status', { name: 'Статус проверки GAP-OPEN' })).toHaveTextContent('Осталось выяснить: За какой период измеряем цель?');
+  expect(within(article).getByRole('button', { name: 'Закрыть как решённый' })).toBeDisabled();
+  expect(within(article).getByRole('button', { name: 'Закрыть без изменения требований…' })).toBeEnabled();
+
+  review.state.decisions.review.gaps['GAP-OPEN'].stale = true;
+  result.rerender(<DraftContext.Provider value={{ ...review }}><ReviewQuestions registry={registry} /></DraftContext.Provider>);
+  expect(within(article).getByRole('status', { name: 'Статус проверки GAP-OPEN' })).toHaveTextContent('Нужна повторная проверка');
+  expect(within(article).getByRole('status', { name: 'Статус проверки GAP-OPEN' })).toHaveTextContent('За какой период измеряем цель?');
+
+  const amended = { ...review, state: { decisions: { review: { ...review.state.decisions.review, gaps: { ...review.state.decisions.review.gaps, 'GAP-OPEN': { state: 'answered', answer: 'Полный ответ: за квартал' } } } } } };
+  result.rerender(<DraftContext.Provider value={amended}><ReviewQuestions registry={registry} /></DraftContext.Provider>);
+  expect(within(article).getByRole('status', { name: 'Статус проверки GAP-OPEN' })).not.toHaveTextContent('Осталось выяснить');
+});

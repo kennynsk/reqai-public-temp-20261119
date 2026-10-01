@@ -52,7 +52,7 @@ export default function RequirementListWorkspace({
           const ready = requirement.quality === 'Готово';
           return <li key={requirement.id}><button type="button" aria-pressed={active} aria-controls="selected-requirement-detail" aria-label={`Выбрать ${requirement.id}: ${requirement.text}`} onClick={() => select(requirement.id)}
             className={`w-full min-w-0 rounded-xl border px-3 py-3 text-left focus-visible:ring-2 focus-visible:ring-indigo-500 ${active ? 'border-transparent bg-white shadow-sm ring-2 ring-indigo-600' : 'border-transparent hover:border-slate-200 hover:bg-slate-50'}`}>
-            <span className="flex flex-wrap items-start justify-between gap-2 text-xs font-semibold"><span className="text-slate-600">{requirement.id}</span><span className={ready ? 'text-emerald-700' : 'text-amber-800'}>{qualityLabels[requirement.quality] || 'Нужно уточнить'}</span></span>
+            <span className="flex flex-wrap items-start justify-between gap-2 text-xs font-semibold"><span className="text-slate-600">{requirement.id}</span><span className={ready ? 'text-emerald-700' : 'text-amber-800'}>{qualityLabels[requirement.quality] || 'Не определена'}</span></span>
             <span className="reqai-title-clamp mt-1 text-sm font-semibold leading-5 text-slate-900">{requirement.text}</span>
             <span className="mt-2 flex items-center gap-1.5 text-xs text-slate-500"><span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${babokTypeAccent(type).dot}`} />{columns.find(([key]) => key === type)?.[1]}</span>
             {drafts[`${type}:${requirement.id}`] && <span className="mt-1 block text-xs font-medium text-indigo-700">Редактируется</span>}

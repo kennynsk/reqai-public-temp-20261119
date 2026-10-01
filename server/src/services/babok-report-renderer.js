@@ -1,4 +1,5 @@
 import { collectBabokQualityIssues, validateBabokRegistry } from './babok-requirements-contract.js';
+import { gapStatus, remainingQuestions } from './gap-review-state.js';
 
 const REQUIREMENT_SECTIONS = Object.freeze([
   ['BR', '2. Бизнес-требования'],
@@ -55,12 +56,12 @@ function renderContext(registry) {
   )].join('\n');
 }
 
-function gapIdsFor(registry, record) {
+function gapIdsFor(registry, record, review = {}) {
   return registry.analysis.GAP.filter((gap) => gap.affectedIds.includes(record.id)
-    || [...(record.relatedIds || []), ...(record.relatedTo || [])].includes(gap.id)).map((gap) => gap.id);
+    || [...(record.relatedIds || []), ...(record.relatedTo || [])].includes(gap.id)).filter((gap) => review.gaps?.[gap.id]?.state !== 'closed').map((gap) => gap.id);
 }
 
-function renderRequirementSection(type, title, records, registry) {
+function renderRequirementSection(type, title, records, registry, review) {
   const headers = {
     BR: ['ID', 'Формулировка', 'Показатель успеха', 'Источник', 'Происхождение', 'Качество'],
     SR: ['ID', 'Роль', 'Формулировка', 'Связано с БТ', 'Источник', 'Происхождение', 'Качество'],
@@ -70,7 +71,7 @@ function renderRequirementSection(type, title, records, registry) {
     CON: ['ID', 'Обязательство', 'Источник и реквизиты', 'Область', 'Качество'],
   }[type];
   const rows = records.map((item) => {
-    const gaps = gapIdsFor(registry, item);
+    const gaps = gapIdsFor(registry, item, review);
     const quality = item.quality === 'Требует уточнения' && gaps.length ? `${item.quality} (${gaps.join(', ')})` : item.quality;
     if (type === 'BR') return [item.id, item.text, item.successIndicator, source(item.source, registry), item.provenance, quality];
     if (type === 'SR') return [item.id, item.role, item.text, item.relatedTo.join(', '), source(item.source, registry), item.provenance, quality];
@@ -155,13 +156,13 @@ export function buildBabokTraceability(registry) {
   return { forest, supplemental, links };
 }
 
-function renderTraceability(registry) {
+function renderTraceability(registry, review) {
   const { forest, supplemental } = buildBabokTraceability(registry);
   const lines = [];
   const renderNode = (node, prefix = '', branch = '', tail = true) => {
     const { record, incoming } = node;
     const id = record.id;
-    const gaps = gapIdsFor(registry, record);
+    const gaps = gapIdsFor(registry, record, review);
     const partialCoverage = /^(BR|SR)-/.test(id) && registry.analysis.GAP.some((gap) => gaps.includes(gap.id) && /scope|полнот|состав/i.test(`${gap.kind || ''} ${gap.text}`));
     const gapLabel = partialCoverage ? 'покрытие частичное' : record.quality === 'Требует уточнения' ? 'требует уточнения' : 'связанные пробелы';
     const coverage = gaps.length ? ` — ${gapLabel} (${gaps.join(', ')})` : '';
@@ -187,34 +188,34 @@ function renderTraceability(registry) {
   ].join('\n');
 }
 
-function renderAnalysis(registry) {
+function renderAnalysis(registry, review) {
   const { GAP, HYP, TERM } = registry.analysis;
   const records = [
-    ...GAP.map((item) => [item.id, 'GAP', item.text, item.affectedIds.join(', '), item.nextStep, source(item.source, registry)]),
-    ...HYP.map((item) => [item.id, 'HYP', item.text, item.affectedIds.join(', '), item.nextStep, source(item.source, registry)]),
-    ...TERM.map((item) => [item.id, 'TERM', `${item.term}: ${item.meaning || 'значение не определено'}`, item.affectedIds.join(', '), item.nextStep, source(item.source, registry)]),
+    ...GAP.map((item) => [item.id, 'GAP', item.text, item.affectedIds.join(', '), gapStatus(review, item.id), review.gaps?.[item.id]?.answer, review.gaps?.[item.id]?.reason || item.nextStep, source(item.source, registry)]),
+    ...HYP.map((item) => [item.id, 'HYP', item.text, item.affectedIds.join(', '), 'Гипотеза', '', item.nextStep, source(item.source, registry)]),
+    ...TERM.map((item) => [item.id, 'TERM', `${item.term}: ${item.meaning || 'значение не определено'}`, item.affectedIds.join(', '), 'Термин', '', item.nextStep, source(item.source, registry)]),
   ];
-  return ['## 10. Пробелы, гипотезы и термины', '', table(['ID', 'Вид', 'Суть', 'Затронутые ID', 'Следующий шаг', 'Источник'], records)].join('\n');
+  return ['## 10. Пробелы, гипотезы и термины', '', 'Суть пробела сохранена из исходного анализа. Статус, ответ и решение отражают текущую редакцию.', '', table(['ID', 'Вид', 'Исходный анализ', 'Затронутые ID', 'Статус', 'Ответ', 'Решение / следующий шаг', 'Источник'], records)].join('\n');
 }
 
-function renderQuestions(registry) {
+function renderQuestions(registry, review) {
   return ['## 11. Вопросы для уточнения', '', table(
-    ['Приоритет / GAP', 'Адресат', 'Вопрос'],
-    registry.analysis.questions.map((item) => [`${item.priority} / ${item.gapId}`, item.addressee, item.text]),
+    ['Приоритет / GAP', 'Адресат', 'Исходный вопрос', 'Статус', 'Ответ', 'Осталось выяснить'],
+    registry.analysis.questions.map((item) => [`${item.priority} / ${item.gapId}`, item.addressee, item.text, gapStatus(review, item.gapId), review.gaps?.[item.gapId]?.answer, review.gaps?.[item.gapId]?.state === 'closed' ? 'Вопрос закрыт' : remainingQuestions(review, item.gapId).join(' ') || 'См. решение / следующий шаг']),
   )].join('\n');
 }
 
-export function renderBabokReport(registry) {
+export function renderBabokReport(registry, { review = {} } = {}) {
   const value = validateBabokRegistry(registry);
   return [
     '# Отчёт о декомпозиции требований (BABOK v3)',
     renderSummary(value),
     ...(() => { const issues = collectBabokQualityIssues(value, { final: true }); return issues.length ? ['**Замечания к качеству — проверьте перед согласованием:**\n\n' + issues.map((issue) => `- ${issue.reason}`).join('\n')] : []; })(),
     renderContext(value),
-    ...REQUIREMENT_SECTIONS.map(([type, title]) => renderRequirementSection(type, title, value.groups[type], value)),
+    ...REQUIREMENT_SECTIONS.map(([type, title]) => renderRequirementSection(type, title, value.groups[type], value, review)),
     renderDelta(value),
-    renderTraceability(value),
-    renderAnalysis(value),
-    renderQuestions(value),
+    renderTraceability(value, review),
+    renderAnalysis(value, review),
+    renderQuestions(value, review),
   ].join('\n\n');
 }

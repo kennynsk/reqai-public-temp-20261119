@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { setTimeout as delay } from 'node:timers/promises';
 
 function responseFor(prompt) {
   if (prompt.includes('requirements-insights.v1') || prompt.includes('исслед') || prompt.includes('Research')) {
@@ -73,8 +74,9 @@ function responseFor(prompt) {
 export class MockLlmProvider {
   constructor({ delayMs = 250 } = {}) { this.delayMs = delayMs; }
 
-  async complete({ model, messages, requestId = randomUUID() }) {
-    if (this.delayMs) await new Promise((resolve) => setTimeout(resolve, this.delayMs));
+  async complete({ model, messages, signal, requestId = randomUUID() }) {
+    signal?.throwIfAborted();
+    if (this.delayMs) await delay(this.delayMs, undefined, { signal });
     const prompt = messages.map((message) => String(message.content || '')).join('\n');
     const text = responseFor(prompt);
     return {

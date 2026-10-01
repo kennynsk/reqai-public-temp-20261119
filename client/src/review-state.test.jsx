@@ -5,6 +5,29 @@ import { SessionContext } from './review-context.js';
 import { assembleReview, reviewReducer, rebaseReview, readReviewDraft, clearReviewDrafts, DRAFT_TTL, useReviewState } from './review-state.js';
 import { roomBookingRegistry } from './room-booking.fixture.js';
 
+test('assessment-only drafts and content updates preserve closed questions and answer checks', () => {
+  const content = roomBookingRegistry();
+  const decisions = { review: { schemaVersion: 1,
+    gaps: { 'GAP-001': { state: 'closed', answer: 'push', reason: 'Проверено', closureKind: 'resolved' } },
+    gapRequirements: { 'GAP-001': { 'BR-001': { state: 'no-change', reason: 'Бизнес-цель не меняется' } } },
+    completeness: { check: true }, acknowledgment: { confirm: true },
+  } };
+  const state = { content, decisions, drafts: {}, reservedIds: [] };
+  const draft = { group: 'BR', id: 'BR-001', text: content.groups.BR[0].text, initialText: content.groups.BR[0].text, fields: { quality: 'Готово' } };
+  const staged = reviewReducer(state, { type: 'field', key: 'BR:BR-001', value: draft });
+  expect(staged.decisions.review.gaps['GAP-001']).toEqual(decisions.review.gaps['GAP-001']);
+  expect(staged.decisions.review.gapRequirements).toEqual(decisions.review.gapRequirements);
+  expect(staged.decisions.review.acknowledgment.stale).toBe(true);
+  const next = structuredClone(content);
+  next.groups.BR[0].quality = 'Требует уточнения';
+  const applied = reviewReducer(staged, { type: 'content', value: next });
+  expect(applied.decisions.review.gaps['GAP-001'].state).toBe('closed');
+  expect(applied.decisions.review.gapRequirements['GAP-001']['BR-001'].state).toBe('no-change');
+  const wording = reviewReducer(state, { type: 'field', key: 'BR:BR-001', value: { ...draft, text: 'Другая цель' } });
+  expect(wording.decisions.review.gaps['GAP-001'].state).toBe('answered');
+  expect(wording.decisions.review.gapRequirements['GAP-001']['BR-001'].state).toBe('pending');
+});
+
 test('rebase merges independent GAP answers and omission entries without carrying approval', () => {
   const content = roomBookingRegistry();
   const base = { review: { schemaVersion: 1, gaps: {}, omissions: [] } };
@@ -15,6 +38,22 @@ test('rebase merges independent GAP answers and omission entries without carryin
   expect(result.state.decisions.review.omissions).toHaveLength(2);
   expect(result.state.decisions.review.completeness.stale).toBe(true);
   expect(remote.review.completeness.stale).toBe(false);
+});
+
+test('rebase preserves applied AI wording and answers but retires an unsaved receipt from the old base', () => {
+  const base = roomBookingRegistry();
+  const content = structuredClone(base);
+  content.groups.FR[0].text = 'Принятое уточнение';
+  const gap = base.analysis.GAP[0];
+  const id = 'proposal-old-001';
+  const local = { review: { schemaVersion: 1, gaps: { [gap.id]: { state: 'closed', answer: 'Подтверждено', reason: 'Проверено', closureKind: 'resolved' } }, gapRequirements: { [gap.id]: { 'FR-001': { state: 'incorporated', reason: 'Учтено' } } }, discussionProposals: { [id]: { baseVersionId: 'old-base', decision: 'accepted', changes: [{ targetId: 'FR-001', before: { text: base.groups.FR[0].text }, after: { text: 'Принятое уточнение' } }], clarification: { gapId: gap.id } } } } };
+  const next = rebaseReview({ content, decisions: local, drafts: {} }, base, base, {}, {});
+  expect(next.transferredProposalCount).toBe(1);
+  expect(next.state.content.groups.FR[0].text).toBe('Принятое уточнение');
+  expect(next.state.decisions.review.discussionProposals).not.toHaveProperty(id);
+  expect(next.state.decisions.review.gaps[gap.id]).toMatchObject({ state: 'answered', answer: 'Подтверждено', closureKind: null });
+  expect(next.state.decisions.review.gapRequirements[gap.id]['FR-001']).toMatchObject({ state: 'pending', stale: true });
+  expect(local.review.discussionProposals[id].baseVersionId).toBe('old-base');
 });
 
 test('editing one requirement invalidates only its GAP confirmation basis', () => {

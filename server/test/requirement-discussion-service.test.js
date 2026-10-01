@@ -115,7 +115,7 @@ test('cancellation prevents a late provider response from becoming an applicable
   const versionService = { get: async () => ({ versionId: 'v1', sourceJobId: 'job-1', registry, decisions: {} }), list: async () => ({ items: [{ versionId: 'v1' }] }) };
   const jobRepository = { findVisibleById: async () => ({ id: 'job-1' }) };
   let release;
-  const generator = ({ signal }) => new Promise((resolve, reject) => { release = () => resolve({ text: JSON.stringify({ explanation: 'Опоздавший ответ', changes: [] }) }); signal.addEventListener('abort', () => { const error = new Error('aborted'); error.name = 'AbortError'; reject(error); }, { once: true }); });
+  const generator = () => new Promise((resolve) => { release = () => resolve({ text: JSON.stringify({ explanation: 'Опоздавший ответ', changes: [] }) }); });
   const service = createRequirementDiscussionService({ repository, jobRepository, versionService, generator });
   const pending = service.generate({ auth: serviceAuth, jobId: 'job-1', anchorId: 'GAP-002', body: { message: 'Проверка отмены', clientMessageId: 'client-0002', baseVersionId: 'v1' } });
   while (!repository.latestAttempt({ discussionId: 'd-1' })) await new Promise((resolve) => setTimeout(resolve, 0));
@@ -239,6 +239,33 @@ test('plain prose remains readable without inventing a change package', async ()
   const turn = await service.generate({ auth: serviceAuth, jobId: 'job-1', anchorId: 'GAP-002', body: { message: 'Что уточнить?', clientMessageId: 'plain-turn-001', baseVersionId: 'v1' } });
   assert.equal(turn.assistantMessage.text, 'Какой канал получения статуса согласован?');
   assert.equal(turn.proposal, null);
+});
+
+test('rejected proposals preserve their error code and explain the failed check without claiming an applicable edit', async () => {
+  const cases = [
+    { change: { targetId: 'FR-999', after: { text: 'Новый статус' } }, reason: /нет среди доступных требований/ },
+    { change: { targetId: 'FR-005', after: { quality: 'Готово' } }, reason: /поле, которое нельзя редактировать/ },
+    { change: { targetId: 'FR-005', before: { text: 'Другая редакция' }, after: { text: 'Новый статус' } }, reason: /не совпадают с текущими требованиями/ },
+    { change: { targetId: 'FR-005', after: { text: 'Новый статус' } }, clarification: { gapId: 'GAP-002', answer: 'Push', remainingQuestions: ['Срок?'], checks: [{ requirementId: 'FR-005', state: 'no-change', reason: 'Правка не нужна' }] }, reason: /не совпадают с предложенными правками/ },
+  ];
+  for (const { change, clarification, reason } of cases) {
+    const repository = new MemoryDiscussionRepository();
+    const service = createRequirementDiscussionService({ repository,
+      jobRepository: { findVisibleById: async () => ({ id: 'job-1' }) },
+      versionService: { get: async () => ({ versionId: 'v1', sourceJobId: 'job-1', registry, decisions: {} }) },
+      generator: async () => ({ text: JSON.stringify({ explanation: 'Правка готова, вопрос закроется', changes: [change], ...(clarification ? { clarification } : {}) }) }),
+    });
+    const turn = await service.generate({ auth: serviceAuth, jobId: 'job-1', anchorId: 'GAP-002', body: { message: 'Подготовь уточнение', clientMessageId: 'diagnostic-turn-001', baseVersionId: 'v1' } });
+    assert.equal(turn.proposal, null);
+    assert.equal(repository.proposals.size, 0);
+    assert.equal(turn.attempt.errorCode, change.before ? 'DISCUSSION_PROPOSAL_STALE' : 'DISCUSSION_PROPOSAL_INVALID');
+    assert.match(turn.assistantMessage.text, reason);
+    assert.match(turn.assistantMessage.text, /Изменения не применены/);
+    assert.doesNotMatch(turn.assistantMessage.text, /Правка готова|вопрос закроется|"changes"/);
+    const reloaded = await service.get({ auth: serviceAuth, jobId: 'job-1', anchorId: 'GAP-002' });
+    assert.match(reloaded.messages.at(-1).text, reason);
+    assert.equal(reloaded.attempt.errorCode, turn.attempt.errorCode);
+  }
 });
 
 test('cancelling during syntax repair prevents its late result from becoming a proposal', async () => {

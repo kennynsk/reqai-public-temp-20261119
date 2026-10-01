@@ -3,6 +3,19 @@ import test from 'node:test';
 
 import { GigaChatProvider } from '../src/provider/gigachat-provider.js';
 
+test('GigaChat adapter forwards caller cancellation to clients that support an abort signal', async () => {
+  const controller = new AbortController();
+  let received;
+  const provider = new GigaChatProvider({ chat: async ({ signal }) => new Promise((_resolve, reject) => {
+    received = signal;
+    signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+  }) });
+  const pending = provider.complete({ model: 'test', messages: [], timeoutMs: 10000, signal: controller.signal });
+  controller.abort();
+  assert.equal(received.aborted, true);
+  await assert.rejects(pending, { name: 'AbortError' });
+});
+
 test('GigaChat provider forwards the bounded output-token budget', async () => {
   let request;
   const provider = new GigaChatProvider({

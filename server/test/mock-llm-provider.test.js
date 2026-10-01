@@ -4,6 +4,13 @@ import test from 'node:test';
 import { MockLlmProvider } from '../src/provider/mock-llm-provider.js';
 import { parseBabokOutput } from '../src/services/babok-requirements-contract.js';
 
+test('mock delay honours cancellation before producing a result', async () => {
+  const controller = new AbortController();
+  const pending = new MockLlmProvider({ delayMs: 10000 }).complete({ model: 'test', messages: [], signal: controller.signal });
+  controller.abort();
+  await assert.rejects(pending, { name: 'AbortError' });
+});
+
 test('mock provider emits deterministic valid decomposition JSON', async () => {
   const provider = new MockLlmProvider({ delayMs: 0 });
   const response = await provider.complete({ model: 'GC-Max', messages: [{ role: 'user', content: 'Разложи бизнес-задачу на три типа требований' }] });

@@ -243,7 +243,7 @@ describe('AsyncJobWorkspace presentational branches', () => {
     expect(screen.getByText('Изменено', { exact: true })).toBeInTheDocument();
     expect(screen.getByText('AI-предложение')).toBeInTheDocument();
     expect(screen.getByText('решение сохранено')).toBeInTheDocument();
-    fireEvent.click(screen.getByText('Источник, качество и связи'));
+    fireEvent.click(screen.getByText('Источник и связи'));
     expect(screen.getByText('Производительность')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Действия для NFR-001' }));
     fireEvent.click(screen.getByRole('button', { name: 'Редактировать' }));
@@ -263,12 +263,12 @@ describe('AsyncJobWorkspace presentational branches', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('Заполните поле «Категория».');
     cleanup();
     render(<ReviewHarness content={{ groups: { BR: [babokRecord('BR', { id: 'BR-002', text: 'Исходная цель', quality: 'Неизвестное качество' })] }, context: [], analysis: { GAP: [], HYP: [], TERM: [] } }}><BabokRequirementCard type="BR" requirement={{ id: 'BR-002', quality: 'Неизвестное качество' }} materials={{}} onEdit={onEdit} onDelete={vi.fn()} onDraftChange={vi.fn()} /></ReviewHarness>);
-    expect(screen.getByText('Нужно уточнить')).toBeInTheDocument();
+    expect(screen.getByText('Оценка качества: Не определена')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Действия для BR-002' }));
     fireEvent.click(screen.getByRole('button', { name: 'Редактировать' }));
-    fireEvent.click(screen.getByText('Источник, качество и связи'));
+    fireEvent.click(screen.getByText('Источник и связи'));
     expect(screen.getByText('Происхождение:').parentElement).toHaveTextContent('—');
-    expect(screen.getByText('Качество:').parentElement).toHaveTextContent('Неизвестное качество');
+    expect(screen.queryByText('Оценка качества:')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Отмена' }));
   });
 
@@ -445,7 +445,11 @@ describe('AsyncJobWorkspace presentational branches', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /^Выбрать FR-001:/ }));
     const functional = document.getElementById('record-FR-001');
-    fireEvent.click(within(functional).getAllByRole('link', { name: 'BR-001' })[0]);
+    fireEvent.click(within(functional).getByRole('button', { name: 'BR-001', exact: true }));
+    expect(await screen.findByRole('dialog', { name: /Бизнес-требование · BR-001/ })).toHaveTextContent('Сократить конфликты бронирования.');
+    fireEvent.click(screen.getByRole('button', { name: 'Закрыть предпросмотр требования' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Выбрать BR-001:/ }));
+    fireEvent.click(within(document.getElementById('record-BR-001')).getByRole('link', { name: 'BR-001' }));
     await waitFor(() => expect(document.getElementById('record-BR-001')).toHaveFocus());
     fireEvent.click(screen.getByRole('button', { name: 'Все типы' }));
     const clarification = screen.getByRole('checkbox', { name: 'Нужно уточнить' });
@@ -490,7 +494,7 @@ describe('AsyncJobWorkspace presentational branches', () => {
     expect(screen.getByRole('heading', { name: /Пробелы для уточнения/ })).toBeInTheDocument();
   });
 
-  test('uses previews only for requirement references in questions and traceability', async () => {
+  test('uses previews for requirement references in questions and traceability', async () => {
     const registry = roomBookingRegistry();
     registry.analysis.traceability = [{ from: 'BR-001', to: 'FR-001', relation: 'Поддерживает', status: 'Полная' }];
     render(<BabokRegistryResult value={registry} latestVersion={{ registry, decisions: {} }} readOnly />);

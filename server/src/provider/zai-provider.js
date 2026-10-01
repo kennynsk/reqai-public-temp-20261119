@@ -33,12 +33,13 @@ export class ZaiProvider {
     this.fetchImpl = fetchImpl;
   }
 
-  async complete({ model, messages, temperature, maxOutputTokens, thinking, reasoning, timeoutMs, requestId = randomUUID() }) {
+  async complete({ model, messages, temperature, maxOutputTokens, thinking, reasoning, timeoutMs, signal, requestId = randomUUID() }) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     const dispatcher = new Agent({ headersTimeout: timeoutMs, bodyTimeout: timeoutMs });
     const effectiveReasoning = resolveReasoning({ model, thinking, reasoning });
     try {
+      signal?.throwIfAborted();
       const response = await this.fetchImpl(`${this.baseUrl}/chat/completions`, {
         method: 'POST',
         headers: {
@@ -55,7 +56,7 @@ export class ZaiProvider {
           ...(effectiveReasoning.reasoningEffort ? { reasoning_effort: effectiveReasoning.reasoningEffort } : {}),
           stream: false,
         }),
-        signal: controller.signal,
+        signal: signal ? AbortSignal.any([signal, controller.signal]) : controller.signal,
         dispatcher,
       });
       const providerRequestId = response.headers?.get?.('x-request-id') || response.headers?.get?.('request-id') || requestId;
@@ -76,10 +77,11 @@ export class ZaiProvider {
         },
       };
     } catch (error) {
+      if (signal?.aborted) throw signal.reason;
       throw classifyProviderError(error, { requestId });
     } finally {
       clearTimeout(timer);
-      await dispatcher.close().catch(() => {});
+      await (signal?.aborted ? dispatcher.destroy() : dispatcher.close()).catch(() => {});
     }
   }
 }

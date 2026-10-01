@@ -1,5 +1,6 @@
 import { clarificationIsCurrent } from './gap-clarification.js';
 import RequirementClarifications from './RequirementClarifications.jsx';
+import RequirementQuality from './RequirementQuality.jsx';
 import RequirementComposerMenu from './RequirementComposerMenu.jsx';
 import RequirementsReviewHeader from './RequirementsReviewHeader.jsx';
 import RequirementTypeFilter from './RequirementTypeFilter.jsx';
@@ -60,6 +61,7 @@ import { ResultExportAction } from './ResultExportContext.jsx';
 import { ResultExportContext } from './result-export-context.js';
 import { effectiveReasoning, readNextSettings, reasoningLevels } from './ai-settings.js';
 import ReviewDialog from './ReviewDialog.jsx';
+import ReviewConflict from './ReviewConflict.jsx';
 import { readAccessToken } from './api/auth-session.js';
 import { CoverageWarning, SourceEvidence } from './SourceEvidence.jsx';
 import { STRUCTURED_FIELDS, QUALITY_OPTIONS } from './review-fields.js';
@@ -193,6 +195,8 @@ function primaryStatus(jobOrResult) {
 }
 
 function userFacingError(cause) {
+  if (cause?.code === 'REVIEW_GAP_ANSWERS_REQUIRED') return 'Уточнение пока частичное. Дополните ответ на оставшиеся вопросы или снимите вопрос с рассмотрения с обоснованием.';
+  if (cause?.code === 'REVIEW_GAP_CHECKLIST_REQUIRED') return 'Перед закрытием вопроса повторно проверьте все связанные требования.';
   if (cause?.code === 'USER_ACTIVE_JOB_LIMIT') return 'Другая задача уже выполняется. Дождитесь её завершения и попробуйте снова.';
   if (cause?.status === 401 || cause?.status === 403) return 'Нет доступа. Проверьте вход и права пользователя.';
   if (cause?.status === 413) return 'Материал превышает допустимый размер.';
@@ -475,7 +479,7 @@ function EditableRequirementCard({ type, requirement, onEdit, onDelete, onDraftC
   );
 }
 
-function BabokRequirementCard({ type, requirement, onEdit, onDelete, onDraftChange, readOnly = false, materials, manuallyEdited = false, onNavigate, onDiscuss, focused = false }) {
+function BabokRequirementCard({ type, requirement, requirementIndex, onEdit, onDelete, onDraftChange, readOnly = false, materials, manuallyEdited = false, onNavigate, onDiscuss, focused = false }) {
   const field = useDraftField({ group: type, id: requirement.id, text: requirement.text || '' });
   const [localEditing, setLocalEditing] = useState(false);
   const [localText, setLocalText] = useState(requirement.text || '');
@@ -486,6 +490,15 @@ function BabokRequirementCard({ type, requirement, onEdit, onDelete, onDraftChan
   const details = babokRecordDetails(type, requirement).filter(([label]) => label !== 'Связанные записи');
   const source = requirement.source;
   const [fieldError, setFieldError] = useState('');
+  const qualitySelectRef = useRef(null);
+  const focusQualityRef = useRef(false);
+  const clarificationDetailsRef = useRef(null);
+  useEffect(() => {
+    if (editing && focusQualityRef.current) {
+      qualitySelectRef.current?.focus();
+      focusQualityRef.current = false;
+    }
+  }, [editing]);
 
   function save() {
     if (!text.trim()) return;
@@ -509,8 +522,8 @@ function BabokRequirementCard({ type, requirement, onEdit, onDelete, onDraftChan
         <div className="flex items-center gap-2 flex-wrap">
           <RecordLinks ids={[requirement.id]} onNavigate={onNavigate} />
           {(manuallyEdited || requirement.manuallyEdited) && <span className="text-xs text-slate-600">Изменено</span>}
-          {focused && requirement.quality === 'Готово' && <span className="text-xs font-semibold text-emerald-700">Готово</span>}
-          {requirement.quality !== 'Готово' && <span className="text-xs rounded bg-amber-50 px-2 py-1 text-amber-800">{BABOK_QUALITY_LABELS[requirement.quality] || 'Нужно уточнить'}</span>}
+          {focused && requirement.quality === 'Готово' && <span className="text-xs font-semibold text-emerald-700">Оценка качества: Готово</span>}
+          {requirement.quality !== 'Готово' && <span title="Оценка формулировки требования. Основания и следующий шаг приведены ниже." className="text-xs rounded bg-amber-50 px-2 py-1 text-amber-800">Оценка качества: {BABOK_QUALITY_LABELS[requirement.quality] || 'Не определена'}</span>}
           {requirement.fromResearch && <span className="inline-flex items-center gap-1 text-xs font-bold text-indigo-600"><Sparkles className="w-3.5 h-3.5" />AI-предложение</span>}
           {requirement.researchEnhancementKey && <span className="text-[11px] text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">решение сохранено</span>}
         </div>
@@ -531,7 +544,7 @@ function BabokRequirementCard({ type, requirement, onEdit, onDelete, onDraftChan
           {fieldError && <p role="alert" className="text-sm text-red-700">{fieldError}</p>}
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
             {(STRUCTURED_FIELDS[type] || []).map(([name, label, required]) => <label key={name} className="text-xs font-semibold text-slate-600">{label}{required ? ' *' : ''}<input data-review-field={`${requirement.id}:${name}`} aria-label={`${label} ${requirement.id}`} value={(Object.hasOwn(field.draft?.fields || {}, name) ? field.draft.fields[name] : requirement[name]) ?? ''} onChange={(event) => field.changeField(name, event.target.value || (required ? '' : null))} className="block w-full mt-1 rounded-lg border p-2 text-sm font-normal" /></label>)}
-            <label className="text-xs font-semibold text-slate-600">Качество<select aria-label={`Качество ${requirement.id}`} value={field.draft?.fields?.quality ?? requirement.quality} onChange={(event) => field.changeField('quality', event.target.value)} className="block w-full mt-1 rounded-lg border p-2 text-sm font-normal">{QUALITY_OPTIONS.map((quality) => <option key={quality}>{quality}</option>)}</select></label>
+            <label className="text-xs font-semibold text-slate-600">Оценка качества<select ref={qualitySelectRef} aria-label={`Качество ${requirement.id}`} value={field.draft?.fields?.quality ?? requirement.quality} onChange={(event) => field.changeField('quality', event.target.value)} className="block w-full mt-1 rounded-lg border p-2 text-sm font-normal">{QUALITY_OPTIONS.map((quality) => <option key={quality}>{quality}</option>)}</select></label>
           </div>
           <details className="mt-3 text-sm"><summary className="cursor-pointer p-2">Редактировать связи</summary><div className="flex flex-wrap gap-3 p-2">{field.relatedOptions.map((id) => { const name = type === 'BR' ? 'relatedIds' : 'relatedTo'; const selected = field.draft?.fields?.[name] || requirement[name] || []; return <label key={id} className="inline-flex gap-2 items-center p-1"><input type="checkbox" checked={selected.includes(id)} onChange={(event) => field.changeField(name, event.target.checked ? [...selected, id] : selected.filter((value) => value !== id))} />{id}</label>; })}</div></details>
           <p className="text-xs text-slate-500 mt-2">Правки попадут в черновик. Затем сохраните изменения общей кнопкой вверху.</p>
@@ -541,17 +554,25 @@ function BabokRequirementCard({ type, requirement, onEdit, onDelete, onDraftChan
           </div>
         </div>
       ) : focused ? <h2 className="text-lg font-semibold leading-relaxed text-slate-900 sm:text-xl">{requirement.text}</h2> : <p className="text-[15px] text-slate-700 leading-7 w-full">{requirement.text}</p>}
-      <RequirementClarifications requirement={requirement} editing={editing} readOnly={readOnly} onNavigate={onNavigate} onDiscuss={focused && !editing ? onDiscuss : undefined} />
+      {!editing && <RequirementQuality type={type} requirement={requirement} readOnly={readOnly} onReview={() => { focusQualityRef.current = true; setEditing(true); }} onShowQuestions={() => {
+        const details = clarificationDetailsRef.current;
+        if (!details) return;
+        details.open = true;
+        details.querySelector('summary')?.focus();
+        details.scrollIntoView?.({ block: 'nearest', behavior: 'auto' });
+      }} />}
+      <RequirementClarifications requirement={requirement} editing={editing} readOnly={readOnly} onNavigate={onNavigate} onDiscuss={focused && !editing ? onDiscuss : undefined} detailsRef={clarificationDetailsRef} />
       <details open={focused || undefined} className="mt-3 rounded-lg border border-slate-100 bg-slate-50/70 group/evidence">
         <summary className="cursor-pointer list-none px-3 py-2 text-xs font-semibold text-slate-600 flex items-center justify-between gap-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">
-          <span>Источник, качество и связи</span><ChevronDown className="w-3.5 h-3.5 group-open/evidence:hidden" /><ChevronUp className="w-3.5 h-3.5 hidden group-open/evidence:block" />
+          <span>Источник и связи</span><ChevronDown className="w-3.5 h-3.5 group-open/evidence:hidden" /><ChevronUp className="w-3.5 h-3.5 hidden group-open/evidence:block" />
         </summary>
         <div className="border-t border-slate-100 px-3 py-3 space-y-2 text-xs text-slate-600">
-          <RecordLinks ids={requirement.relatedIds || requirement.relatedTo} onNavigate={onNavigate} />
+          <RequirementPreviewProvider index={requirementIndex}>
+            <RecordLinks ids={requirement.relatedIds || requirement.relatedTo} onNavigate={onNavigate} previewRequirementsOnly />
+          </RequirementPreviewProvider>
           {details.map(([label, value]) => <p key={label}><span className="font-semibold text-slate-500">{label}:</span> {value}</p>)}
           <SourceEvidence source={source} materials={materials} />
           <p><span className="font-semibold text-slate-500">Происхождение:</span> {BABOK_PROVENANCE_LABELS[requirement.provenance] || requirement.provenance || '—'}</p>
-          <p><span className="font-semibold text-slate-500">Качество:</span> {BABOK_QUALITY_LABELS[requirement.quality] || requirement.quality || '—'}</p>
         </div>
       </details>
     </article>
@@ -842,7 +863,7 @@ function BabokRegistryResult({ value, latestVersion, onSave, onStartResearch, on
       <div className="rounded-xl border border-slate-200 bg-white p-4 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex items-center gap-3 min-w-0">
           {hasSavedVersion && !hasUnsavedChanges && <span className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0"><Check className="w-4 h-4" /></span>}
-          <div className="min-w-0"><h1 className="text-base font-semibold text-slate-900">{title || (finalMode ? 'Финальная версия требований' : 'Проверка требований')}</h1><p id="babok-save-status" role="status" className={`text-xs mt-0.5 ${hasSavedVersion && !hasUnsavedChanges ? 'text-emerald-700' : 'text-slate-600'}`}>{statusText}</p>{finalMode && <p className="mt-1 text-xs text-slate-600">Готово требований: {BABOK_REQUIREMENT_TYPES.flatMap((type) => registry.groups[type]).filter((record) => record.quality === 'Готово').length} из {BABOK_REQUIREMENT_TYPES.flatMap((type) => registry.groups[type]).length}</p>}</div>
+          <div className="min-w-0"><h1 className="text-base font-semibold text-slate-900">{title || (finalMode ? 'Финальная версия требований' : 'Проверка требований')}</h1><p id="babok-save-status" role="status" className={`text-xs mt-0.5 ${hasSavedVersion && !hasUnsavedChanges ? 'text-emerald-700' : 'text-slate-600'}`}>{statusText}</p>{finalMode && <p className="mt-1 text-xs text-slate-600">По оценке качества готово: {BABOK_REQUIREMENT_TYPES.flatMap((type) => registry.groups[type]).filter((record) => record.quality === 'Готово').length} из {BABOK_REQUIREMENT_TYPES.flatMap((type) => registry.groups[type]).length}</p>}</div>
         </div>
         <div className="flex flex-wrap items-center gap-2 lg:justify-end">
           {onBack && <button onClick={onBack} className="h-10 shrink-0 whitespace-nowrap px-4 py-2 border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 hover:bg-slate-50 flex items-center justify-center gap-2"><ArrowLeft className="w-4 h-4" />К результатам AI-исследования</button>}
@@ -873,14 +894,14 @@ function BabokRegistryResult({ value, latestVersion, onSave, onStartResearch, on
         composer={!readOnly && composerType && <section id={`req-type-${composerType}`} aria-label={`Добавление: ${composerType}`} className="rounded-xl border border-slate-200 bg-white p-3">
           <BabokAddRequirementForm key={composerType} type={composerType} categoryLabel={BABOK_REQUIREMENT_COLUMNS.find(([type]) => type === composerType)?.[1]} onAdd={(text) => addRequirement(composerType, text)} onDraftChange={(dirty) => setDraftDirty(`${composerType}:new`, dirty)} />
         </section>}
-        renderDetail={({ type, requirement }) => <BabokRequirementCard key={requirement.id} focused readOnly={readOnly} type={type} requirement={requirement} materials={registry.materials}
+        renderDetail={({ type, requirement }) => <BabokRequirementCard key={requirement.id} focused readOnly={readOnly} type={type} requirement={requirement} requirementIndex={requirementIndex} materials={registry.materials}
           onNavigate={navigateRecord} onDiscuss={!readOnly && jobId && discussionEnabled ? openDiscussion : undefined}
           manuallyEdited={editedRecordIds.has(requirement.id) || latestVersion?.revision?.manualDecisionMetadata?.editedRecordIds?.includes(requirement.id)}
           onEdit={(text, fields) => editRequirement(type, requirement.id, text, fields)} onDelete={() => deleteRequirement(type, requirement.id)}
           onDraftChange={(dirty) => setDraftDirty(`${type}:${requirement.id}`, dirty)} />}
       />}
       </div>
-      {reviewSection === 'report' && <Suspense fallback={<p role="status">Загрузка отчёта…</p>}><BabokSkillReport registry={registry} /></Suspense>}
+      {reviewSection === 'report' && <Suspense fallback={<p role="status">Загрузка отчёта…</p>}><BabokSkillReport registry={registry} review={review.state.decisions.review} /></Suspense>}
       {reviewSection !== 'requirements' && (reviewSection === 'questions' || reviewSection === 'links'
         ? <RequirementPreviewProvider index={requirementIndex}><RegistryAnalysis registry={registry} section={reviewSection} onNavigate={navigateRecord} onDiscuss={!readOnly && jobId && discussionEnabled ? openDiscussion : undefined} readOnly={readOnly} /></RequirementPreviewProvider>
         : <RegistryAnalysis registry={registry} section={reviewSection} onNavigate={navigateRecord} onDiscuss={!readOnly && jobId && discussionEnabled ? openDiscussion : undefined} readOnly={readOnly} />)}
@@ -2307,7 +2328,7 @@ export default function AsyncJobWorkspace() {
     <div className="reqai-workspace min-h-screen bg-[var(--reqai-canvas)]">
       {finalReviewPrompt && <ReviewDialog label="Открытые вопросы перед финализацией" onClose={() => { finalReviewPrompt.resolve(false); setFinalReviewPrompt(null); }}><h2 className="font-bold text-lg">В документе остаются вопросы</h2><p className="text-sm my-3">Сохранение финальной версии не означает, что все требования согласованы. Подтвердите, что сохраняете перечисленные вопросы открытыми. Они войдут в экспорт.</p><ul className="space-y-2">{finalReviewPrompt.issues.map((issue) => <li key={issue.id} className="rounded-lg border border-amber-200 p-3 text-sm">{issue.id}: {issue.text}</li>)}</ul><div className="flex gap-2 mt-4 flex-wrap"><button onClick={() => { finalReviewPrompt.resolve(false); setFinalReviewPrompt(null); }} className="p-3 rounded-lg border">Вернуться к проверке</button><button onClick={() => { finalReviewPrompt.resolve(true); setFinalReviewPrompt(null); }} className="p-3 rounded-lg bg-indigo-600 text-white">Сохранить с открытыми вопросами</button></div></ReviewDialog>}
       {pendingNavigation && !finalReviewPrompt && <UnsavedNavigationDialog busy={versionBusy} onSave={() => resolveNavigation(true)} onDiscard={() => resolveNavigation(false)} onStay={() => setPendingNavigation(null)} />}
-      {rebasePreview && <ReviewDialog label="Сравнение версий" onClose={() => setRebasePreview(null)}><h2 className="font-bold text-lg">Сравните правки с новой версией</h2><p>Перенос применит перечисленные локальные изменения поверх новой базы. Проверьте конфликты перед подтверждением.</p>{rebasePreview.changes.map((change, index) => <article key={index} className="my-3 border rounded-lg p-3"><h3>{change.id} · {change.operation}</h3><p>На сервере: {change.remote || 'Нет записи'}</p><p>Моя правка: {change.local || 'Удалить'}</p></article>)}<div className="flex flex-wrap gap-3"><button onClick={() => setRebasePreview(null)} className="p-3 border rounded-lg">Остаться с черновиком</button><button onClick={() => applyRemoteReview(true)} className="p-3 rounded-lg bg-indigo-600 text-white">Перенести мои правки</button><button onClick={() => applyRemoteReview(false)} className="p-3 text-red-700">Отбросить мои правки и загрузить</button></div></ReviewDialog>}
+      {rebasePreview && <ReviewDialog label="Сравнение версий" onClose={() => setRebasePreview(null)}><ReviewConflict preview={rebasePreview} onClose={() => setRebasePreview(null)} onApply={applyRemoteReview} /></ReviewDialog>}
       <nav className="bg-white/95 backdrop-blur border-b border-[var(--reqai-line)] sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4">
           <div className="flex items-center min-h-16 gap-3 sm:gap-6">

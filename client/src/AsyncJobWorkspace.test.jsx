@@ -1093,7 +1093,7 @@ test('reviews a BABOK registry by type, preserves evidence and saves a complete 
   expect(screen.getByRole('button', { name: /^Выбрать FR-001:/ })).toBeInTheDocument();
   const business = document.getElementById('record-BR-001');
   expect(within(business).getByText('Извлечено из источника')).toBeInTheDocument();
-  expect(within(business).getAllByText('Готово').length).toBeGreaterThan(0);
+  expect(within(business).getAllByText('Оценка качества: Готово')).toHaveLength(1);
 
   fireEvent.click(within(business).getByRole('button', { name: 'Действия для BR-001' }));
   fireEvent.click(within(business).getByRole('button', { name: 'Редактировать' }));

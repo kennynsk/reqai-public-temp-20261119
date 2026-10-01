@@ -27,6 +27,18 @@ test('HTML and Markdown escape executable markup and legacy documents remain rea
   assert.match(html, /@media print/);
   assert.ok(!documentMarkdown(model).includes('[link](javascript:'));
 });
+
+test('all export formats retain the current answered status and unresolved questions of a partial clarification', async () => {
+  const review = structuredClone(version.decisions.review);
+  review.discussionProposals = { 'partial-001': { decision: 'accepted', clarification: { gapId: 'GAP-001', answer: review.gaps['GAP-001'].answer, canResolve: false, remainingQuestions: ['За какой период проверяем?'] } } };
+  const model = requirementsDocument({ ...version, decisions: { review } });
+  const docx = await JSZip.loadAsync(await documentDocx(model));
+  for (const text of [documentMarkdown(model), documentHtml(model), await docx.file('word/document.xml').async('string')]) {
+    assert.ok(text.includes('Дан ответ · ещё открыт'));
+    assert.ok(text.includes('Осталось выяснить: За какой период проверяем?'));
+    assert.ok(text.includes('Оценка качества требования задаётся отдельно'));
+  }
+});
 test('DOCX contains long Cyrillic text, real headings and explicit page geometry', async () => {
   const model = requirementsDocument(version);
   const longText = 'Длинное требование с кириллицей и переносами. '.repeat(250);

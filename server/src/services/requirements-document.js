@@ -1,4 +1,5 @@
 import { safeCitationUrl } from '../domain/research-evidence.js';
+import { gapStatus, remainingQuestions } from './gap-review-state.js';
 
 const types = { BR: 'Бизнес-требования', SR: 'Требования заинтересованных сторон', FR: 'Функциональные требования', NFR: 'Нефункциональные требования', TR: 'Требования перехода', CON: 'Требования соответствия', business: 'Бизнес-требования', functional: 'Функциональные требования', nonfunctional: 'Нефункциональные требования' };
 const fields = { successIndicator: 'Критерий успеха', role: 'Роль', category: 'Категория', scope: 'Область', verificationMethod: 'Метод проверки', completionCriterion: 'Критерий завершения', obligation: 'Обязательство', quality: 'Качество', relatedTo: 'Связанные требования', relatedIds: 'Связанные требования' };
@@ -15,6 +16,7 @@ export function requirementsDocument(version, title = 'Требования') {
   const versionLabel = `Редакция от ${date(version.createdAt)}`;
   paragraph(versionLabel);
   paragraph('Сохранённый документ. Сохранение не означает согласование всех требований или подтверждение полноты.');
+  paragraph('Оценка качества требования задаётся отдельно от закрытия вопросов. Описания пробелов и исходные вопросы сохранены как история анализа; статусы и ответы отражают сохранённую редакцию.');
   if (registry?.scope.partial || registry?.outcome === 'PARTIAL') paragraph('Внимание: материалы обработаны частично. Проверьте покрытие исходной задачи.');
   if (registry?.outcome === 'INSUFFICIENT_CONTEXT') paragraph('Недостаточно исходного контекста для полной декомпозиции.');
   if (registry?.materials) {
@@ -44,12 +46,13 @@ export function requirementsDocument(version, title = 'Требования') {
   if (!registry?.analysis.GAP.length) paragraph('В реестре нет зарегистрированных GAP. Это не подтверждает отсутствие пропусков.');
   for (const gap of registry?.analysis.GAP || []) {
     const decision = review.gaps?.[gap.id];
-    heading(2, `${gap.id} · ${decision?.state === 'closed' ? 'Закрыт' : 'Открыт'}`);
+    heading(2, `${gap.id} · ${gapStatus(review, gap.id)}`);
     paragraph(gap.text);
     if (gap.affectedIds.length) paragraph(`Затронуты: ${gap.affectedIds.join(', ')}`);
     if (gap.nextStep) paragraph(`Следующий шаг: ${gap.nextStep}`);
     for (const question of registry.analysis.questions.filter((item) => item.gapId === gap.id)) paragraph(`${({ P0: 'Критический', P1: 'Высокий', P2: 'Обычный' })[question.priority] || 'Приоритет не указан'} · ${question.addressee}: ${question.text}`);
     if (decision?.answer) paragraph(`Ответ: ${decision.answer}`);
+    for (const question of remainingQuestions(review, gap.id)) paragraph(`Осталось выяснить: ${question}`);
     if (decision?.reason) paragraph(`Причина решения: ${decision.reason}`);
     if (decision?.recordedAt) paragraph(`Решение зафиксировано: ${date(decision.recordedAt)}`);
     source(gap.source);

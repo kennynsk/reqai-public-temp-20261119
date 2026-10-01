@@ -82,7 +82,14 @@ export function reviewReducer(state, action) {
       }
       return { ...state, content, decisions: nextDecisions, drafts, reservedIds: [...new Set([...(state.reservedIds || []), ...recordIds(state.content), ...recordIds(content)])] };
     }
-    case 'field': return { ...state, decisions: action.value.text !== action.value.initialText || Object.keys(action.value.fields || {}).length ? invalidateReviewEvidence(state.decisions, { changedRecordIds: action.value.id ? [action.value.id] : null }) : state.decisions, drafts: { ...state.drafts, [action.key]: action.value } };
+    case 'field': {
+      const fields = Object.keys(action.value.fields || {});
+      const meaningChanged = action.value.text !== action.value.initialText || fields.some((field) => field !== 'quality');
+      const assessmentChanged = fields.includes('quality');
+      const decisions = meaningChanged ? invalidateReviewEvidence(state.decisions, { changedRecordIds: action.value.id ? [action.value.id] : null })
+        : assessmentChanged ? invalidateReviewEvidence(state.decisions, { changedRecordIds: [], changedGapIds: [] }) : state.decisions;
+      return { ...state, decisions, drafts: { ...state.drafts, [action.key]: action.value } };
+    }
     case 'clear': { const drafts = { ...state.drafts }; delete drafts[action.key]; return { ...state, drafts }; }
     case 'decisions': return { ...state, decisions: action.value };
     case 'restore': return action.value;
@@ -147,9 +154,34 @@ export function rebaseReview(state, base, remote, baseDecisions = {}, remoteDeci
     }
     drafts[key] = { ...draft, text: draft.text === draft.initialText && current ? current.text : draft.text, initialText: current?.text || draft.initialText };
   }
-  const mergedDecisions = mergeDecisionChanges(baseDecisions, state.decisions, remoteDecisions, changes);
-  const decisions = changes.length ? invalidateReviewEvidence(mergedDecisions) : mergedDecisions;
-  return { state: { ...state, content, drafts, decisions, reservedIds: [...new Set([...(state.reservedIds || []), ...recordIds(base), ...recordIds(content)])] }, changes };
+  const mergedDecisions = copy(mergeDecisionChanges(baseDecisions, state.decisions, remoteDecisions, changes));
+  // Unsaved acceptances describe the old discussion context. Keep the edits and
+  // answers, but do not forge an acceptance against the new version by changing
+  // its base ID. Saved remote receipts remain authoritative; the original AI
+  // packages remain in discussion history and can be prepared again if needed.
+  const transferredProposals = [];
+  const receipts = { ...(mergedDecisions.review?.discussionProposals || {}) };
+  for (const [id, receipt] of Object.entries(state.decisions.review?.discussionProposals || {})) {
+    if (JSON.stringify(receipt) === JSON.stringify(baseDecisions.review?.discussionProposals?.[id])) continue;
+    if (remoteDecisions.review?.discussionProposals?.[id]) receipts[id] = copy(remoteDecisions.review.discussionProposals[id]);
+    else { delete receipts[id]; transferredProposals.push(receipt); }
+  }
+  if (mergedDecisions.review?.discussionProposals) mergedDecisions.review = { ...mergedDecisions.review, discussionProposals: receipts };
+  const evidence = reviewEvidenceChanges(state.content, content);
+  evidence.changedRecordIds = [...new Set([...evidence.changedRecordIds, ...transferredProposals.flatMap((receipt) => receipt.changes.map((change) => change.targetId))])];
+  evidence.changedGapIds = [...new Set([...evidence.changedGapIds, ...transferredProposals.flatMap((receipt) => receipt.clarification ? [receipt.clarification.gapId] : [])])];
+  const decisions = changes.length ? invalidateReviewEvidence(mergedDecisions, { ...evidence, reason: 'После переноса на новую версию нужна повторная проверка требований.' }) : mergedDecisions;
+  const localEvidence = reviewEvidenceChanges(remote, content);
+  for (const gapId of Object.keys(remoteDecisions.review?.gaps || {})) {
+    const locallyReviewed = JSON.stringify(baseDecisions.review?.gaps?.[gapId]) !== JSON.stringify(state.decisions.review?.gaps?.[gapId])
+      || JSON.stringify(baseDecisions.review?.gapRequirements?.[gapId]) !== JSON.stringify(state.decisions.review?.gapRequirements?.[gapId]);
+    if (locallyReviewed || localEvidence.changedGapIds.includes(gapId)) continue;
+    // A fresh server confirmation is not stale merely because it differs from
+    // this tab's old base. Only local edits can invalidate that remote evidence.
+    decisions.review.gaps[gapId] = copy(remoteDecisions.review.gaps[gapId]);
+    if (remoteDecisions.review.gapRequirements?.[gapId]) decisions.review.gapRequirements = { ...decisions.review.gapRequirements, [gapId]: copy(remoteDecisions.review.gapRequirements[gapId]) };
+  }
+  return { state: { ...state, content, drafts, decisions, reservedIds: [...new Set([...(state.reservedIds || []), ...recordIds(base), ...recordIds(content)])] }, changes, transferredProposalCount: transferredProposals.length };
 }
 
 export function useReviewState(initialContent, initialDecisions = {}, { readOnly = false, editor = 'requirements' } = {}) {

@@ -3,17 +3,19 @@ import ReviewQuestions from './ReviewQuestions.jsx';
 import { MaterialCoverage, SourceEvidence } from './SourceEvidence.jsx';
 import { RequirementPreviewContext, RequirementPreviewLink } from './RequirementPreview.jsx';
 import { useContext } from 'react';
+import { DraftContext } from './review-context.js';
 
-export function RecordLinks({ ids = [], onNavigate }) {
+export function RecordLinks({ ids = [], onNavigate, previewRequirementsOnly = false }) {
   const preview = useContext(RequirementPreviewContext);
-  return <span className="inline-flex flex-wrap gap-2">{ids.map((id) => preview
+  return <span className="inline-flex flex-wrap gap-2">{ids.map((id) => preview && (!previewRequirementsOnly || /^(BR|SR|FR|NFR|TR|CON)-/.test(id))
     ? <RequirementPreviewLink key={id} id={id} className="reqai-preview-link" />
     : <a key={id} href={`#record-${id}`} onClick={(event) => { if (onNavigate) { event.preventDefault(); onNavigate(id); } }} className="inline-block rounded bg-indigo-50 px-2 py-1 text-xs font-semibold text-indigo-700 underline underline-offset-2">{id}</a>)} </span>;
 }
 
 function TraceabilityNode({ node, registry, onNavigate }) {
+  const review = useContext(DraftContext);
   const { record, incoming, children } = node;
-  const gaps = registry.analysis.GAP.filter((gap) => gap.affectedIds.includes(record.id));
+  const gaps = registry.analysis.GAP.filter((gap) => (gap.affectedIds.includes(record.id) || [...(record.relatedIds || []), ...(record.relatedTo || [])].includes(gap.id)) && review?.state.decisions.review?.gaps?.[gap.id]?.state !== 'closed');
   return <li className="min-w-0">
     <div className="py-2">
       <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">

@@ -120,16 +120,10 @@ export default function DiscussionPanel({ jobId, anchorId, anchorLabel = '', bas
       onEvent: async (event) => {
         if (controller.signal.aborted) return;
         const data = event?.data || {};
-        if (event?.type === 'attempt.started') {
-          setDiscussion((current) => {
-            // Replayed history can carry attempt.started for an attempt the
-            // loaded state already reports as finished; a dropped completion
-            // event must not resurrect it as a phantom running generation.
-            const known = current?.attempt;
-            if (known?.attemptId && known.attemptId === data.attemptId && ['completed', 'failed', 'cancelled'].includes(known.status)) return current;
-            return { ...(current || {}), attempt: { ...(known || {}), ...data, status: 'running' } };
-          });
-        }
+        // Events are replayed on reconnect, including starts of older attempts.
+        // Only the server's latest attempt identifies a cancellable generation.
+        if (event?.type === 'attempt.started') await refresh();
+        if (event?.type === 'reconcile') setDiscussion(data);
         if (['message.completed', 'attempt.failed', 'attempt.cancelled'].includes(event?.type)) await refresh();
       },
     }).catch(() => {});
@@ -144,7 +138,7 @@ export default function DiscussionPanel({ jobId, anchorId, anchorLabel = '', bas
     if (pendingMessage.current?.fingerprint !== fingerprint) pendingMessage.current = { fingerprint, id: crypto.randomUUID() };
     const clientMessageId = pendingMessage.current.id;
     sendLock.current = true;
-    setDiscussion((current) => current ? { ...current, proposal: null } : current);
+    setDiscussion((current) => current ? { ...current, proposal: null, attempt: null } : current);
     setSending(true); setError('');
     try {
       const response = await enterpriseApi.sendRequirementDiscussionMessage(jobId, anchorId, { message: value, baseVersionId, draft, clientMessageId }, clientMessageId);
@@ -191,8 +185,10 @@ export default function DiscussionPanel({ jobId, anchorId, anchorLabel = '', bas
       const response = await enterpriseApi.cancelRequirementDiscussion(jobId, attemptId);
       setDiscussion((current) => {
         const assistantMessageId = current?.attempt?.assistantMessageId || current?.assistantMessage?.messageId;
-        return { ...(current || {}), attempt: { ...(current?.attempt || {}), ...response, status: 'cancelled' }, messages: (current?.messages || []).map((item) => item.messageId === assistantMessageId ? { ...item, status: 'cancelled' } : item) };
+        if (current?.attempt?.attemptId !== attemptId) return current;
+        return { ...(current || {}), attempt: { ...current.attempt, ...response }, messages: (current?.messages || []).map((item) => response.status === 'cancelled' && item.messageId === assistantMessageId ? { ...item, status: 'cancelled' } : item) };
       });
+      if (response.status !== 'cancelled') setError('Ответ уже завершился до отмены. Требования не изменены; предложение можно проверить отдельно.');
     } catch (cause) { setError(errorText(cause)); }
   }
 
@@ -229,6 +225,9 @@ export default function DiscussionPanel({ jobId, anchorId, anchorLabel = '', bas
               : <MessageText role={item.role} text={item.text} />)}
           </article>)}
         </div>
+        {!loading && discussion?.attempt?.status === 'completed' && !proposal && <p role="status" aria-label="Результат ответа AI" className="mt-4 rounded-lg bg-slate-100 p-3 text-sm text-slate-700">{discussion.attempt.errorCode
+          ? 'Предложение отклонено при проверке. Причина указана в ответе AI; доступных для принятия правок нет.'
+          : 'AI ответил, но предложение для принятия не подготовлено. Формулировки требований не изменены.'}{guided && !readOnly && ' Дополните ответ или нажмите «Подготовить уточнение».'}</p>}
         {proposal && <DiscussionProposal proposal={proposal} applied={proposalApplied} saved={savedProposalDecisions[proposal.proposalId]?.decision === 'accepted'} gapState={gapStates[proposal.clarification?.gapId]?.state} rejected={proposalRejected} stale={staleProposal} disabled={readOnly || sending || Boolean(activeAttempt) || !contextReady}
           onApply={() => { const ok = onApplyProposal?.(proposal); if (ok !== false) setApplied((current) => new Set(current).add(proposal.proposalId)); else setStaleProposal(true); }}
           onReject={() => { const ok = onRejectProposal?.(proposal); if (ok !== false) setRejected((current) => new Set(current).add(proposal.proposalId)); }} />}

@@ -2,6 +2,7 @@ import { ApiError } from '../errors/api-error.js';
 import { canonicalSha256 } from '../prompts/prompt-utils.js';
 import { normalizeProposalMetadata } from './proposal-metadata.js';
 import { safeCitationUrl, normalizeCitations } from '../domain/research-evidence.js';
+import { currentGapClarification } from './gap-review-state.js';
 
 const fail = (message) => { throw new ApiError({ status: 400, code: 'INVALID_REVIEW_METADATA', message }); };
 const object = (value) => value && typeof value === 'object' && !Array.isArray(value);
@@ -142,6 +143,7 @@ export function normalizeReviewMetadata({ supplied, inherited, content, allowedG
   const stamp = { actorUserId: actorId, recordedAt: now.toISOString() };
   const records = Object.values(content?.groups || content || {}).filter(Array.isArray).flat();
   const recordIds = new Set(records.map((record) => record.id));
+  const baseRecords = new Map(recordsFromContent(baseContent).map((record) => [record.id, record]));
   const gapById = new Map(allowedGaps.map((gap) => [gap.id, gap]));
   const next = { ...copy(previous), schemaVersion: 1, gaps: copy(previous.gaps || {}) };
   if (input.proposals !== undefined) next.proposals = normalizeProposalMetadata({ supplied: input.proposals, inherited: previous.proposals, content, baseContent, researchResult, researchJobId, baseVersionId, stamp });
@@ -218,9 +220,17 @@ export function normalizeReviewMetadata({ supplied, inherited, content, allowedG
         if (!['pending', 'incorporated', 'no-change'].includes(state)) fail('Invalid GAP requirement confirmation state');
         const reason = cleanText(value.reason, 5000, 'GAP requirement confirmation reason');
         if (state === 'no-change' && !reason) fail('A no-change confirmation requires a reason');
-        const basis = confirmationBasis({ gap, answer: next.gaps?.[gap.id]?.answer || previous.gaps?.[gap.id]?.answer || '', record: linkage.records.get(requirementId) });
+        const answer = next.gaps?.[gap.id]?.answer || previous.gaps?.[gap.id]?.answer || '';
+        const record = linkage.records.get(requirementId);
+        const basis = confirmationBasis({ gap, answer, record });
         const prior = priorChecks[requirementId];
-        const current = checkIsCurrent(prior, basis);
+        // Preserve legacy hashes and author/time when only the assessment was
+        // updated. The old confirmation must match the trusted saved version,
+        // the current question and the current answer; every other field must
+        // be identical. No client-supplied hash can bypass a content change.
+        const before = baseRecords.get(requirementId);
+        const assessmentOnly = record && before && record.quality !== before.quality && same({ ...record, quality: before.quality }, before);
+        const current = checkIsCurrent(prior, basis) || assessmentOnly && checkIsCurrent(prior, confirmationBasis({ gap, answer, record: before }));
         const missing = linkage.unresolved.includes(requirementId);
         const freshlyAccepted = Object.values(next.discussionProposals || {}).some((receipt) => !previous.discussionProposals?.[receipt.proposalId] && receipt.decision === 'accepted' && !receipt.superseded && receipt.clarification?.gapId === gap.id && receipt.clarification.checks.some((check) => check.requirementId === requirementId && check.state === state && check.reason === reason));
         if (missing || !freshlyAccepted && !current && prior && (prior.state === 'incorporated' || prior.state === 'no-change') && state !== 'pending') {
@@ -228,14 +238,14 @@ export function normalizeReviewMetadata({ supplied, inherited, content, allowedG
           continue;
         }
         if (state === 'pending') {
-          nextChecks[requirementId] = { state: 'pending', reason: '', ...(missing ? { unresolved: true } : {}), ...basis, ...(prior && current ? { actorUserId: prior.actorUserId, recordedAt: prior.recordedAt } : stamp) };
+          nextChecks[requirementId] = { state: 'pending', reason: '', ...(value.stale === true ? { stale: true } : {}), ...(missing ? { unresolved: true } : {}), ...basis, ...(prior && current ? { actorUserId: prior.actorUserId, recordedAt: prior.recordedAt } : stamp) };
           continue;
         }
         if (missing) {
           nextChecks[requirementId] = { state: 'pending', reason: '', unresolved: true, stale: true, ...basis, ...stamp };
           continue;
         }
-        if (prior && current && prior.state === state && prior.reason === reason) nextChecks[requirementId] = copy(prior);
+        if (prior && current && prior.state === state && prior.reason === reason) nextChecks[requirementId] = { ...copy(prior), ...basis };
         else nextChecks[requirementId] = { state, reason, ...basis, ...stamp };
       }
       // Keep a checked reference that is no longer linked as an explicit stale item.
@@ -252,6 +262,8 @@ export function normalizeReviewMetadata({ supplied, inherited, content, allowedG
     if (!state) continue;
     const closureKind = state.closureKind || null;
     if (closureKind === 'resolved') {
+      const clarification = currentGapClarification(next, gap.id);
+      if (clarification?.canResolve === false) throw new ApiError({ status: 409, code: 'REVIEW_GAP_ANSWERS_REQUIRED', message: 'The accepted clarification is partial; provide the remaining answers before resolving this GAP', details: { gapId: gap.id } });
       const linkage = linkedRequirements(content, gap);
       const checks = next.gapRequirements?.[gap.id] || {};
       const complete = linkage.ids.length > 0 && linkage.ids.every((requirementId) => {
@@ -268,6 +280,7 @@ export function normalizeReviewMetadata({ supplied, inherited, content, allowedG
           ...state,
           state: state.answer?.trim() ? 'answered' : 'open',
           closureKind: null,
+          reason: `Нужна повторная проверка: изменились требования, ответ или связи (${linkage.ids.filter((id) => checks[id]?.state === 'pending').join(', ')}).`,
           resolutionHistory: [...(priorResolution?.resolutionHistory || []), { ...copy(priorResolution || state), reopenedAt: now.toISOString(), reopenedReason: 'Подтверждения требований устарели' }],
           ...stamp,
         };

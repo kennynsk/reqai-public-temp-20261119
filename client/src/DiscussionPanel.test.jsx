@@ -97,6 +97,19 @@ test('user messages keep plain text rendering', async () => {
   await screen.findByText('вариант **без форматирования**');
 });
 
+test('distinguishes a discussion answer from a rejected proposal and exposes neither as applicable wording', async () => {
+  const data = { discussionId: 'd1', messages: [{ messageId: 'm1', role: 'assistant', status: 'completed', text: 'Нужно уточнить срок' }], attempt: { attemptId: 'a1', status: 'completed' }, proposal: null };
+  mocks.get.mockResolvedValue(data);
+  const result = render(<DiscussionPanel jobId="job-1" anchorId="GAP-002" baseVersionId="v1" onClose={vi.fn()} />);
+  expect(await screen.findByRole('status', { name: 'Результат ответа AI' })).toHaveTextContent('предложение для принятия не подготовлено');
+  expect(screen.queryByRole('region', { name: 'Предложение изменений' })).not.toBeInTheDocument();
+  result.unmount();
+  mocks.get.mockResolvedValue({ ...data, attempt: { ...data.attempt, errorCode: 'DISCUSSION_PROPOSAL_INVALID' } });
+  render(<DiscussionPanel jobId="job-1" anchorId="GAP-002" baseVersionId="v1" onClose={vi.fn()} />);
+  expect(await screen.findByRole('status', { name: 'Результат ответа AI' })).toHaveTextContent('Предложение отклонено при проверке');
+  expect(screen.getByRole('button', { name: 'Подготовить уточнение' })).toBeEnabled();
+});
+
 test('proposal explanation renders markdown formatting', async () => {
   mocks.get.mockResolvedValue({ messages: [], proposal: { proposalId: 'p1', explanation: 'Суть: **канал — приложение**', changes: [] } });
   render(<DiscussionPanel jobId="job-1" anchorId="GAP-002" baseVersionId="v1" onClose={vi.fn()} />);
@@ -122,9 +135,37 @@ test('a replayed attempt.started for an already completed attempt does not show 
   expect(screen.queryByRole('button', { name: 'Отменить генерацию' })).not.toBeInTheDocument();
   await act(async () => {
     // Новая попытка (другой id) при живом ходе всё ещё переводит панель в «генерация».
+    mocks.get.mockResolvedValue({ discussionId: 'd1', messages: [], attempt: { attemptId: 'a2', status: 'running' } });
     await emit({ id: 2, type: 'attempt.started', data: { attemptId: 'a2', generationId: 'g2' } });
   });
   expect(screen.getByRole('button', { name: 'Отменить генерацию' })).toBeInTheDocument();
+});
+
+test('old starts cannot replace the latest attempt and cancel targets the server current attempt', async () => {
+  const latest = { discussionId: 'd1', messages: [], attempt: { attemptId: 'current-002', assistantMessageId: 'm2', status: 'running' } };
+  mocks.get.mockResolvedValue(latest);
+  mocks.cancel.mockResolvedValue({ attemptId: 'current-002', status: 'cancelled' });
+  let emit;
+  mocks.subscribe.mockImplementation((_jobId, _anchorId, { onEvent }) => { emit = onEvent; return new Promise(() => {}); });
+  render(<DiscussionPanel jobId="job-1" anchorId="GAP-002" baseVersionId="v1" />);
+  await screen.findByRole('button', { name: 'Отменить генерацию' });
+  await act(async () => { await emit({ type: 'attempt.started', data: { attemptId: 'old-001' } }); });
+  fireEvent.click(screen.getByRole('button', { name: 'Отменить генерацию' }));
+  await screen.findByRole('button', { name: 'Повторить ответ' });
+  expect(mocks.cancel).toHaveBeenCalledWith('job-1', 'current-002');
+});
+
+test('reconnect reconciliation recovers a missed cancellation and a completed response is not falsely cancelled', async () => {
+  mocks.get.mockResolvedValue({ discussionId: 'd1', messages: [], attempt: { attemptId: 'a1', status: 'running' } });
+  mocks.cancel.mockResolvedValue({ attemptId: 'a1', status: 'completed' });
+  let emit;
+  mocks.subscribe.mockImplementation((_j, _a, { onEvent }) => { emit = onEvent; return new Promise(() => {}); });
+  render(<DiscussionPanel jobId="job-1" anchorId="GAP-002" baseVersionId="v1" />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Отменить генерацию' }));
+  await screen.findByRole('alert');
+  expect(screen.queryByRole('button', { name: 'Повторить ответ' })).not.toBeInTheDocument();
+  await act(async () => { await emit({ type: 'reconcile', data: { discussionId: 'd1', messages: [], attempt: { attemptId: 'a2', status: 'cancelled' } } }); });
+  expect(screen.getByRole('button', { name: 'Повторить ответ' })).toBeInTheDocument();
 });
 
 test('a loaded completed attempt never renders as an active generation', async () => {

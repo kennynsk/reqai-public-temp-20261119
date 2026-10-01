@@ -13,11 +13,12 @@ function extractText(response) {
 export class GigaChatProvider {
   constructor(client, { modelAliases = {} } = {}) { this.client = client; this.modelAliases = modelAliases; }
 
-  async complete({ model, messages, temperature, maxOutputTokens, timeoutMs, requestId = randomUUID(), traceContext = {} }) {
+  async complete({ model, messages, temperature, maxOutputTokens, timeoutMs, signal, requestId = randomUUID(), traceContext = {} }) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const response = await this.client.chat({ model: this.modelAliases[model] || model, messages, temperature, ...(Number.isInteger(maxOutputTokens) ? { max_tokens: maxOutputTokens } : {}), signal: controller.signal, requestId, metadata: traceContext });
+      signal?.throwIfAborted();
+      const response = await this.client.chat({ model: this.modelAliases[model] || model, messages, temperature, ...(Number.isInteger(maxOutputTokens) ? { max_tokens: maxOutputTokens } : {}), signal: signal ? AbortSignal.any([signal, controller.signal]) : controller.signal, requestId, metadata: traceContext });
       return {
         text: extractText(response).trim(),
         model: response?.model || response?.data?.model || model,
@@ -28,6 +29,7 @@ export class GigaChatProvider {
         },
       };
     } catch (error) {
+      if (signal?.aborted) throw signal.reason;
       throw classifyProviderError(error);
     } finally {
       clearTimeout(timer);

@@ -59,6 +59,18 @@ test('report preserves GAP annotations, confirmed conflicts and shared parent li
   assert.match(report, /\| FR-001 \| NFR-001 \| конфликтует \| Подтверждено источником \|/);
 });
 
+test('current decisions distinguish the historical gap from a closed question and remove open-gap trace annotations', () => {
+  const registry = JSON.parse(readFileSync(new URL('./fixtures/babok-requirements-v1.complete.json', import.meta.url), 'utf8'));
+  const gapId = registry.analysis.GAP[0].id;
+  const review = { gaps: { [gapId]: { state: 'closed', answer: 'Утверждает владелец продукта', reason: 'Все требования проверены' } } };
+  const report = renderBabokReport(registry, { review });
+  assert.match(report, /Закрыт \| Утверждает владелец продукта/);
+  assert.match(report, /Вопрос закрыт/);
+  assert.match(report, /Исходный анализ/);
+  const tree = report.match(/```text\n([\s\S]*?)\n```/)[1];
+  assert.ok(!tree.includes(gapId));
+});
+
 test('traceability uses the same assumed hierarchy as the table and keeps non-parent references separate', () => {
   const registry = JSON.parse(readFileSync(new URL('./fixtures/babok-requirements-v1.complete.json', import.meta.url), 'utf8'));
   registry.analysis.traceability = [

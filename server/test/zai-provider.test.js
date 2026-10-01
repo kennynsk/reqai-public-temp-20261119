@@ -3,6 +3,20 @@ import test from 'node:test';
 
 import { ZaiProvider } from '../src/provider/zai-provider.js';
 
+test('ZAI cancellation aborts the in-flight fetch and is not classified as a timeout', async () => {
+  const controller = new AbortController();
+  let started;
+  const ready = new Promise((resolve) => { started = resolve; });
+  const provider = new ZaiProvider({ apiKey: 'test', baseUrl: 'https://example.invalid', fetchImpl: async (_url, { signal }) => new Promise((_resolve, reject) => {
+    signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+    started();
+  }) });
+  const result = provider.complete({ model: 'test', messages: [], timeoutMs: 10000, signal: controller.signal });
+  await ready;
+  controller.abort();
+  await assert.rejects(result, (error) => error.name === 'AbortError' && !error.reasonCode);
+});
+
 test('ZAI provider calls OpenAI-compatible endpoint and normalizes response metadata', async () => {
   let request;
   const provider = new ZaiProvider({

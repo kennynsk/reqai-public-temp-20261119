@@ -1,3 +1,5 @@
+import { currentGapClarification } from '../../server/src/services/gap-review-state.js';
+
 export function updateReviewMetadata(decisions, patch) {
   const previous = decisions.review || { schemaVersion: 1 };
   const review = { ...previous, ...patch, schemaVersion: 1 };
@@ -20,7 +22,9 @@ export function updateReviewMetadata(decisions, patch) {
 const stableValue = (value) => Array.isArray(value) ? value.map(stableValue) : value && typeof value === 'object'
   ? Object.fromEntries(Object.keys(value).sort().map((key) => [key, stableValue(value[key])])) : value;
 const fingerprint = (value) => JSON.stringify(stableValue(value));
-const requirementBasisFields = ['id', 'text', 'quality', 'successIndicator', 'role', 'category', 'scope', 'verificationMethod', 'completionCriterion', 'obligation', 'relatedIds', 'relatedTo', 'source', 'provenance'];
+// An assessment is a conclusion about the requirement, not a change to its
+// meaning. Updating it must not erase confirmations of the same answer/text.
+const requirementBasisFields = ['id', 'text', 'successIndicator', 'role', 'category', 'scope', 'verificationMethod', 'completionCriterion', 'obligation', 'relatedIds', 'relatedTo', 'source', 'provenance'];
 const evidenceRecord = (record) => record && /^(BR|SR|FR|NFR|TR|CON)-/.test(record.id)
   ? Object.fromEntries(requirementBasisFields.map((field) => [field, record[field] ?? null])) : record;
 
@@ -59,10 +63,14 @@ export function invalidateReviewEvidence(decisions, options = {}) {
   const gaps = Object.fromEntries(Object.entries(previous.gaps || {}).map(([gapId, entry]) => {
     const linkedChanged = changedRecordIds && Object.keys(previous.gapRequirements?.[gapId] || {}).some((id) => changedRecordIds.has(id));
     const shouldReopen = changedGapIds?.has(gapId) || linkedChanged;
-    if (entry?.state !== 'closed' || (changedRecordIds || changedGapIds) && !shouldReopen) return [gapId, entry];
+    if ((changedRecordIds || changedGapIds) && !shouldReopen) return [gapId, entry];
+    if (!entry?.answer && entry?.state !== 'closed') return [gapId, entry];
     const answer = String(entry.answer || '').trim();
+    const changed = [...(options.changedRecordIds || [])];
+    const reason = options.reason || `Нужна повторная проверка: ${changed.length ? `изменились связанные записи ${changed.slice(0, 20).join(', ')}.` : 'изменились требования или связи.'}`;
     return [gapId, { ...entry, state: answer ? 'answered' : 'open', closureKind: null, stale: true,
-      resolutionHistory: [...(entry.resolutionHistory || []), { ...entry, reopenedReason: 'Подтверждения требований устарели', reopenedAt: new Date().toISOString() }],
+      reason,
+      resolutionHistory: entry.state === 'closed' ? [...(entry.resolutionHistory || []), { ...entry, reopenedReason: reason, reopenedAt: new Date().toISOString() }] : entry.resolutionHistory,
     }];
   }));
   return { ...decisions, review: { ...previous,
@@ -103,6 +111,31 @@ export function gapChecklist(content, gap, metadata = {}) {
 export function gapChecklistComplete(content, gap, metadata = {}) {
   const checklist = gapChecklist(content, gap, metadata);
   return checklist.length > 0 && checklist.every((item) => !item.unresolved && (item.state === 'incorporated' || item.state === 'no-change'));
+}
+
+export function gapHasPendingClarification(metadata, gapId) {
+  return currentGapClarification(metadata, gapId)?.canResolve === false;
+}
+
+export function requirementGaps(content, requirement) {
+  const related = [...(requirement.relatedIds || []), ...(requirement.relatedTo || [])];
+  return (content?.analysis?.GAP || []).filter((gap) => (gap.affectedIds || []).includes(requirement.id) || related.includes(gap.id));
+}
+
+export function gapReviewHint(content, gap, metadata = {}) {
+  const state = metadata.gaps?.[gap.id] || {};
+  if (state.state === 'closed') return 'Вопрос закрыт';
+  const checks = metadata.gapRequirements?.[gap.id] || {};
+  const clarification = currentGapClarification(metadata, gap.id);
+  const partialHint = clarification?.canResolve === false ? clarification.remainingQuestions?.length ? `Осталось выяснить: ${clarification.remainingQuestions.join(' ')}` : 'Уточнение частичное: нужно дополнить ответ и проверить оставшийся контекст.' : '';
+  if (state.stale || Object.values(checks).some((check) => check.stale)) {
+    const recheckHint = state.reason?.startsWith('Нужна повторная') || state.reason?.startsWith('После переноса') ? state.reason : 'Нужна повторная проверка: изменились требования, ответ или связи.';
+    return [recheckHint, partialHint].filter(Boolean).join(' ');
+  }
+  if (!state.answer?.trim()) return 'Нужно добавить ответ на вопрос';
+  if (partialHint) return partialHint;
+  if (!gapChecklistComplete(content, gap, metadata)) return 'Нужно проверить все связанные требования';
+  return 'Ответ и требования проверены — можно закрыть вопрос';
 }
 
 export function openReviewItems(content, metadata = {}) {
