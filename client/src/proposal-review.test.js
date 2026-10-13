@@ -164,3 +164,18 @@ test('retaining a linked requirement as manual content preserves confirmations w
   expect(retained.decisions.review.gaps).toEqual(original.decisions.review.gaps);
   expect(retained.decisions.review.gapRequirements).toEqual(original.decisions.review.gapRequirements);
 });
+
+test('acceptance cites a user decision and preserves unresolved conditions as a reversible GAP', () => {
+  const original = state();
+  const enhancement = { key: 'evidence:0', text: 'Контроль повторного резервирования', targetType: 'NFR', confirmationConditions: 'Согласовать идентификатор операции' };
+  const accepted = applyProposal(original, enhancement, { operation: 'add', targetType: 'NFR', text: enhancement.text, fields: { category: 'Надёжность', scope: 'Резервирование', verificationMethod: 'Повторить запрос с тем же ID' } });
+  const added = accepted.content.groups.NFR.at(-1);
+  expect(added.provenance).toBe('Нормализовано');
+  expect(added.source.artifactId).toBe('review-decision:evidence:0');
+  expect(accepted.content.materials.references.at(-1).name).toContain('Решение пользователя');
+  expect(accepted.content.analysis.GAP.at(-1)).toMatchObject({ text: enhancement.confirmationConditions, affectedIds: [added.id] });
+  const reverted = reverseProposal(accepted, enhancement.key, false);
+  expect(reverted.content.groups.NFR).toEqual(original.content.groups.NFR);
+  expect(reverted.content.analysis.GAP).toEqual(original.content.analysis.GAP);
+  expect(reverted.content.materials.references).toEqual(original.content.materials.references || []);
+});

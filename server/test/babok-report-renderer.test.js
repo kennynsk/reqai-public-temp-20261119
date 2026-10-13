@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import { createEmptyBabokRegistry } from '../src/services/babok-requirements-contract.js';
-import { renderBabokReport } from '../src/services/babok-report-renderer.js';
+import { buildBabokTraceability, renderBabokReport } from '../src/services/babok-report-renderer.js';
 
 test('BABOK report renderer is deterministic and keeps all required report sections', () => {
   const registry = createEmptyBabokRegistry();
@@ -90,4 +90,68 @@ test('traceability uses the same assumed hierarchy as the table and keeps non-pa
   assert.match(report, /\| BR-001 \| SR-001 \| обосновывает \| Предполагается \|/);
   assert.match(report, /\| TR-001 \| FR-001 \| обеспечивает \| Предполагается \|/);
   assert.match(report, /\| FR-002 \| FR-001 \| Связано с \| Статус не указан \|/);
+});
+
+
+test('hierarchy excludes peer links and untyped references without losing records or links', () => {
+  const registry = createEmptyBabokRegistry();
+  registry.groups.BR = [{ id: 'BR-001', text: 'Цель', relatedIds: ['SR-003'] }];
+  registry.groups.SR = [
+    { id: 'SR-001', text: 'Первая потребность' },
+    { id: 'SR-002', text: 'Вторая потребность', relatedTo: ['SR-001'] },
+    { id: 'SR-003', text: 'Третья потребность', relatedTo: ['SR-001'] },
+  ];
+  registry.groups.FR = [{ id: 'FR-001', text: 'Функция', relatedTo: ['SR-003'] }];
+  registry.groups.NFR = [{ id: 'NFR-001', text: 'Качество' }];
+  registry.analysis.traceability = [
+    { from: 'BR-001', to: 'SR-001', relation: 'обосновывает', status: 'Предполагается' },
+    { from: 'SR-001', to: 'SR-002', relation: 'уточняет', status: 'Подтверждено источником' },
+    { from: 'SR-002', to: 'FR-001', relation: 'реализует', status: 'Подтверждено источником' },
+    { from: 'SR-002', to: 'NFR-001', relation: 'уточняет', status: 'Предполагается' },
+  ];
+  const { forest, supplemental, links } = buildBabokTraceability(registry);
+  assert.deepEqual(forest.map((node) => node.record.id), ['BR-001', 'SR-002', 'SR-003']);
+  assert.deepEqual(forest[0].children.map((node) => node.record.id), ['SR-001']);
+  assert.deepEqual(forest[0].children[0].children, []);
+  assert.deepEqual(forest[1].children.map((node) => node.record.id), ['FR-001', 'NFR-001']);
+  for (const link of links.filter((link) => link.relation === 'Связано с' || link.to === 'SR-002')) {
+    assert.ok(supplemental.includes(link));
+  }
+});
+
+
+test('question rows show the next step directly instead of an ambiguous cross-reference', () => {
+  const registry = JSON.parse(readFileSync(new URL('./fixtures/babok-requirements-v1.complete.json', import.meta.url), 'utf8'));
+  const question = registry.analysis.questions[0];
+  const gap = registry.analysis.GAP.find((item) => item.id === question.gapId);
+  gap.nextStep = 'Согласовать правила отзыва подготовленных операций.';
+  const questions = renderBabokReport(registry).split('## 11. Вопросы для уточнения')[1];
+  assert.match(questions, /Согласовать правила отзыва подготовленных операций/);
+  assert.doesNotMatch(questions, /См. решение/);
+});
+
+test('explicit business-to-NFR edges appear in the tree with a skipped-level explanation', () => {
+  const registry = JSON.parse(readFileSync(new URL('./fixtures/babok-requirements-v1.complete.json', import.meta.url), 'utf8'));
+  registry.analysis.traceability = [{ from: 'BR-001', to: 'NFR-001', relation: 'обосновывает', status: 'Подтверждено источником', source: null }];
+  const { forest } = buildBabokTraceability(registry);
+  const business = forest.find((node) => node.record.id === 'BR-001');
+  const nfr = business.children.find((node) => node.record.id === 'NFR-001');
+  assert.ok(nfr);
+  assert.match(nfr.hierarchyNote, /без промежуточного SR/);
+  assert.equal(forest.some((node) => node.record.id === 'NFR-001'), false);
+  const tree = renderBabokReport(registry).match(/```text\n([\s\S]*?)\n```/)[1];
+  assert.match(tree, /[├└]── NFR-001[^\n]*без промежуточного SR/);
+  registry.analysis.traceability = [];
+  registry.groups.NFR[0].relatedTo = ['BR-001'];
+  assert.equal(buildBabokTraceability(registry).forest.find((node) => node.record.id === 'BR-001').children.some((node) => node.record.id === 'NFR-001'), false);
+});
+
+test('summary explicitly separates historical model conclusions from current question state', () => {
+  const registry = createEmptyBabokRegistry();
+  registry.summary.text = 'Исходный анализ';
+  registry.summary.conclusions = ['Показатель успеха не определён'];
+  const report = renderBabokReport(registry);
+  assert.match(report, /Исходное резюме декомпозиции/);
+  assert.match(report, /не являются текущим статусом/);
+  assert.match(report, /Вопросы в текущей редакции: 0 открыто, 0 закрыто/);
 });

@@ -28,7 +28,7 @@ test('requirements insights activity uses the original prompt contract and persi
       async execute(value) {
         providerInput = value;
         return {
-          text: JSON.stringify({ insights: [{ id: 'insight-1', category: 'trends', title: 'Автоматизация', summary: 'Рынок ускоряет обработку', detail: 'Применимо к задаче.', applicability: 91, source_types: ['market_research'], relatedTo: ['BT-1'], enhancements: [{ targetType: 'functional', text: 'Система должна автоматически обрабатывать заявку', rationale: 'Сокращение ручных операций', confirmationConditions: 'Согласовать правила обработки' }] }] }),
+          text: JSON.stringify({ insights: [{ id: 'insight-1', category: 'trends', title: 'Автоматизация', summary: 'Рынок ускоряет обработку', detail: 'Применимо к задаче.', applicability: 91, source_types: ['market_research'], relatedTo: ['BT-1'], enhancements: [{ operation: 'replace', targetId: 'BT-1', targetType: 'business', text: 'Система должна автоматически обрабатывать заявку', rationale: 'Сокращение ручных операций', confirmationConditions: 'Согласовать правила обработки' }] }] }),
           actualModel: 'GC-Max', fallbackApplied: false,
         };
       },
@@ -45,9 +45,11 @@ test('requirements insights activity uses the original prompt contract and persi
   const content = JSON.parse(stored.text);
   assert.equal(content.mode, 'REQUIREMENTS_INSIGHTS');
   assert.equal(content.inputRequirementsVersionId, 'version-artifact');
-  assert.equal(content.insights[0].enhancements[0].targetType, 'functional');
+  assert.equal(content.insights[0].enhancements[0].targetType, 'business');
   assert.equal(content.insights[0].enhancements[0].confirmationConditions, 'Согласовать правила обработки');
   assert.equal(content.insights[0].enhancements[0].text, 'Система должна автоматически обрабатывать заявку');
+  assert.equal(content.insights[0].enhancements[0].operation, 'replace');
+  assert.equal(content.insights[0].enhancements[0].targetId, 'BT-1');
   assert.match(prompt, /enhancement.confirmationConditions/);
   assert.equal(result.insightCount, 1);
   assert.equal(stored.kind, 'RESULT');
@@ -138,4 +140,30 @@ for (const version of ['2.0.0', '2.1.0', '2.2.0', '2.3.0']) for (const baselineS
     assert.deepEqual(reads, ['version', 'primary']);
     assert.doesNotMatch(prompt, /Ответ пользователя: согласует директор/);
   }
+});
+
+for (const version of ['2.5.0', '2.6.0', '2.7.0']) test(`research ${version} uses the pinned skill and repairs incomplete NFR evidence`, async () => {
+  const { createBabokSkillBundleLoader } = await import('../src/skills/babok-skill-bundle.js');
+  const loader = createBabokSkillBundleLoader(); const bundle = loader.get('1.0.0');
+  const catalog = createPromptCatalog({ rootDir: defaultPromptBundleRoot() });
+  const profile = createPromptProfileResolver({ catalog, policy: { 'requirements-insights': { active: version, released: [version] } } }).resolve({ type: 'RESEARCH', mode: 'REQUIREMENTS_INSIGHTS' });
+  const calls = []; let stored;
+  const envelope = { kind: 'REQUIREMENTS_VERSION', requirements: { business: [], functional: [], nonfunctional: [] }, decisions: { skippedResearch: true } };
+  const result = { insights: [{ id: 'insight-1', category: 'risks', title: 'Повтор запроса', summary: 'Возможен повтор запроса резервирования', detail: 'Проверить повторные запросы', rationale: 'Двойное резервирование влияет на средства покупателя', applicability: 90, source_types: ['industry_report'], citations: [{ url: 'https://fabricated.example/' }], relatedTo: [], enhancements: [{ operation: 'add', targetId: null, targetType: 'NFR', text: 'Повтор резервирования с тем же ID операции не создаёт второго резерва.', category: 'Надёжность', scope: 'Операция резервирования', verificationMethod: 'Повторить запрос с тем же ID', confirmationConditions: 'Определить срок хранения результата' }] }] };
+  const handlers = createEnterpriseActivityHandlers({ promptCatalog: catalog, babokSkillLoader: loader,
+    config: { process: { siteId: 'dc-a' }, retention: { finalResultsDays: 180 }, jobs: { resultMaxBytes: 10485760 }, llm: { maxConcurrency: { test: 1 } } },
+    artifactRepository: { readText: async () => JSON.stringify(envelope), createText: async (value) => { stored = JSON.parse(value.text); return { artifactId: 'result' }; } },
+    modelExecutor: { execute: async (value) => { calls.push(value); const answer = structuredClone(result); if (version !== '2.5.0' && calls.length < 3) answer.insights[0].enhancements[0].verificationMethod = null; return { text: JSON.stringify(answer), actualModel: 'test', fallbackApplied: false }; } },
+  });
+  await handlers.generateRequirementsInsights({ tenantId: 'tenant', inputArtifactId: 'version', configurationSnapshot: { promptProfile: profile, babokSkillProfile: { id: bundle.id, version: bundle.version, manifestHash: bundle.manifestHash }, models: ['test'], maxAttemptsPerModel: 1, requestTimeoutMs: 1000, maxConcurrency: { test: 1 } } });
+  assert.equal(calls.length, version !== '2.5.0' ? 3 : 2);
+  assert.match(calls[0].messages[0].content, /Одна строка — одно независимо согласуемое/);
+  assert.match(calls[1].messages.at(-1).content, version !== '2.5.0' ? /ОДНО действие с одним результатом/ : /Раздели каждое независимо согласуемое обязательство/);
+  if (version !== '2.5.0') assert.match(calls[2].messages.at(-1).content, /requires category, scope and a concrete verificationMethod/);
+  assert.doesNotMatch(calls[0].messages.at(-1).content, /действующий график до согласия/);
+  assert.equal(stored.evidenceMode, 'MODEL_HYPOTHESIS');
+  assert.deepEqual(stored.insights[0].citations, []);
+  assert.deepEqual(stored.insights[0].source_types, []);
+  assert.equal(stored.insights[0].enhancements[0].verificationMethod, 'Повторить запрос с тем же ID');
+  assert.deepEqual(stored.baseDecisions, envelope.decisions);
 });

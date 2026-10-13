@@ -87,7 +87,9 @@ export function createJobTraceService({ config, jobTraceRepository, artifactRepo
       return {
         jobId, type: job.type, mode: job.configuration_snapshot?.featureMode || null, status: job.status, outcome: job.outcome || null, reasonCode: job.reason_code || null,
         currentStep: job.current_step || null, createdAt: iso(job.created_at), startedAt: iso(job.started_at), completedAt: iso(job.completed_at),
-        durationMs: duration(job.started_at || job.created_at, job.completed_at), skillUsage: 'NOT_APPLICABLE',
+        durationMs: duration(job.started_at || job.created_at, job.completed_at), skillUsage: job.configuration_snapshot?.babokSkillProfile ? 'BUNDLE_SNAPSHOTTED' : 'NOT_APPLICABLE',
+        ...(job.configuration_snapshot?.babokSkillProfile ? { skillProfile: Object.fromEntries(['id', 'version', 'manifestHash'].map((key) => [key, job.configuration_snapshot.babokSkillProfile[key]])) } : {}),
+        ...(job.configuration_snapshot?.promptProfile ? { instructionProfile: Object.fromEntries(['id', 'version', 'manifestHash'].map((key) => [key, job.configuration_snapshot.promptProfile[key]])) } : {}),
         timeline, nextCursor: index + parsedLimit < all.length ? Buffer.from(JSON.stringify({ index: index + parsedLimit })).toString('base64url') : null,
       };
     },

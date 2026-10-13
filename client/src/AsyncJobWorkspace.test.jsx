@@ -142,59 +142,42 @@ test('keeps an open BABOK draft across type switches', async () => {
   expect(screen.getByRole('textbox', { name: 'Текст требования BR-001' })).toHaveValue('Сохранить мой черновик.');
 });
 
-test('GAP answer and closure join the shared draft without rewriting the requirement', async () => {
+test('GAP answer and dismissal join the shared draft without rewriting requirements', async () => {
   await openSavedRoomReview();
-  fireEvent.click(screen.getByRole('button', { name: 'Отмена', exact: true }));
-  fireEvent.click(within(screen.getByRole('group', { name: 'Разделы проверки' })).getByRole('button', { name: 'Вопросы' }));
-  const answer = screen.getByRole('textbox', { name: 'Ответ на GAP-001' });
-  fireEvent.change(answer, { target: { value: 'Уведомлять по электронной почте.' } });
-  expect(screen.getByText('Дан ответ · ещё открыт')).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: /^(Реестр · \d+|Требования)$/ }));
-  expect(screen.getByRole('button', { name: 'Перейти к финальной версии' })).toBeEnabled();
-  fireEvent.click(within(screen.getByRole('group', { name: 'Разделы проверки' })).getByRole('button', { name: 'Вопросы' }));
-  expect(screen.getByRole('textbox', { name: 'Ответ на GAP-001' })).toHaveValue('Уведомлять по электронной почте.');
-  fireEvent.click(within(screen.getByRole('textbox', { name: 'Ответ на GAP-001' }).closest('article')).getByRole('button', { name: 'Закрыть без изменения требований…' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Вопросы' }));
+  fireEvent.click(within(document.getElementById('record-GAP-001')).getByRole('button', { name: 'Разобрать вопрос' }));
+  fireEvent.change(screen.getByRole('textbox', { name: 'Ответ на GAP-001' }), { target: { value: 'Уведомлять по электронной почте.' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Снять с рассмотрения…' }));
   expect(screen.getByRole('button', { name: 'Подтвердить решение' })).toBeDisabled();
   fireEvent.change(screen.getByRole('textbox', { name: 'Причина решения' }), { target: { value: 'Подтверждено владельцем процесса' } });
   fireEvent.click(screen.getByRole('button', { name: 'Подтвердить решение' }));
   mocks.saveRequirementsVersion.mockImplementation(async (payload) => ({ ...payload, versionId: 'gap-version', createdAt: new Date().toISOString() }));
-  fireEvent.click(screen.getByRole('button', { name: 'Сохранить изменения' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Сохранить требования' }));
   await waitFor(() => expect(mocks.saveRequirementsVersion).toHaveBeenCalled());
   const payload = mocks.saveRequirementsVersion.mock.calls[0][0];
-  expect(payload.decisions.review.gaps['GAP-001']).toMatchObject({ state: 'closed', answer: 'Уведомлять по электронной почте.', reason: 'Подтверждено владельцем процесса' });
+  expect(payload.decisions.review.gaps['GAP-001']).toMatchObject({ state: 'closed', closureKind: 'dismissed', answer: 'Уведомлять по электронной почте.', reason: 'Подтверждено владельцем процесса' });
   expect(payload.registry.groups.FR).toEqual(roomBookingRegistry().groups.FR);
 });
 
-test('GAP answer follows the user into editing and closes with the applied requirement in one save', async () => {
+test('GAP answer follows an embedded editor and closes with the applied requirement in one save', async () => {
   await openSavedRoomReview();
   fireEvent.click(screen.getByRole('button', { name: 'Вопросы' }));
-  const answer = screen.getByRole('textbox', { name: 'Ответ на GAP-001' });
-  fireEvent.change(answer, { target: { value: 'Уведомлять по электронной почте.' } });
-  fireEvent.click(within(answer.closest('article')).getByRole('button', { name: 'Редактировать BR-001' }));
-  const editor = screen.getByRole('textbox', { name: 'Текст требования BR-001' });
+  fireEvent.click(within(document.getElementById('record-GAP-001')).getByRole('button', { name: 'Разобрать вопрос' }));
+  fireEvent.change(screen.getByRole('textbox', { name: 'Ответ на GAP-001' }), { target: { value: 'Уведомлять по электронной почте.' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Редактировать BR-001' }));
+  const editor = within(screen.getByRole('dialog')).getByRole('textbox', { name: 'Текст требования BR-001' });
   expect(editor).toHaveValue('Сохранить мой черновик.');
-  const card = editor.closest('article');
-  expect(within(card).getByText('Уведомлять по электронной почте.')).toBeVisible();
-  expect(within(card).getByRole('button', { name: 'Ответ учтён для GAP-001 в BR-001' })).toBeDisabled();
   fireEvent.change(editor, { target: { value: 'Сократить конфликты бронирования с уведомлением по электронной почте.' } });
-  fireEvent.click(within(card).getByRole('button', { name: 'Применить к черновику' }));
-  const disclosure = within(card).getByText('Вопросы и учёт ответов').closest('details');
-  if (!disclosure.open) fireEvent.click(within(card).getByText('Вопросы и учёт ответов'));
-  fireEvent.click(within(card).getByRole('button', { name: 'Ответ учтён для GAP-001 в BR-001' }));
-  expect(within(card).getAllByText('Ответ учтён').length).toBeGreaterThan(0);
-  fireEvent.click(screen.getByRole('button', { name: 'Вопросы' }));
-  const questionsCard = screen.getByText('GAP-001 · Канал уведомлений').closest('article');
-  expect(within(questionsCard).getByRole('button', { name: 'Закрыть как решённый' })).toBeEnabled();
-  fireEvent.click(within(questionsCard).getByRole('button', { name: 'Закрыть как решённый' }));
-  fireEvent.change(screen.getByRole('combobox', { name: 'Статус вопросов' }), { target: { value: 'closed' } });
-  expect(within(document.getElementById('record-GAP-001')).getByText('Закрыт', { exact: true })).toBeVisible();
+  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Применить к черновику' }));
+  expect(screen.getByLabelText('Ответ на GAP-001')).toHaveValue('Уведомлять по электронной почте.');
+  fireEvent.click(screen.getByRole('button', { name: 'Ответ учтён' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Закрыть как решённый' }));
   mocks.saveRequirementsVersion.mockImplementation(async (payload) => ({ ...payload, versionId: 'gap-applied', createdAt: new Date().toISOString() }));
-  fireEvent.click(screen.getByRole('button', { name: 'Сохранить изменения' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Сохранить требования' }));
   await waitFor(() => expect(mocks.saveRequirementsVersion).toHaveBeenCalled());
   const payload = mocks.saveRequirementsVersion.mock.calls[0][0];
   expect(payload.registry.groups.BR[0].text).toContain('с уведомлением по электронной почте');
   expect(payload.decisions.review.gaps['GAP-001']).toMatchObject({ state: 'closed', answer: 'Уведомлять по электронной почте.' });
-  expect(payload.decisions.review.gaps['GAP-001'].reason).toContain('BR-001');
 });
 
 test('adds a requirement without a completeness check and preserves historical review notes', async () => {
@@ -311,6 +294,7 @@ test('explicitly rebases a pending field onto a new server version', async () =>
 test('saves structured changes and original evidence together without closing the card', async () => {
   await openSavedRoomReview();
   fireEvent.change(screen.getByRole('textbox', { name: 'Критерий успеха BR-001' }), { target: { value: 'Не более двух конфликтов в месяц' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Пересмотреть оценку' }));
   fireEvent.change(screen.getByRole('combobox', { name: 'Качество BR-001' }), { target: { value: 'Готово' } });
   mocks.saveRequirementsVersion.mockRejectedValue(new Error('Test offline'));
   fireEvent.click(screen.getByRole('button', { name: 'Сохранить изменения' }));
@@ -340,17 +324,17 @@ test('confirms deletion, supports undo, and does not reuse the deleted identifie
   expect(screen.getByRole('button', { name: /^Выбрать BR-002:/ })).toBeInTheDocument();
 });
 
-test('question references open a preview without losing edits', async () => {
-      await openSavedRoomReview();
-      fireEvent.click(within(screen.getByRole('group', { name: 'Разделы проверки' })).getByRole('button', { name: 'Вопросы' }));
-      expect(screen.getByRole('heading', { name: /Пробелы для уточнения · открытых: \d+/ })).toBeInTheDocument();
-      fireEvent.click(screen.getAllByRole('button', { name: 'BR-001' })[0]);
-      const dialog = await screen.findByRole('dialog', { name: /Бизнес-требование · BR-001/ });
-      expect(dialog).toHaveTextContent('Сократить конфликты бронирования.');
-      fireEvent.click(screen.getByRole('button', { name: 'Закрыть предпросмотр требования' }));
-      fireEvent.click(screen.getByRole('button', { name: /^(Реестр · \d+|Требования)$/ }));
-      expect(screen.getByRole('textbox', { name: 'Текст требования BR-001' })).toHaveValue('Сохранить мой черновик.');
-    });
+test('question queue and embedded editing preserve the original unfinished draft', async () => {
+  await openSavedRoomReview();
+  fireEvent.click(screen.getByRole('button', { name: 'Вопросы' }));
+  expect(screen.getByRole('heading', { name: /Вопросы · открытых:/ })).toBeInTheDocument();
+  fireEvent.click(within(document.getElementById('record-GAP-001')).getByRole('button', { name: 'Разобрать вопрос' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Редактировать BR-001' }));
+  expect(within(screen.getByRole('dialog')).getByRole('textbox', { name: 'Текст требования BR-001' })).toHaveValue('Сохранить мой черновик.');
+  fireEvent.click(screen.getAllByRole('button', { name: 'Закрыть вопрос' }).at(-1));
+  fireEvent.click(screen.getByRole('button', { name: /^Реестр ·/ }));
+  expect(screen.getByRole('textbox', { name: 'Текст требования BR-001' })).toHaveValue('Сохранить мой черновик.');
+});
 
 test('one type filter preserves drafts and leaves final layout preferences untouched', async () => {
   await openSavedRoomReview();
@@ -455,7 +439,7 @@ test('shows honest backend milestones separately from business workflow progress
   mocks.getJob.mockResolvedValue(running);
   render(<AsyncJobWorkspace />);
 
-  expect(await screen.findByText('Модель исследует требования. Ожидаем результат.')).toBeInTheDocument();
+  expect(await screen.findByText('Анализируем требования и контекст задачи')).toBeInTheDocument();
   const estimatedProgress = screen.getByRole('progressbar', { name: 'Прогресс выполнения задачи' });
   expect(Number(estimatedProgress.getAttribute('aria-valuenow'))).toBeGreaterThan(20);
   expect(Number(estimatedProgress.getAttribute('aria-valuenow'))).toBeLessThan(90);
@@ -464,7 +448,7 @@ test('shows honest backend milestones separately from business workflow progress
   expect(screen.getByRole('listitem', { name: 'Подготовка: завершено' })).toBeInTheDocument();
   expect(screen.getByRole('listitem', { name: 'AI-анализ: выполняется' })).toHaveAttribute('aria-current', 'step');
   expect(screen.queryByText(/Сейчас в фокусе:/)).not.toBeInTheDocument();
-  expect(screen.getByText(/Оценка ожидания: 3–6 минут/)).toBeInTheDocument();
+  expect(screen.getByText(/Оценка ожидания: несколько минут/)).toBeInTheDocument();
   expect(screen.queryByLabelText('Об ориентировочной оценке прогресса')).not.toBeInTheDocument();
   expect(screen.getByLabelText(/Прошло 00:1[12]/)).toBeInTheDocument();
 
@@ -477,7 +461,7 @@ test('shows honest backend milestones separately from business workflow progress
 
   fireEvent.click(indicator);
   await waitFor(() => expect(window.location.pathname).toBe('/tasks/honest-1'));
-  expect(await screen.findByText('Модель исследует требования. Ожидаем результат.')).toBeInTheDocument();
+  expect(await screen.findByText('Анализируем требования и контекст задачи')).toBeInTheDocument();
 });
 
 test('continues the overall percentage through an authoritative assembly milestone', async () => {
@@ -1093,7 +1077,7 @@ test('reviews a BABOK registry by type, preserves evidence and saves a complete 
   expect(screen.getByRole('button', { name: /^Выбрать FR-001:/ })).toBeInTheDocument();
   const business = document.getElementById('record-BR-001');
   expect(within(business).getByText('Извлечено из источника')).toBeInTheDocument();
-  expect(within(business).getAllByText('Оценка качества: Готово')).toHaveLength(1);
+  expect(within(business).getByText('Оценка формулировки: Готово')).toBeInTheDocument();
 
   fireEvent.click(within(business).getByRole('button', { name: 'Действия для BR-001' }));
   fireEvent.click(within(business).getByRole('button', { name: 'Редактировать' }));
@@ -1153,7 +1137,8 @@ test.each([false, true])('keeps BABOK target types and original decision indices
   fireEvent.click(await screen.findByRole('button', { name: 'Сохранить с открытыми вопросами' }));
   await waitFor(() => expect(mocks.saveRequirementsVersion).toHaveBeenCalledWith(expect.objectContaining({ baseVersionId: 'babok-base', decisions: expect.objectContaining({ acceptedEnhancementKeys: [expectedKey], rejectedEnhancementKeys: [] }), registry: expect.any(Object) })));
   const saved = mocks.saveRequirementsVersion.mock.calls[0][0];
-  expect(saved.registry.groups.FR).toEqual(expect.arrayContaining([expect.objectContaining({ researchEnhancementKey: expectedKey, fromResearch: true, relatedTo: ['FR-001'] })]));
+  expect(saved.registry.groups.FR).toEqual(expect.arrayContaining([expect.objectContaining({ researchEnhancementKey: expectedKey, fromResearch: true, relatedTo: [] })]));
+  expect(saved.registry.analysis.traceability).toContainEqual(expect.objectContaining({ to: 'FR-001', status: 'Предполагается' }));
   expect(await screen.findByRole('heading', { name: 'Финальная версия требований' })).toBeInTheDocument();
   expect(screen.getByText('Система хранит историю статусов заявки')).toBeInTheDocument();
 });
@@ -1415,4 +1400,19 @@ test('retry research preserves its idempotency key after a network failure', asy
   fireEvent.click(screen.getByRole('button', { name: 'Повторить исследование' }));
   await waitFor(() => expect(mocks.researchRequirements).toHaveBeenCalledTimes(2));
   expect(mocks.researchRequirements.mock.calls[1]).toEqual(first);
+});
+
+test('new task text survives remount and clearing removes the saved draft', async () => {
+  mocks.getCapabilities.mockResolvedValue({ tenantId: 'draft-tenant', userId: 'draft-user', capabilities: {} });
+  const first = render(<AsyncJobWorkspace />);
+  await screen.findByRole('textbox', { name: 'Бизнес-контекст' });
+  await waitFor(() => expect(mocks.getCapabilities).toHaveBeenCalled());
+  fireEvent.change(screen.getByRole('textbox', { name: 'Бизнес-контекст' }), { target: { value: 'Дистанционная заявка на изменение кредита' } });
+  first.unmount();
+  render(<AsyncJobWorkspace />);
+  await waitFor(() => expect(screen.getByRole('textbox', { name: 'Бизнес-контекст' })).toHaveValue('Дистанционная заявка на изменение кредита'));
+  expect(screen.getByText('Черновик восстановлен на этом устройстве.')).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: 'Удалить черновик' }));
+  expect(screen.getByRole('textbox', { name: 'Бизнес-контекст' })).toHaveValue('');
+  expect(localStorage.getItem('reqai.contextDraft:["draft-tenant","draft-user"]')).toBeNull();
 });

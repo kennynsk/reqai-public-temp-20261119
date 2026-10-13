@@ -7,6 +7,9 @@ import ResearchInsightWorkspace from './ResearchInsightWorkspace.jsx';
 afterEach(cleanup);
 
 const categoryMeta = {
+  trends: { label: 'Тренды рынка', color: '', active: '' },
+  competitors: { label: 'Конкурентный анализ', color: '', active: '' },
+  standards: { label: 'Стандарты и нормативы', color: '', active: '' },
   patterns: {
     label: 'Паттерны',
     color: 'bg-indigo-100 text-indigo-700',
@@ -18,6 +21,16 @@ const categoryMeta = {
     active: 'border-rose-600 bg-rose-600 text-white',
   },
 };
+
+test('all research directions remain visible when a historical run has no results for a category', () => {
+  renderWorkspace([{ id: 'risk-1', category: 'risks', title: 'Риск', summary: 'Описание', enhancements: [], evidenceMode: 'MODEL_HYPOTHESIS' }]);
+  for (const label of ['Тренды рынка', 'Конкурентный анализ', 'Стандарты и нормативы']) {
+    expect(screen.getByRole('button', { name: `${label} · 0` })).toBeVisible();
+  }
+  expect(screen.getAllByRole('note').some((note) => note.textContent.includes('знаниям LLM'))).toBe(true);
+  fireEvent.click(screen.getByRole('button', { name: 'Конкурентный анализ · 0' }));
+  expect(screen.getByRole('article', { name: 'Пустой результат фильтра' })).toBeVisible();
+});
 
 function renderWorkspace(insights) {
   return render(<ResearchInsightWorkspace
@@ -84,5 +97,15 @@ test('shows the empty state when the active filter no longer has results', () =>
     onSave={() => {}}
   />);
 
-  expect(screen.getByRole('article', { name: 'Пустой результат фильтра' })).toHaveTextContent('Нет результатов в выбранной категории');
+  expect(screen.getByRole('article', { name: 'Пустой результат фильтра' })).toHaveTextContent('Нет результатов по выбранным фильтрам');
+});
+
+test('unverified evidence is visible before disclosure and decisions can be filtered', () => {
+  render(<ResearchInsightWorkspace insights={[{ id: 'i1', title: 'Документы', category: 'patterns', applicability: 90, enhancements: [{ key: 'i1:0', text: 'Хранить' }, { key: 'i1:1', text: 'Удалять' }] }]} categoryMeta={categoryMeta} getEnhancements={(item) => item.enhancements} decisions={{ 'i1:0': 'accepted', 'i1:1': 'rejected' }} renderEnhancement={(item) => <p key={item.key}>{item.text}</p>} />);
+  expect(screen.getByRole('note')).toHaveTextContent('ссылки на источники не предоставлены');
+  fireEvent.change(screen.getByRole('combobox', { name: /Решение по предложению/ }), { target: { value: 'rejected' } });
+  expect(screen.getByText('Удалять')).toBeVisible();
+  expect(screen.queryByText('Хранить')).not.toBeInTheDocument();
+  fireEvent.change(screen.getByRole('combobox', { name: /Решение по предложению/ }), { target: { value: 'pending' } });
+  expect(screen.getByRole('article', { name: 'Пустой результат фильтра' })).toBeVisible();
 });

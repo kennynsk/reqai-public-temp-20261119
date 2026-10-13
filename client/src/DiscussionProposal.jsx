@@ -1,4 +1,5 @@
 import { lazy, Suspense } from 'react';
+import { QUALITY_POLICY } from '../../server/src/services/requirement-quality-context.js';
 
 const SafeMarkdown = lazy(() => import('./SafeMarkdown.jsx'));
 
@@ -38,6 +39,11 @@ export default function DiscussionProposal({ proposal, applied, saved = false, g
       </div>}
     </div>}
     {stale && <p role="status" className="text-sm text-amber-900">Предложение устарело. Попросите AI подготовить новый вариант с учётом текущих правок.</p>}
+    {proposal.qualityAssessment?.schemaVersion === QUALITY_POLICY && proposal.qualityAssessment.semanticReview?.pass === true && <section aria-label="Автоматическая переоценка качества" className="space-y-2 rounded-lg bg-white p-3">
+      <h4 className="text-sm font-semibold text-slate-900">Качество формулировок по скиллу</h4>
+      <p className="text-sm text-slate-700">{applied ? 'Оценки применены' : 'При принятии оценки обновятся автоматически'} · готово {proposal.qualityAssessment.assessments.filter((item) => item.quality === 'Готово').length} из {proposal.qualityAssessment.assessments.length}</p>
+      <details className="text-sm"><summary className="cursor-pointer font-semibold text-indigo-700">Основания оценок</summary><ul className="mt-2 space-y-3">{proposal.qualityAssessment.assessments.map((item) => <li key={item.id}><p className="font-semibold">{item.id} · {item.quality}</p><p className="mt-1 break-words text-slate-600">{item.reason}</p></li>)}</ul></details>
+    </section>}
     <div className="flex flex-wrap gap-2">
       <button type="button" disabled={disabled || stale || applied || rejected} onClick={onApply} className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">{applied ? saved ? 'Принято и сохранено' : 'Принято в черновик' : stale ? 'Предложение устарело' : actionLabel}</button>
       <button type="button" disabled={disabled || applied || rejected} onClick={onReject} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 disabled:opacity-50">{rejected ? 'Пакет отклонён' : 'Отклонить пакет'}</button>

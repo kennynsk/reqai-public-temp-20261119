@@ -23,6 +23,9 @@ export function createPromptProfileResolver({ catalog, policy }) {
         version,
         manifestHash: bundle.manifestHash,
         outputSchemaVersion: bundle.outputSchemaVersion,
+        ...(bundle.semanticPolicy ? { semanticPolicy: bundle.semanticPolicy } : {}),
+        ...(bundle.performanceBudgetMs ? { performanceBudgetMs: bundle.performanceBudgetMs } : {}),
+        ...(bundle.requiredResearchCategories ? { requiredResearchCategories: Object.freeze([...bundle.requiredResearchCategories]) } : {}),
         templates: Object.freeze(Object.fromEntries(Object.entries(bundle.templates).map(([step, value]) => [step, { sha256: value.sha256 }]))),
       });
     },

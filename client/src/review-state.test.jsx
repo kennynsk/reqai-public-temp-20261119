@@ -197,3 +197,10 @@ test('delegates recovery from a different editor to the session', () => {
   expect(restoreRecovery).toHaveBeenCalledWith(result.current.recovery);
   sessionStorage.removeItem(key);
 });
+
+test('cancelling a new composer leaves saved review decisions unchanged', () => {
+  const state = { content: roomBookingRegistry(), drafts: {}, decisions: { review: { acknowledgment: { confirmed: true, stale: false } } } };
+  const editing = reviewReducer(state, { type: 'field', key: 'FR:new', value: { group: 'FR', id: 'new', isNew: true, initialText: '', text: 'Тестовая функция' } });
+  const cancelled = reviewReducer(editing, { type: 'clear', key: 'FR:new' });
+  expect(cancelled).toEqual(state);
+});

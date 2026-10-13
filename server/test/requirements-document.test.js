@@ -73,3 +73,14 @@ test('new documents omit manual completeness status while historical checks and 
   const unchecked = requirementsDocument({ ...version, decisions: { review: { completeness: { checked: false, stale: false } } } });
   assert.ok(!unchecked.blocks.some((block) => /ручн.*свер|Проверка полноты/.test(block.text)));
 });
+
+test('accepted research conditions and rationale survive every export format', async () => {
+  const record = { id: 'FR-007', text: 'Единый набор документов', fromResearch: true, researchEnhancementKey: 'case:0', relatedTo: ['GAP-002'] };
+  const condition = 'Согласовать статусную модель документов (GAP-002).';
+  const model = requirementsDocument({ versionId: 'v', requirements: { functional: [record] }, decisions: { review: { proposals: { 'case:0': { targetId: record.id, after: record, originalText: record.text, decision: 'accepted', operation: 'add', confirmationConditions: condition, rationale: 'Исключить повторный запрос документов' } } } } });
+  const zip = await JSZip.loadAsync(await documentDocx(model));
+  for (const output of [documentHtml(model), documentMarkdown(model), await zip.file('word/document.xml').async('string')]) {
+    assert.ok(output.includes('Условия подтверждения: Согласовать статусную модель документов'));
+    assert.ok(output.includes('Исключить повторный запрос документов'));
+  }
+});

@@ -81,7 +81,7 @@ export class ZaiProvider {
       throw classifyProviderError(error, { requestId });
     } finally {
       clearTimeout(timer);
-      await (signal?.aborted ? dispatcher.destroy() : dispatcher.close()).catch(() => {});
+      await (signal?.aborted || controller.signal.aborted ? dispatcher.destroy() : dispatcher.close()).catch(() => {});
     }
   }
 }

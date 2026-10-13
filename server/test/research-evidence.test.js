@@ -28,3 +28,11 @@ test('proposal validation rejects foreign keys, forged originals and stale repla
   assert.throws(() => normalize({ ...proposal, originalText: 'Подмена' }), { code: 'INVALID_REVIEW_METADATA' });
   assert.throws(() => normalize({ ...proposal, before: { ...before, text: 'Устаревшая логика' } }), { code: 'INVALID_REVIEW_METADATA' });
 });
+
+test('proposal review saves authoritative conditions and rationale, ignoring client substitutions', () => {
+  const after = { id: 'FR-007', text: 'Единый набор документов', researchEnhancementKey: 'i1:0' };
+  const proposal = { operation: 'add', decision: 'accepted', targetType: 'FR', targetId: after.id, before: null, after, originalText: after.text, confirmationConditions: 'Подмена', rationale: 'Подмена' };
+  const normalized = normalizeProposalMetadata({ supplied: { 'i1:0': proposal }, content: { groups: { FR: [after] } }, baseContent: { groups: { FR: [] } }, researchResult: { insights: [{ id: 'i1', enhancements: [{ text: after.text, confirmationConditions: 'Согласовать статусы (GAP-002)', rationale: 'Не запрашивать документы повторно' }] }] } });
+  assert.equal(normalized['i1:0'].confirmationConditions, 'Согласовать статусы (GAP-002)');
+  assert.equal(normalized['i1:0'].rationale, 'Не запрашивать документы повторно');
+});

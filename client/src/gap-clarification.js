@@ -1,4 +1,4 @@
-import { linkedRequirementIds, updateReviewMetadata } from './review-metadata.js';
+import { linkedRequirementIds } from './review-metadata.js';
 
 function stable(value) {
   if (Array.isArray(value)) return value.map(stable);
@@ -27,18 +27,7 @@ export function clarificationIsCurrent(content, decisions, proposal) {
   return true;
 }
 
-export function acceptGapClarification(decisions, clarification) {
-  const { gapId, answer, checks, canResolve, remainingQuestions } = clarification;
-  const previous = decisions.review?.gaps?.[gapId] || {};
-  const { actorUserId: _actor, recordedAt: _time, ...prior } = previous;
-  let next = updateReviewMetadata(decisions, { gaps: { ...(decisions.review?.gaps || {}), [gapId]: {
-    ...prior, answer, state: canResolve ? 'closed' : 'answered', closureKind: canResolve ? 'resolved' : null,
-    reason: canResolve ? 'Ответ и учёт во всех связанных требованиях подтверждены при принятии уточнения.'
-      : `Принято частичное уточнение.${remainingQuestions.length ? ` Осталось выяснить: ${remainingQuestions.join(' ')}` : ' Требуется проверить остальные связанные требования.'}`,
-  } } });
-  next = updateReviewMetadata(next, { gapRequirements: { ...(next.review.gapRequirements || {}), [gapId]: Object.fromEntries(checks.map((check) => [check.requirementId, { state: check.state, reason: check.reason, stale: false }])) } });
-  return next;
-}
+export { acceptGapClarification } from '../../server/src/services/review-evidence.js';
 
 // A user may accept several packages and edit their result before saving.
 // Keep earlier acceptances as history without claiming they match the final draft.

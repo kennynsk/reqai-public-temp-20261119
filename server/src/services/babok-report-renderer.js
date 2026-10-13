@@ -39,11 +39,14 @@ function list(values) {
   return values.map((value) => `- ${cell(value)}`).join('\n');
 }
 
-function renderSummary(registry) {
+function renderSummary(registry, review) {
   const counts = ['BR', 'SR', 'FR', 'NFR', 'TR', 'CON', 'GAP']
     .map((type) => `${type}: ${registry.summary.counts[type]}`)
     .join(', ');
   const parts = [`${counts}.`];
+  const closed = registry.analysis.GAP.filter((gap) => review.gaps?.[gap.id]?.state === 'closed').length;
+  parts.push(`Вопросы в текущей редакции: ${registry.analysis.GAP.length - closed} открыто, ${closed} закрыто.`);
+  if (registry.summary.text || registry.summary.conclusions.length) parts.push('### Исходное резюме декомпозиции\n\nИсторический снимок до ручных правок и ответов. Выводы ниже не являются текущим статусом требований.');
   if (registry.summary.text) parts.push(registry.summary.text);
   if (registry.summary.conclusions.length) parts.push(list(registry.summary.conclusions));
   return ['## Краткое резюме', '', parts.join('\n\n')].join('\n');
@@ -110,9 +113,8 @@ export function buildBabokTraceability(registry) {
   ];
   const byId = new Map(records.map((record) => [record.id, record]));
   const children = new Map(records.map((record) => [record.id, []]));
-  const hierarchy = (from, to) => (from.startsWith('BR-') && to.startsWith('SR-'))
-    || (from.startsWith('SR-') && /^(SR|FR|NFR)-/.test(to))
-    || (from.startsWith('FR-') && to.startsWith('NFR-'));
+  const hierarchy = (from, to) => (from.startsWith('BR-') && /^(SR|NFR)-/.test(to))
+    || (from.startsWith('SR-') && /^(FR|NFR)-/.test(to));
   const crossRelation = (relation) => /конфликт|завис|замен|исключ|огранич|обеспеч/i.test(relation || '');
   const links = [...registry.analysis.traceability];
   // relatedTo is a generic relationship, not necessarily a parent pointer.
@@ -129,7 +131,7 @@ export function buildBabokTraceability(registry) {
   }
   const treeLinks = new Map();
   for (const link of links) {
-    if (!hierarchy(link.from, link.to) || crossRelation(link.relation)
+    if (!hierarchy(link.from, link.to) || !/^(обосновыва|реализу|уточня)/i.test(link.relation || '') || crossRelation(link.relation)
       || !children.has(link.from) || !byId.has(link.to)) continue;
     children.get(link.from).push(link.to);
     treeLinks.set(`${link.from}|${link.to}`, link);
@@ -144,7 +146,9 @@ export function buildBabokTraceability(registry) {
       const node = visit(child, treeLinks.get(`${id}|${child}`));
       if (node) { treeEdges.add(`${id}|${child}`); nodes.push(node); }
     }
-    return { record: byId.get(id), incoming, children: nodes };
+    const hierarchyNote = incoming?.from.startsWith('BR-') && id.startsWith('NFR-')
+      ? 'Общее NFR: прямая связь с бизнес-целью, без промежуточного SR' : null;
+    return { record: byId.get(id), incoming, children: nodes, hierarchyNote };
   };
   const forest = [];
   for (const record of [...registry.groups.BR, ...records]) {
@@ -168,7 +172,7 @@ function renderTraceability(registry, review) {
     const coverage = gaps.length ? ` — ${gapLabel} (${gaps.join(', ')})` : '';
     const edgeLabel = incoming ? ` — ${incoming.relation}${incoming.status !== 'Подтверждено источником' ? ` (${incoming.status})` : ''}` : '';
     const placement = id.startsWith('CON-') ? ' — ограничение' : id.startsWith('TR-') ? ' — требование перехода' : '';
-    lines.push(`${prefix}${branch}${shortLabel(record)}${edgeLabel}${placement}${coverage}`);
+    lines.push(`${prefix}${branch}${shortLabel(record)}${edgeLabel}${node.hierarchyNote ? ` — ${node.hierarchyNote}` : ''}${placement}${coverage}`);
     const childPrefix = `${prefix}${branch ? (tail ? '    ' : '│   ') : ''}`;
     node.children.forEach((child, index) => renderNode(child, childPrefix,
       index === node.children.length - 1 ? '└── ' : '├── ', index === node.children.length - 1));
@@ -201,7 +205,7 @@ function renderAnalysis(registry, review) {
 function renderQuestions(registry, review) {
   return ['## 11. Вопросы для уточнения', '', table(
     ['Приоритет / GAP', 'Адресат', 'Исходный вопрос', 'Статус', 'Ответ', 'Осталось выяснить'],
-    registry.analysis.questions.map((item) => [`${item.priority} / ${item.gapId}`, item.addressee, item.text, gapStatus(review, item.gapId), review.gaps?.[item.gapId]?.answer, review.gaps?.[item.gapId]?.state === 'closed' ? 'Вопрос закрыт' : remainingQuestions(review, item.gapId).join(' ') || 'См. решение / следующий шаг']),
+    registry.analysis.questions.map((item) => [`${item.priority} / ${item.gapId}`, item.addressee, item.text, gapStatus(review, item.gapId), review.gaps?.[item.gapId]?.answer, review.gaps?.[item.gapId]?.state === 'closed' ? 'Вопрос закрыт' : remainingQuestions(review, item.gapId).join(' ') || registry.analysis.GAP.find((gap) => gap.id === item.gapId)?.nextStep || 'Получить ответ на исходный вопрос']),
   )].join('\n');
 }
 
@@ -209,7 +213,7 @@ export function renderBabokReport(registry, { review = {} } = {}) {
   const value = validateBabokRegistry(registry);
   return [
     '# Отчёт о декомпозиции требований (BABOK v3)',
-    renderSummary(value),
+    renderSummary(value, review),
     ...(() => { const issues = collectBabokQualityIssues(value, { final: true }); return issues.length ? ['**Замечания к качеству — проверьте перед согласованием:**\n\n' + issues.map((issue) => `- ${issue.reason}`).join('\n')] : []; })(),
     renderContext(value),
     ...REQUIREMENT_SECTIONS.map(([type, title]) => renderRequirementSection(type, title, value.groups[type], value, review)),

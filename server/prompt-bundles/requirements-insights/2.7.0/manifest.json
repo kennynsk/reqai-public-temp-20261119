@@ -1,0 +1,31 @@
+{
+  "id": "requirements-insights",
+  "version": "2.7.0",
+  "displayName": "Evidence-aware and internally consistent requirements research",
+  "workflowPurposes": [
+    "REQUIREMENTS_INSIGHTS"
+  ],
+  "outputSchemaVersion": "requirements-insights.v1",
+  "templates": {
+    "insights": {
+      "path": "insights.md",
+      "requiredVariables": [
+        "babokIdentifierSet",
+        "businessContext",
+        "requirementsSection",
+        "reviewContext",
+        "supportingMaterials"
+      ],
+      "sha256": "0b0448eafaa69af24e326acf57b0a528d6c2a154410aa7d477112dfaaaaed3fd"
+    },
+    "review": {
+      "path": "review.md",
+      "requiredVariables": [
+        "originalPrompt",
+        "draft",
+        "qualityFindings"
+      ],
+      "sha256": "99a4b0419ffa4997fde365c48a068dd70836de1822230243d0955091588f440f"
+    }
+  }
+}

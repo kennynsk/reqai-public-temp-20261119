@@ -1,3 +1,5 @@
+import { createPortal } from 'react-dom';
+import { isolateModal } from './modal-layer.js';
 import { useEffect, useRef } from 'react';
 
 export default function ReviewDialog({ label, onClose, children }) {
@@ -7,6 +9,7 @@ export default function ReviewDialog({ label, onClose, children }) {
   useEffect(() => {
     const previous = document.activeElement;
     const node = ref.current;
+    const release = isolateModal(node);
     const focusable = () => [...node.querySelectorAll('button:not(:disabled), a[href], input:not(:disabled), textarea:not(:disabled), select:not(:disabled), summary, [tabindex="0"]')].filter((item) => {
       if (item.closest('[hidden], [inert]') || item.tabIndex < 0) return false;
       for (let parent = item.parentElement; parent && parent !== node; parent = parent.parentElement) {
@@ -25,7 +28,7 @@ export default function ReviewDialog({ label, onClose, children }) {
       else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
     };
     node.addEventListener('keydown', keyboard);
-    return () => { node.removeEventListener('keydown', keyboard); if (previous?.isConnected) previous.focus(); };
+    return () => { node.removeEventListener('keydown', keyboard); release(); if (previous?.isConnected && !previous.closest('[inert]')) previous.focus(); };
   }, []);
-  return <div className="fixed inset-0 z-[100] bg-slate-900/40 p-4 flex items-center justify-center"><section ref={ref} role="dialog" aria-modal="true" aria-label={label} tabIndex={-1} className="w-full max-w-3xl max-h-[90vh] overflow-auto rounded-2xl bg-white p-6 shadow-xl">{children}</section></div>;
+  return createPortal(<div className="fixed inset-0 z-[100] bg-slate-900/40 p-4 flex items-center justify-center"><section ref={ref} role="dialog" aria-modal="true" aria-label={label} tabIndex={-1} className="w-full max-w-3xl max-h-[90vh] overflow-auto rounded-2xl bg-white p-6 shadow-xl">{children}</section></div>, document.body);
 }

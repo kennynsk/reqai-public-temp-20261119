@@ -1,3 +1,4 @@
+import { useReviewUiState } from './review-state.js';
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { Loader2, MessageCircle, Send, X } from 'lucide-react';
 import DiscussionProposal from './DiscussionProposal.jsx';
@@ -32,7 +33,7 @@ function errorText(error) {
   return error?.message || 'Не удалось загрузить обсуждение.';
 }
 
-export default function DiscussionPanel({ jobId, anchorId, anchorLabel = '', baseVersionId, draft, contextReady = true, contextError = '', readOnly = false, onClose, onApplyProposal, onRejectProposal, proposalDecisions, savedProposalDecisions = {}, gapStates = {}, onSaveContext, savingContext = false }) {
+export default function DiscussionPanel({ jobId, anchorId, anchorLabel = '', baseVersionId, draft, contextReady = true, contextError = '', readOnly = false, onClose, onApplyProposal, onRejectProposal, proposalDecisions, savedProposalDecisions = {}, gapStates = {}, onSaveContext, savingContext = false, embedded = false, active = true }) {
   const panelRef = useRef(null);
   const latestMessageRef = useRef(null);
   const sendLock = useRef(false);
@@ -42,7 +43,7 @@ export default function DiscussionPanel({ jobId, anchorId, anchorLabel = '', bas
   useEffect(() => { requestScope.current = `${jobId}:${anchorId}:${baseVersionId}`; }, [jobId, anchorId, baseVersionId]);
   const guided = anchorId?.startsWith('GAP-');
   const [discussion, setDiscussion] = useState(null);
-  const [drafts, setDrafts] = useState({});
+  const [drafts, setDrafts] = useReviewUiState('discussionMessages', {});
   const [loading, setLoading] = useState(true);
   const [loadRevision, setLoadRevision] = useState(0);
   const [sending, setSending] = useState(false);
@@ -63,6 +64,7 @@ export default function DiscussionPanel({ jobId, anchorId, anchorLabel = '', bas
   useEffect(() => { latestMessageRef.current?.scrollIntoView?.({ block: 'start' }); }, [latestMessageId]);
 
   useEffect(() => {
+    if (embedded) return;
     const previous = document.activeElement;
     const node = panelRef.current;
     const focusable = () => [...node?.querySelectorAll('button:not(:disabled), textarea:not(:disabled), a[href], [tabindex="0"]') || []];
@@ -78,14 +80,14 @@ export default function DiscussionPanel({ jobId, anchorId, anchorLabel = '', bas
     };
     node?.addEventListener('keydown', keyboard);
     return () => { cancelAnimationFrame(frame); node?.removeEventListener('keydown', keyboard); if (previous?.isConnected) previous.focus(); };
-  }, [anchorId]);
+  }, [anchorId, embedded]);
 
   useEffect(() => {
     let cancelled = false;
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 15000);
     async function load() {
-      if (!jobId || !anchorId) return;
+      if (!jobId || !anchorId || !active) { setLoading(false); return; }
       setLoading(true); setError(''); setDiscussion(null); setStaleProposal(false);
       try {
         let value;
@@ -103,7 +105,7 @@ export default function DiscussionPanel({ jobId, anchorId, anchorLabel = '', bas
     }
     load();
     return () => { cancelled = true; clearTimeout(timeout); controller.abort(); };
-  }, [jobId, anchorId, baseVersionId, readOnly, loadRevision]);
+  }, [jobId, anchorId, baseVersionId, readOnly, loadRevision, active]);
 
   useEffect(() => {
     if (!jobId || !anchorId || !discussion?.discussionId || readOnly || typeof enterpriseApi.subscribeRequirementDiscussionEvents !== 'function') return undefined;
@@ -200,11 +202,11 @@ export default function DiscussionPanel({ jobId, anchorId, anchorLabel = '', bas
   const proposalApplied = proposalDecisions ? decision?.decision === 'accepted' && !decision.discarded : applied.has(proposal?.proposalId);
   const proposalRejected = proposalDecisions ? decision?.decision === 'rejected' : rejected.has(proposal?.proposalId);
   const retryableAttempt = discussion?.attempt && ['failed', 'cancelled'].includes(discussion.attempt.status) ? discussion.attempt : null;
-  return <div className="fixed inset-0 z-[95]" role="dialog" aria-modal="true" aria-label={`Обсуждение ${anchorId}`}>
-    <button type="button" aria-label="Закрыть обсуждение" onClick={onClose} className="absolute inset-0 bg-slate-950/30" />
-    <aside ref={panelRef} tabIndex={-1} className="absolute right-0 top-0 flex h-full w-full max-w-xl flex-col bg-white shadow-2xl outline-none">
+  return <div className={embedded ? "flex min-h-0 flex-1 flex-col" : "fixed inset-0 z-[95]"} role={embedded ? undefined : "dialog"} aria-modal={embedded ? undefined : "true"} aria-label={`Обсуждение ${anchorId}`}>
+    {!embedded && <button type="button" aria-label="Закрыть обсуждение" onClick={onClose} className="absolute inset-0 bg-slate-950/30" />}
+    <aside ref={panelRef} tabIndex={-1} className={embedded ? "flex min-h-0 flex-1 flex-col bg-white outline-none" : "absolute right-0 top-0 flex h-full w-full max-w-xl flex-col bg-white shadow-2xl outline-none"}>
       <header className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
-        <div className="min-w-0"><p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-indigo-600"><MessageCircle className="h-4 w-4" />{guided ? 'Уточнение вопроса с AI' : 'Контекстное обсуждение'}</p><h2 title={anchorLabel} className="mt-1 line-clamp-3 break-words text-lg font-bold text-slate-900"><span>{anchorId}</span>{anchorLabel && <span className="ml-2 font-normal text-slate-700">{anchorLabel}</span>}</h2><p className="mt-1 text-xs text-slate-500">{guided ? 'Разберём недостающие решения, затем проверим правки требований и результат уточнения.' : 'Задавайте вопросы по этой записи. AI учитывает связанные требования и вопросы для уточнения.'}</p></div>
+        <div className="min-w-0"><p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-indigo-600"><MessageCircle className="h-4 w-4" />{guided ? 'Уточнение вопроса с AI' : 'Контекстное обсуждение'}</p><h2 title={anchorLabel} className="mt-1 line-clamp-3 break-words text-lg font-bold text-slate-900"><span>{anchorId}</span>{!embedded && anchorLabel && <span className="ml-2 font-normal text-slate-700">{anchorLabel}</span>}</h2>{!embedded && <p className="mt-1 text-xs text-slate-500">{guided ? 'Разберём недостающие решения, затем проверим правки требований и результат уточнения.' : 'Задавайте вопросы по этой записи. AI учитывает связанные требования и вопросы для уточнения.'}</p>}</div>
         <button type="button" aria-label="Закрыть обсуждение" onClick={onClose} className="shrink-0 rounded-lg p-2 text-slate-500 hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-600"><X className="h-5 w-5" /></button>
       </header>
       <div className="flex-1 overflow-y-auto px-5 py-4">

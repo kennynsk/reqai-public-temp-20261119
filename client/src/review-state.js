@@ -86,7 +86,7 @@ export function reviewReducer(state, action) {
       const fields = Object.keys(action.value.fields || {});
       const meaningChanged = action.value.text !== action.value.initialText || fields.some((field) => field !== 'quality');
       const assessmentChanged = fields.includes('quality');
-      const decisions = meaningChanged ? invalidateReviewEvidence(state.decisions, { changedRecordIds: action.value.id ? [action.value.id] : null })
+      const decisions = action.value.isNew ? state.decisions : meaningChanged ? invalidateReviewEvidence(state.decisions, { changedRecordIds: action.value.id ? [action.value.id] : null })
         : assessmentChanged ? invalidateReviewEvidence(state.decisions, { changedRecordIds: [], changedGapIds: [] }) : state.decisions;
       return { ...state, decisions, drafts: { ...state.drafts, [action.key]: action.value } };
     }
@@ -110,7 +110,7 @@ export function assembleReview(state, createRecord, normalize = (value) => value
   const error = validateReviewContent(content);
   if (error) return { error };
   const normalized = normalize(content);
-  return { content: normalized, decisions: reconcileDiscussionReceipts(state.decisions, normalized) };
+  return { content: normalized, decisions: reconcileDiscussionReceipts(Object.values(state.drafts).some((draft) => draft.isNew && draft.text.trim()) ? invalidateReviewEvidence(state.decisions, { changedRecordIds: [] }) : state.decisions, normalized) };
 }
 
 export function rebaseReview(state, base, remote, baseDecisions = {}, remoteDecisions = {}) {

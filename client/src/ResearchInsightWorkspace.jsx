@@ -2,6 +2,7 @@ import { useMemo, useRef } from 'react';
 import { useReviewUiState } from './review-state.js';
 import { ExternalLink, HelpCircle, Link2 } from 'lucide-react';
 import { RequirementPreviewLink, RequirementPreviewProvider } from './RequirementPreview.jsx';
+import { normalizeCitations } from '../../server/src/domain/research-evidence.js';
 import { buildInsightPresentation, ensureSelectedInsightId, filterInsightPresentations } from './research-review.js';
 
 function applicabilityLabel(value) {
@@ -35,6 +36,7 @@ export default function ResearchInsightWorkspace({
   renderEvidence,
   renderEnhancement,
   selectedCount = 0,
+  decisions = {},
   onSave,
   saveDisabled = false,
   saveLabel = 'Сохранить финальную версию',
@@ -46,7 +48,10 @@ export default function ResearchInsightWorkspace({
   })), [categoryMeta, getEnhancements, insights]);
   const [activeFilter, setActiveFilter] = useReviewUiState('researchCategory', 'all');
   const [selectedInsightId, setSelectedInsightId] = useReviewUiState('researchSelection', () => presentations[0]?.id || null);
-  const visible = useMemo(() => filterInsightPresentations(presentations, activeFilter), [activeFilter, presentations]);
+  const [decisionFilter, setDecisionFilter] = useReviewUiState('researchDecision', 'all');
+  const hasDecision = (insight, filter) => filter === 'all' || insight.enhancements.some((item) => (decisions[item.key] || 'pending') === filter);
+  const visible = filterInsightPresentations(presentations, activeFilter).filter((insight) => hasDecision(insight, decisionFilter));
+  const decisionOptions = [['all', 'Все решения'], ['pending', 'Не рассмотрено'], ['accepted', 'Принято'], ['rejected', 'Отклонено']].map(([key, label]) => ({ key, label, count: presentations.flatMap((insight) => insight.enhancements).filter((item) => key === 'all' || (decisions[item.key] || 'pending') === key).length }));
   const selectedId = ensureSelectedInsightId(selectedInsightId, visible);
   const selected = visible.find((insight) => insight.id === selectedId) || null;
 
@@ -54,7 +59,7 @@ export default function ResearchInsightWorkspace({
     const options = [{ key: 'all', label: 'Все результаты', count: presentations.length, active: 'border-indigo-600 bg-indigo-600 text-white', icon: null }];
     Object.entries(categoryMeta).forEach(([key, meta]) => {
       const count = presentations.filter((insight) => insight.categoryKey === key).length;
-      if (count) options.push({ key, label: meta.label, count, active: meta.active, icon: meta.icon });
+      options.push({ key, label: meta.label, count, active: meta.active, icon: meta.icon });
     });
     const unknownCount = presentations.filter((insight) => insight.categoryKey === 'unknown').length;
     if (unknownCount) options.push({ key: 'unknown', label: 'Другие результаты', count: unknownCount, active: 'border-slate-700 bg-slate-700 text-white', icon: HelpCircle });
@@ -75,6 +80,7 @@ export default function ResearchInsightWorkspace({
 
   return <RequirementPreviewProvider index={requirementIndex}>
     <section aria-label="Результаты AI-исследования: список и детали" className="space-y-4">
+      {insights.some((item) => item.evidenceMode === 'MODEL_HYPOTHESIS') && <p role="note" className="text-sm text-slate-600">Аналитические гипотезы по вашим материалам и знаниям LLM. Внешний поиск и проверка публикаций не выполнялись. Применимость — оценка модели; предложения требуют вашего согласования.</p>}
       <div role="group" aria-label="Фильтры результатов AI-исследования" className="hidden flex-wrap gap-2 lg:flex">
         {filterOptions.map((option) => <FilterButton key={option.key} option={option} active={activeFilter === option.key} onClick={() => selectFilter(option.key)} />)}
       </div>
@@ -83,6 +89,11 @@ export default function ResearchInsightWorkspace({
         <select value={activeFilter} onChange={(event) => selectFilter(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3">
           {filterOptions.map((option) => <option key={option.key} value={option.key}>{option.label} · {option.count}</option>)}
         </select>
+      </label>
+      <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-700">Решение по предложению
+        <select value={decisionFilter} onChange={(event) => setDecisionFilter(event.target.value)} className="min-h-11 rounded-lg border border-slate-300 bg-white px-3">
+          {decisionOptions.map((option) => <option key={option.key} value={option.key}>{option.label} · {option.count}</option>)}
+        </select><span className="text-xs font-normal text-slate-600">{decisionOptions.slice(1).map((option) => `${option.label}: ${option.count}`).join(' · ')}</span>
       </label>
       <div className="reqai-research-workspace grid min-w-0 gap-4 lg:grid-cols-[minmax(17.5rem,20rem)_minmax(0,1fr)]">
         <nav ref={listRef} tabIndex={-1} aria-label="Список результатов AI-исследования" className="reqai-research-selector min-w-0 rounded-2xl border border-slate-200 bg-white p-2">
@@ -107,14 +118,14 @@ export default function ResearchInsightWorkspace({
                   <span className="min-w-0 flex-1">
                     <span className="flex items-start justify-between gap-2">
                       <span className="min-w-0 text-xs font-semibold leading-4 text-slate-600">{insight.categoryLabel}</span>
-                      <span className="shrink-0 text-xs font-bold text-slate-500">{applicabilityLabel(insight.applicability)}</span>
+                      <span className="shrink-0 text-xs font-bold text-slate-500">{applicabilityLabel(insight.applicability)}{insight.applicability != null ? ' · AI' : ''}</span>
                     </span>
                     <span className="reqai-title-clamp mt-1 text-sm font-semibold leading-5 text-slate-900">{insight.title}</span>
                   </span>
                 </div>
               </button>;
             })}
-          </div> : <p className="px-3 py-5 text-sm leading-relaxed text-slate-500">Нет результатов в выбранной категории.</p>}
+          </div> : <p className="px-3 py-5 text-sm leading-relaxed text-slate-500">Нет результатов по выбранным фильтрам.</p>}
         </nav>
 
         {selected ? <article ref={detailRef} id="selected-research-detail" tabIndex={-1} aria-label={`Детали результата: ${selected.title}`} className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
@@ -128,6 +139,7 @@ export default function ResearchInsightWorkspace({
             </span>
           </div>
           <h2 className="reqai-research-copy mt-5 text-xl font-bold leading-tight text-slate-950 sm:text-2xl">{selected.title}</h2>
+          <p role="note" className="mt-3 text-sm font-medium text-amber-900">{normalizeCitations(selected.citations).length ? 'Гипотеза AI · ссылки требуют проверки. Наличие ссылки не подтверждает утверждение.' : 'Гипотеза AI · ссылки на источники не предоставлены.'} Оценка применимости — мнение модели, не вероятность достоверности.</p>
           {selected.summary && <p className="reqai-research-copy mt-3 text-base leading-7 text-slate-600">{selected.summary}</p>}
           {selected.detail && <div className="reqai-research-copy mt-5 whitespace-pre-wrap text-sm leading-6 text-slate-700"><p className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-600">Подробности</p><p className="mt-2">{selected.detail}</p></div>}
 
@@ -150,11 +162,11 @@ export default function ResearchInsightWorkspace({
 
           {selected.enhancements.length === 0 && <p className="mt-5 border-t border-slate-100 pt-5 text-sm text-slate-500">В этом результате AI не предложил готовых требований для добавления в реестр.</p>}
           {selected.enhancements.length > 0 && <div className="mt-5 space-y-3 border-t border-slate-100 pt-5">
-            <div><h3 className="text-base font-bold text-slate-900">Предлагаемые изменения</h3><p className="mt-1 text-sm text-slate-500">Проверьте формулировки перед добавлением в черновик требований.</p></div>
-            {selected.enhancements.map((enhancement, index) => renderEnhancement(enhancement, selected, index))}
+            <div><h3 className="text-base font-bold text-slate-900">Предлагаемые изменения</h3><p className="mt-1 text-sm text-slate-500">Проверьте новые требования и изменения существующих перед применением к черновику.</p></div>
+            {selected.enhancements.filter((item) => decisionFilter === 'all' || (decisions[item.key] || 'pending') === decisionFilter).map((enhancement, index) => renderEnhancement(enhancement, selected, index))}
           </div>}
         </article> : <article aria-label="Пустой результат фильтра" className="flex min-h-64 min-w-0 items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white p-6 text-center">
-          <div><p className="font-semibold text-slate-800">Нет результатов в выбранной категории</p><p className="mt-1 text-sm text-slate-500">Выберите другой фильтр, чтобы продолжить проверку.</p></div>
+          <div><p className="font-semibold text-slate-800">Нет результатов по выбранным фильтрам</p><p className="mt-1 text-sm text-slate-500">Выберите другой фильтр, чтобы продолжить проверку.</p></div>
         </article>}
       </div>
 

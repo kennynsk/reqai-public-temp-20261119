@@ -42,8 +42,9 @@ export function createModelExecutor({ provider, coordination, attempts, jobTrace
           const attemptId = uuid();
           let persistedAttemptId = attemptId;
           const started = clock();
+          const requestTimeoutMs = Math.max(1, Math.min(snapshot.requestTimeoutMs, new Date(deadlineAt).getTime() - started.getTime()));
           const maxOutputTokens = snapshot.outputTokens[model];
-          await trace({ tenantId, jobId, category: 'MODEL', name: `LLM attempt: ${model}`, status: 'RUNNING', stepId, startedAt: started, metadata: { requestedModel, actualModel: model, attempt, executionId, temperature, requestTimeoutMs: snapshot.requestTimeoutMs, maxOutputTokens, thinking: snapshot.thinking, reasoning: snapshot.reasoning } });
+          await trace({ tenantId, jobId, category: 'MODEL', name: `LLM attempt: ${model}`, status: 'RUNNING', stepId, startedAt: started, metadata: { requestedModel, actualModel: model, attempt, executionId, temperature, requestTimeoutMs, maxOutputTokens, thinking: snapshot.thinking, reasoning: snapshot.reasoning } });
           try {
             const persistedAttempt = await attempts.start({ id: attemptId, tenantId, jobId, stepId: persistenceStepId, attempt, requestedModel, actualModel: model, executionId, executionSite });
             persistedAttemptId = persistedAttempt?.id || attemptId;
@@ -53,7 +54,7 @@ export function createModelExecutor({ provider, coordination, attempts, jobTrace
           }
           let response;
           try {
-            response = await provider.complete({ model, messages, temperature, maxOutputTokens, thinking: snapshot.thinking, reasoning: snapshot.reasoning, timeoutMs: snapshot.requestTimeoutMs, traceContext: injectTrace({}) });
+            response = await provider.complete({ model, messages, temperature, maxOutputTokens, thinking: snapshot.thinking, reasoning: snapshot.reasoning, timeoutMs: requestTimeoutMs, traceContext: injectTrace({}) });
           } catch (rawError) {
             const error = classifyProviderError(rawError);
             await coordination.failure({ tenantId, model, leaseId: lease.id, reasonCode: error.reasonCode });

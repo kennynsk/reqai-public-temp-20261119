@@ -15,6 +15,24 @@ const policy = {
   'requirements-insights': { active: '1.0.0', released: ['1.0.0'] },
 };
 
+test('research snapshots all five directions and a separate budget while decomposition remains bounded to four minutes', () => {
+  const catalog = createPromptCatalog({ rootDir: defaultPromptBundleRoot() });
+  const resolver = createPromptProfileResolver({ catalog, policy: {
+    'requirements-decomposition': { active: '2.11.0', released: ['2.11.0'] },
+    'requirements-insights': { active: '2.12.0', released: ['2.12.0'] },
+  } });
+  const decomp = resolver.resolve({ type: 'DECOMPOSITION', mode: 'DECOMPOSITION' });
+  const research = resolver.resolve({ type: 'RESEARCH', mode: 'REQUIREMENTS_INSIGHTS' });
+  assert.equal(decomp.performanceBudgetMs, 240000);
+  assert.equal(research.performanceBudgetMs, 900000);
+  assert.deepEqual(research.requiredResearchCategories, ['trends', 'patterns', 'risks', 'competitors', 'standards']);
+  const prompt = catalog.render(research, 'insights', { babokIdentifierSet: '[]', businessContext: 'Сервис расчётов', requirementsSection: '{}', reviewContext: '{}', supportingMaterials: '[]' }).text;
+  assert.match(prompt, /текущим знаниям LLM/);
+  assert.match(prompt, /Обязательно охвати ВСЕ ПЯТЬ/);
+  assert.doesNotMatch(prompt, /допустима только при соответствующих предоставленных материалах/);
+  assert.match(catalog.get('requirements-insights', '2.12.0').templates['semantic-audit'].text, /явно помеченное знание модели|ясно помеченное знание модели/);
+});
+
 test('decomposition matches its builder and the historical insights release remains immutable', () => {
   const catalog = createPromptCatalog({ rootDir: defaultPromptBundleRoot() });
   const resolver = createPromptProfileResolver({ catalog, policy });
@@ -110,4 +128,15 @@ test('BABOK prompt releases qualify and stay within the rendered artifact budget
   assert.match(renderedDecompose, /Не\s+объединяй альтернативные результаты/);
   assert.match(renderedDecompose, /миграция,\s+перенос, обучение/);
   assert.match(renderedInsights, /targetType/);
+});
+
+test('structured GAP references are compatible with the quality enum during generation, independent audit and repair', () => {
+  const catalog = createPromptCatalog({ rootDir: defaultPromptBundleRoot() });
+  const bundle = catalog.get('requirements-decomposition', '2.12.0');
+  for (const step of ['decompose', 'semantic-audit', 'semantic-repair']) {
+    assert.match(bundle.templates[step].text, /analysis.GAP перечисляет requirement.id в affectedIds/);
+    assert.match(bundle.templates[step].text, /Общий пробел НФТ сам по себе не делает/);
+    assert.match(bundle.templates[step].text, /точное значение перечисления/);
+  }
+  assert.equal(bundle.performanceBudgetMs, 240000);
 });

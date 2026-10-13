@@ -16,6 +16,8 @@ const USER_PROGRESS = Object.freeze({
 });
 
 const NON_RETRYABLE_FAILURE_TYPES = new Set([
+  'JOB_DEADLINE_EXPIRED',
+  'BABOK_SEMANTIC_INVALID',
   'OUTPUT_CONTRACT_VIOLATION',
   'BABOK_OUTPUT_INVALID',
   'INVALID_DECOMPOSITION_RESULT',
@@ -34,6 +36,10 @@ export function failureReason(error) {
 function safeFailureDetails(error) {
   const details = error?.details;
   if (!details || typeof details !== 'object' || Array.isArray(details)) return null;
+  if (error.type === 'BABOK_SEMANTIC_INVALID' && Array.isArray(details.issues)) return {
+    policy: details.policy === 'babok-semantic.v2' ? details.policy : 'babok-semantic.v1',
+    issues: details.issues.slice(0, 30).map((issue) => ({ key: String(issue.key || '$').slice(0, 100), code: String(issue.code || 'SEMANTIC_REVIEW_FINDING').slice(0, 100), reason: String(issue.reason || '').slice(0, 512) })),
+  };
   const path = typeof details.path === 'string' ? details.path.slice(0, 256) : null;
   const reason = typeof details.reason === 'string' ? details.reason.slice(0, 512) : null;
   return path || reason ? { ...(path ? { path } : {}), ...(reason ? { reason } : {}) } : null;

@@ -5,9 +5,10 @@ import ReviewDialog from './ReviewDialog.jsx';
 import { SourceEvidence } from './SourceEvidence.jsx';
 import { gapChecklist, gapHasPendingClarification, gapReviewHint, updateReviewMetadata } from './review-metadata.js';
 import { RequirementPreviewLink } from './RequirementPreview.jsx';
+import { gapStateLabel } from './question-presentation.js';
 import { MessageCircle } from 'lucide-react';
 
-export default function ReviewQuestions({ registry, readOnly, onNavigate, onDiscuss }) {
+export default function ReviewQuestions({ registry, readOnly, onNavigate, onDiscuss, onOpenQuestion }) {
   const review = useContext(DraftContext);
   const metadata = review?.state.decisions.review || {};
   const states = metadata.gaps || {};
@@ -27,6 +28,18 @@ export default function ReviewQuestions({ registry, readOnly, onNavigate, onDisc
   };
   const resolve = (gap) => change(gap.id, { state: 'closed', closureKind: 'resolved', reason: `Проверены все связанные требования: ${gapChecklist(review.content, gap, metadata).map((item) => item.requirementId).join(', ')}.` });
   const gaps = registry.analysis.GAP.filter((gap) => filter === 'all' || (filter === 'closed' ? states[gap.id]?.state === 'closed' : states[gap.id]?.state !== 'closed'));
+  if (onOpenQuestion) return <section id="record-GAP-summary" tabIndex={-1} aria-label="Вопросы для уточнения" className="space-y-3">
+    <h2 id="record-QUESTION-summary" tabIndex={-1} className="text-lg font-bold">Вопросы · открытых: {registry.analysis.GAP.filter((gap) => states[gap.id]?.state !== 'closed').length} · закрытых: {registry.analysis.GAP.filter((gap) => states[gap.id]?.state === 'closed').length}</h2>
+    <p className="text-sm text-slate-600">Общий список вопросов по задаче. Ответ и проверка связанных требований доступны в панели выбранного вопроса.</p>
+    <label className="flex flex-wrap items-center gap-2 text-sm">Показывать вопросы<select aria-label="Статус вопросов" value={filter} onChange={(event) => setFilter(event.target.value)} className="rounded-lg border p-2"><option value="all">Все</option><option value="open">Открытые и с ответом</option><option value="closed">Закрытые</option></select></label>
+    {gaps.map((gap) => { const questions = registry.analysis.questions.filter((question) => question.gapId === gap.id); return <article key={gap.id} id={`record-${gap.id}`} tabIndex={-1} className="space-y-2 rounded-xl border border-amber-200 bg-white p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="text-sm font-semibold text-slate-700">{gap.id} · {gapStateLabel(states[gap.id])}</h3><button type="button" data-question-id={gap.id} onClick={(event) => onOpenQuestion(gap.id, event.currentTarget)} className="rounded-lg border border-indigo-200 px-3 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-50">Разобрать вопрос</button></div>
+      <p className="line-clamp-3 break-words text-sm text-slate-700">{gap.text}</p>
+      <p className="break-words text-xs text-slate-500">Требований: {gapChecklist(registry, gap, metadata).length}{questions.length > 0 && ` · ${[...new Set(questions.map((question) => `${({ P0: 'Критический', P1: 'Высокий', P2: 'Обычный' })[question.priority] || 'Приоритет не указан'} · ${question.addressee || 'Адресат не указан'}`))].join('; ')}`}</p>
+      <p role="status" className="text-xs text-slate-600">{gapReviewHint(registry, gap, metadata)}</p>
+    </article>; })}
+    {!gaps.length && <p className="p-3 text-sm text-slate-600">В этом списке нет вопросов.</p>}
+  </section>;
   return <section id="record-GAP-summary" tabIndex={-1} aria-label="Вопросы для уточнения" className="space-y-3">
     <h2 id="record-QUESTION-summary" tabIndex={-1} className="text-lg font-bold">Пробелы для уточнения · открытых: {registry.analysis.GAP.filter((gap) => states[gap.id]?.state !== 'closed').length} · закрытых: {registry.analysis.GAP.filter((gap) => states[gap.id]?.state === 'closed').length}</h2>
     <p className="text-sm text-slate-600">Для каждого пробела показаны связанные требования и вопросы, на которые нужно ответить. У одного пробела может быть несколько вопросов. AI поможет уточнить недостающие сведения и подготовит правки для вашего принятия. После принятия сохраните изменения общей кнопкой вверху.</p>

@@ -5,7 +5,7 @@ import { DraftContext } from './review-context.js';
 import ReviewDialog from './ReviewDialog.jsx';
 import { gapChecklist, gapHasPendingClarification, gapReviewHint, requirementGaps, updateReviewMetadata } from './review-metadata.js';
 
-export default function RequirementClarifications({ requirement, editing, readOnly, onNavigate, onDiscuss, detailsRef }) {
+export default function RequirementClarifications({ requirement, editing, readOnly, onNavigate, onDiscuss, detailsRef, onOpenQuestion }) {
   const review = useContext(DraftContext);
   const [noChange, setNoChange] = useState(null);
   const gaps = requirementGaps(review?.content, requirement);
@@ -13,6 +13,13 @@ export default function RequirementClarifications({ requirement, editing, readOn
   const metadata = review.state.decisions.review || {};
   const states = metadata.gaps || {};
   const openCount = gaps.filter((gap) => states[gap.id]?.state !== 'closed').length;
+  if (onOpenQuestion) return <section aria-label={`Связанные вопросы ${requirement.id}`} className="mt-4 space-y-2">
+    <h3 className="text-sm font-semibold text-slate-700">Связанные вопросы · {openCount} открытых</h3>
+    {gaps.map((gap) => <div key={gap.id} className="rounded-lg border border-amber-200 bg-amber-50/50 p-3 text-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2"><span className="text-xs font-semibold text-slate-600">{gap.id} · {states[gap.id]?.state === 'closed' ? 'Закрыт' : states[gap.id]?.answer?.trim() ? 'Ответ добавлен' : 'Ожидает ответа'}</span><button type="button" data-question-id={gap.id} onClick={(event) => onOpenQuestion(gap.id, event.currentTarget)} className="font-semibold text-indigo-700 underline underline-offset-2">Разобрать вопрос</button></div>
+      <p title={gap.text} className="mt-2 line-clamp-3 break-words text-slate-700">{gap.text}</p>
+    </div>)}
+  </section>;
   function updateCheck(gap, requirementId, patch) {
     const current = metadata.gapRequirements || {};
     const nextGap = { ...(current[gap.id] || {}), [requirementId]: { ...(current[gap.id]?.[requirementId] || {}), ...patch, stale: false } };

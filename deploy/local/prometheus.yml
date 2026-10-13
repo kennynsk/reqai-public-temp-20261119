@@ -9,4 +9,4 @@ scrape_configs:
   - job_name: reqai-api
     metrics_path: /metrics
     static_configs:
-      - targets: [reqai-api:5178]
+      - targets: [api:5178]

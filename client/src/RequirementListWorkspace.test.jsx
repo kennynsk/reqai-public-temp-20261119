@@ -7,6 +7,7 @@ import { roomBookingRegistry } from './room-booking.fixture.js';
 import { enterpriseApi } from './api/enterprise-api.js';
 import { buildDiscussionContext, validateDiscussionProposal } from '../../server/src/services/requirement-discussion-service.js';
 import { normalizeReviewMetadata } from '../../server/src/services/review-metadata.js';
+import { assessClarificationQuality } from '../../server/src/services/requirement-quality-assessment.js';
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); globalThis.localStorage?.clear(); globalThis.sessionStorage?.clear(); });
 function setup(extra = {}) {
@@ -31,15 +32,14 @@ test('quality review focuses the assessment and saves it without reopening resol
   } });
   const save = vi.fn();
   render(<BabokRegistryResult value={registry} latestVersion={{ versionId: 'v1', registry, decisions: { review: originalReview } }} onSave={save} />);
-  expect(screen.getByText(/Все связанные вопросы закрыты, но требование/)).toBeInTheDocument();
-  expect(screen.getAllByText('Оценка качества: Требует уточнения')).toHaveLength(1);
+  expect(screen.getByText('Связанные вопросы · 0 открытых')).toBeInTheDocument();
+  expect(screen.getByText('Оценка формулировки: Требует уточнения')).toBeInTheDocument();
   expect(screen.queryByText('Источник, качество и связи')).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: 'Проверить формулировку и оценку' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Пересмотреть оценку' }));
   const assessment = screen.getByRole('combobox', { name: 'Качество BR-001' });
   expect(assessment).toHaveFocus();
   fireEvent.change(assessment, { target: { value: 'Готово' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Применить к черновику' }));
-  expect(screen.getByText('Оценка качества: Готово')).toBeInTheDocument();
+  expect(screen.getByText('Оценка формулировки: Готово')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Сохранить изменения' }));
   expect(save).toHaveBeenCalledOnce();
   const saved = save.mock.calls[0][0];
@@ -59,7 +59,7 @@ async function compose(type, label) {
 
 test('registry header reports review progress and demotes empty type chips', () => {
   setup();
-  expect(screen.getByText(/^Готово \d+ из \d+$/)).toBeInTheDocument();
+  expect(screen.getByText(/^Качество · \d+ из \d+$/)).toBeInTheDocument();
   const empty = screen.getByRole('button', { name: /^TR ·/ });
   expect(empty).toHaveClass('text-slate-600');
   expect(empty).not.toHaveClass('border-slate-200');
@@ -69,18 +69,13 @@ test('registry header reports review progress and demotes empty type chips', () 
   expect(within(detail()).getByText('BR · Бизнес-требования')).toHaveClass('bg-blue-50');
 });
 
-test('quality explanation opens and focuses the existing questions with a single copy of each reason', () => {
+test('question reasons are visible once and open the common workspace', () => {
   setup();
-  const trigger = screen.getByRole('button', { name: 'Показать связанные вопросы' });
-  const summary = within(detail()).getByText('Уточнения · 7');
-  const questions = summary.closest('details');
-  expect(questions).not.toHaveAttribute('open');
-  fireEvent.click(trigger);
-  expect(questions).toHaveAttribute('open');
-  expect(summary).toHaveFocus();
   expect(screen.getAllByText('Канал уведомлений', { exact: true })).toHaveLength(1);
-  expect(within(detail()).queryByText(/Основания и следующий шаг/)).not.toBeInTheDocument();
-  expect(screen.getByRole('button', { name: /^Выбрать BR-001:/ })).toHaveAttribute('aria-pressed', 'true');
+  expect(screen.queryByRole('button', { name: 'Закрыть как решённый' })).not.toBeInTheDocument();
+  fireEvent.click(screen.getAllByRole('button', { name: 'Разобрать вопрос' })[0]);
+  expect(screen.getByRole('dialog', { name: 'Уточнение GAP-001' })).toHaveTextContent('Канал уведомлений');
+  expect(screen.getByLabelText('Ответ на GAP-001')).toBeVisible();
 });
 
 test('list reserves room above the first card so its selection ring clears the sticky heading', () => {
@@ -107,16 +102,16 @@ test('registry heading separates from cards only while the list is scrolled', ()
 
 test('opens one detail, retains visible selection and combines type, search and quality filters', () => {
   setup();
-  expect(within(detail()).getByRole('heading')).toHaveTextContent('Сократить конфликты');
+  expect(within(detail()).getByRole('heading', { level: 2 })).toHaveTextContent('Сократить конфликты');
   expect(screen.getAllByRole('article')).toHaveLength(1);
   select('FR-002');
   filter('FR');
   expect(screen.getByRole('button', { name: /^Выбрать FR-002:/ })).toHaveAttribute('aria-pressed', 'true');
   fireEvent.change(screen.getByRole('searchbox', { name: 'Поиск требований' }), { target: { value: 'fr-001' } });
-  expect(within(detail()).getByRole('heading')).toHaveTextContent('Система запрещает');
+  expect(within(detail()).getByRole('heading', { level: 2 })).toHaveTextContent('Система запрещает');
   expect(screen.queryByRole('button', { name: /^Выбрать FR-002:/ })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('checkbox', { name: 'Нужно уточнить' }));
-  expect(within(detail()).getByRole('heading')).toHaveTextContent('Нет требований');
+  expect(within(detail()).getByRole('heading', { level: 2 })).toHaveTextContent('Нет требований');
   fireEvent.click(screen.getByRole('button', { name: 'Сбросить фильтры' }));
   fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'доступности' } });
   fireEvent.click(screen.getByRole('checkbox', { name: 'Нужно уточнить' }));
@@ -174,12 +169,12 @@ test('empty type stays addable and new record is selected despite a previous sea
   setup();
   fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'missing' } });
   filter('SR');
-  expect(within(detail()).getByRole('heading')).toHaveTextContent('Нет требований');
+  expect(within(detail()).getByRole('heading', { level: 2 })).toHaveTextContent('Нет требований');
   const input = await compose('SR', 'Требования заинтересованных сторон');
   fireEvent.change(input, { target: { value: 'Сотрудник выбирает комнату.' } });
   fireEvent.click(screen.getByRole('button', { name: 'Добавить', exact: true }));
   expect(screen.getByRole('button', { name: /^Выбрать SR-001:/ })).toHaveAttribute('aria-pressed', 'true');
-  expect(within(detail()).getByRole('heading')).toHaveTextContent('Сотрудник выбирает комнату.');
+  expect(within(detail()).getByRole('heading', { level: 2 })).toHaveTextContent('Сотрудник выбирает комнату.');
   expect(screen.getByRole('searchbox')).toHaveValue('');
 });
 
@@ -232,56 +227,51 @@ test('selected record discussion keeps the original anchor and includes edits fr
   fireEvent.click(within(detail()).getByRole('button', { name: 'Редактировать' }));
   fireEvent.change(screen.getByRole('textbox', { name: 'Текст требования BR-001' }), { target: { value: 'Уточнённая цель' } });
   select('FR-001');
-  fireEvent.click(within(detail()).getByRole('button', { name: 'Обсудить с AI' }));
+  fireEvent.click(within(detail()).getByRole('button', { name: 'Обсудить требование с AI' }));
   await waitFor(() => expect(get).toHaveBeenCalledWith('rooms', 'FR-001', expect.any(Object)));
   fireEvent.change(screen.getByRole('textbox', { name: 'Сообщение для FR-001' }), { target: { value: 'Как уточнить?' } });
   fireEvent.click(screen.getByRole('button', { name: 'Отправить' }));
   await waitFor(() => expect(send).toHaveBeenCalledWith('rooms', 'FR-001', expect.objectContaining({ baseVersionId: 'v1', draft: expect.objectContaining({ registry: expect.objectContaining({ groups: expect.objectContaining({ BR: [expect.objectContaining({ text: 'Уточнённая цель' })] }) }) }) }), expect.any(String)));
 });
 
-test('a completed gap closes right from the requirement card', () => {
+test('a completed gap opens from the requirement and closes in the shared panel', () => {
   const registry = roomBookingRegistry();
   const save = vi.fn();
   const decisions = { review: { gaps: { 'GAP-001': { state: 'answered', answer: 'По количеству участников.' } }, gapRequirements: { 'GAP-001': { 'BR-001': { state: 'incorporated', reason: '' } } } } };
   render(<BabokRegistryResult value={registry} latestVersion={{ versionId: 'v1', registry, decisions }} onSave={save} />);
-  select('BR-001');
-  fireEvent.click(screen.getByText('Уточнения · 7'));
+  fireEvent.click(screen.getAllByRole('button', { name: 'Разобрать вопрос' })[0]);
   fireEvent.click(screen.getByRole('button', { name: 'Закрыть как решённый' }));
-  expect(screen.getAllByText('Закрыт', { exact: true }).length).toBeGreaterThan(0);
-  fireEvent.click(screen.getByRole('button', { name: 'Сохранить изменения' }));
-  const payload = save.mock.calls[0][0];
-  expect(payload.decisions.review.gaps['GAP-001']).toMatchObject({ state: 'closed', closureKind: 'resolved', reason: expect.stringContaining('BR-001') });
+  expect(screen.getByText('Закрыт · ответ учтён')).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: 'Сохранить требования' }));
+  expect(save.mock.calls[0][0].decisions.review.gaps['GAP-001']).toMatchObject({ state: 'closed', closureKind: 'resolved', reason: expect.stringContaining('BR-001') });
 });
 
-test('marking a checklist item as no-change records a reasoned decision in a dialog', () => {
-  const registry = roomBookingRegistry();
-  const save = vi.fn();
+test('no-change needs a reason within the single question dialog', () => {
+  const registry = roomBookingRegistry(); const save = vi.fn();
   const decisions = { review: { gaps: { 'GAP-001': { state: 'answered', answer: 'По количеству участников.' } } } };
   render(<BabokRegistryResult value={registry} latestVersion={{ versionId: 'v1', registry, decisions }} onSave={save} />);
-  select('BR-001');
-  fireEvent.click(screen.getByText('Уточнения · 7'));
-  fireEvent.click(screen.getByRole('button', { name: 'Изменение не требуется для GAP-001 в BR-001' }));
-  const confirm = screen.getByRole('button', { name: 'Подтвердить' });
-  expect(confirm).toBeDisabled();
+  fireEvent.click(screen.getAllByRole('button', { name: 'Разобрать вопрос' })[0]);
+  fireEvent.click(screen.getByRole('button', { name: 'Изменение не требуется' }));
+  expect(screen.getAllByRole('dialog')).toHaveLength(1);
+  const confirm = screen.getByRole('button', { name: 'Подтвердить решение' }); expect(confirm).toBeDisabled();
   fireEvent.change(screen.getByRole('textbox', { name: 'Обоснование отсутствия изменения' }), { target: { value: 'Уже покрыто существующим правилом' } });
   fireEvent.click(confirm);
-  fireEvent.click(screen.getByRole('button', { name: 'Сохранить изменения' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Сохранить требования' }));
   expect(save.mock.calls[0][0].decisions.review.gapRequirements['GAP-001']['BR-001']).toMatchObject({ state: 'no-change', reason: 'Уже покрыто существующим правилом' });
 });
 
-test('a fully checked gap without an answer shows a route to the answer instead of a dead end', () => {
+test('a fully checked gap still requires an answer before closure', () => {
   const registry = roomBookingRegistry();
   const decisions = { review: { gapRequirements: { 'GAP-001': { 'BR-001': { state: 'incorporated', reason: '' } } } } };
   render(<BabokRegistryResult value={registry} latestVersion={{ versionId: 'v1', registry, decisions }} onSave={vi.fn()} />);
-  select('BR-001');
-  fireEvent.click(screen.getByText('Уточнения · 7'));
-  expect(screen.getByText('Остался ответ')).toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: 'Закрыть как решённый' })).not.toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'Добавьте ответ к вопросу' })).toBeInTheDocument();
+  fireEvent.click(screen.getAllByRole('button', { name: 'Разобрать вопрос' })[0]);
+  expect(screen.getByRole('button', { name: 'Закрыть как решённый' })).toBeDisabled();
+  expect(screen.getByRole('textbox', { name: 'Ответ на GAP-001' })).toBeVisible();
 });
 
 test('guided clarification runs from question to proposal, explicit acceptance and a saveable version', async () => {
   const registry = roomBookingRegistry();
+  registry.groups.BR[0].quality = 'Требует уточнения';
   vi.spyOn(enterpriseApi, 'getRequirementDiscussion').mockResolvedValue({ discussionId: 'discussion', messages: [] });
   vi.spyOn(enterpriseApi, 'subscribeRequirementDiscussionEvents').mockResolvedValue(undefined);
   let turns = 0;
@@ -290,15 +280,20 @@ test('guided clarification runs from question to proposal, explicit acceptance a
     if (++turns === 1) return { messages, proposal: null };
     const snapshot = buildDiscussionContext({ content: body.draft?.registry || registry, decisions: body.draft?.decisions || {}, anchorId, baseVersionId: 'v1' });
     const validated = { proposalId: 'guided-workspace-001', ...validateDiscussionProposal({ explanation: 'Уточнить показатель', changes: [{ targetId: 'BR-001', before: { successIndicator: '' }, after: { successIndicator: '0 конфликтов бронирования за месяц' }, rationale: 'Целевой показатель пользователя' }], clarification: { gapId: anchorId, answer: '0 конфликтов за месяц', remainingQuestions: [], checks: [{ requirementId: 'BR-001', state: 'incorporated', reason: 'Показатель добавлен к бизнес-цели' }] } }, { content: snapshot }) };
+    validated.qualityAssessment = await assessClarificationQuality({ content: body.draft?.registry || registry, decisions: body.draft?.decisions || {}, proposal: validated, methodology: 'Test methodology', execute: async (messages) => {
+      const revision = messages[1].content.match(/"revision":"([^"]+)"/)[1];
+      if (messages[0].content.includes('Независимая проверка оснований качества')) return { text: JSON.stringify({ schemaVersion: 'babok-quality-review.v1', revision, checks: Object.values(registry.groups).flat().map((record) => ({ id: record.id, pass: true, issues: [] })) }) };
+      return { text: JSON.stringify({ schemaVersion: 'babok-quality-assessment.v2', revision, assessments: Object.values(registry.groups).flat().map((record) => ({ id: record.id, quality: record.id === 'BR-001' ? 'Готово' : record.quality, reason: 'Цель и проверяемый показатель определены.', blockingGapIds: [], evidence: [{ recordId: record.id, field: 'text', quote: record.text }] })) }) };
+    } });
     // jsonb storage reorders object keys (answer before question); acceptance
     // must compare bases semantically, not by serialized key order.
     return { messages, proposal: { ...validated, gapBases: Object.fromEntries(Object.entries(validated.gapBases || {}).map(([gapId, basis]) => [gapId, { answer: basis.answer, question: basis.question }])) } };
   });
   const save = vi.fn();
   render(<BabokRegistryResult value={registry} latestVersion={{ versionId: 'v1', registry, decisions: {} }} jobId="rooms" initialRecordId="GAP-007" onSave={save} />);
-  const gap = () => document.getElementById('record-GAP-007');
-  expect(within(gap()).getByLabelText('Ответ на GAP-007')).not.toBeVisible();
-  fireEvent.click(within(gap()).getByRole('button', { name: 'Помочь уточнить' }));
+  expect(screen.getByLabelText('Ответ на GAP-007')).toBeVisible();
+  expect(turns).toBe(0);
+  fireEvent.click(screen.getByRole('button', { name: 'Помочь уточнить с AI' }));
   fireEvent.click(await screen.findByRole('button', { name: 'Начать уточнение' }));
   await screen.findByText('Как измерить результат?');
   fireEvent.change(screen.getByRole('textbox', { name: 'Сообщение для GAP-007' }), { target: { value: '0 конфликтов за месяц' } });
@@ -308,25 +303,24 @@ test('guided clarification runs from question to proposal, explicit acceptance a
   fireEvent.click(accept);
   expect(screen.getByRole('button', { name: 'Принято в черновик' })).toBeDisabled();
   fireEvent.click(screen.getAllByRole('button', { name: 'Закрыть обсуждение' }).at(-1));
-  fireEvent.change(screen.getByRole('combobox', { name: 'Статус вопросов' }), { target: { value: 'closed' } });
-  fireEvent.click(within(gap()).getByText('Ответ и учёт в требованиях'));
-  expect(within(gap()).getByText('Закрыт', { exact: true })).toBeInTheDocument();
-  expect(within(gap()).getByRole('textbox', { name: 'Ответ на GAP-007' })).toHaveValue('0 конфликтов за месяц');
-  fireEvent.click(screen.getByRole('button', { name: 'Сохранить изменения' }));
+  expect(screen.getByText('Закрыт · ответ учтён')).toBeVisible();
+  expect(screen.getByRole('textbox', { name: 'Ответ на GAP-007' })).toHaveValue('0 конфликтов за месяц');
+  fireEvent.click(screen.getByRole('button', { name: 'Сохранить требования' }));
   const payload = save.mock.calls[0][0];
   expect(payload.registry.groups.BR[0]).toMatchObject({ successIndicator: '0 конфликтов бронирования за месяц', source: registry.groups.BR[0].source });
+  expect(payload.registry.groups.BR[0].quality).toBe('Готово');
   const saved = normalizeReviewMetadata({ supplied: payload.decisions.review, content: payload.registry, allowedGaps: payload.registry.analysis.GAP, contextId: 'source', actorId: 'alice', now: new Date(), baseVersionId: 'v1' });
   expect(saved.gaps['GAP-007'].state).toBe('closed');
+  expect(saved.discussionProposals['guided-workspace-001'].qualityAssessment.assessments).toHaveLength(3);
 });
 
-test('focused card groups AI with clarifications and keeps editing in the action menu', () => {
+test('focused card exposes edit and keeps ordinary AI separate from questions', () => {
   setup({ jobId: 'rooms' });
   const card = within(detail());
-  const ai = card.getByRole('button', { name: 'Уточнить с AI', exact: true });
-  expect(ai.parentElement).toHaveTextContent('Открытых вопросов ·');
-  const edit = card.getByRole('button', { name: 'Редактировать', hidden: true, exact: true });
-  expect(edit.closest('details')).toContainElement(card.getByRole('button', { name: 'Действия для BR-001' }));
-  fireEvent.click(card.getByRole('button', { name: 'Действия для BR-001' }));
-  fireEvent.click(edit);
+  expect(card.getByRole('button', { name: 'Редактировать', exact: true }).closest('details')).toBeNull();
+  expect(card.getAllByRole('button', { name: 'Разобрать вопрос' })).toHaveLength(7);
+  fireEvent.click(card.getByRole('button', { name: 'Редактировать', exact: true }));
   expect(screen.getByRole('textbox', { name: 'Текст требования BR-001' })).toBeInTheDocument();
+  expect(screen.queryByRole('combobox', { name: 'Качество BR-001' })).not.toBeInTheDocument();
+  expect(screen.getByRole('textbox', { name: 'Критерий успеха BR-001' }).tagName).toBe('TEXTAREA');
 });

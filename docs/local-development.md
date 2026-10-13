@@ -6,6 +6,30 @@
 
 Локально IAM отключён и используется логический tenant `default-enterprise`. Mock запрещён конфигурационным guard в `NODE_ENV=production`. Все локальные пароли предназначены только для localhost и не должны переноситься на стенды.
 
+## Имена Compose-ресурсов
+
+Основной проект называется `reqai`: контейнеры получают имена `reqai-api-1`,
+`reqai-postgres-1`, `reqai-event-worker-1` и т. д. В командах Compose используются
+короткие имена сервисов, например `docker compose logs api`. Внутренний адрес API —
+`http://api:5178`; alias `reqai-api` сохранён для общего Nginx-конфига.
+Изолированный UX-проект сохраняет имя `reqai-ux`.
+
+При переходе со старого проекта `reqai-local` сначала остановите его старой командой
+`docker compose -p reqai-local -f compose.yaml -f compose.dev.yaml down` без `-v`.
+По умолчанию новый проект использует volumes `reqai_postgres-data` и
+`reqai_kafka-data`. Для подключения прежних данных задайте в корневом `.env`:
+
+```dotenv
+REQAI_REUSE_VOLUMES=true
+REQAI_POSTGRES_VOLUME=reqai-local_postgres-data
+REQAI_KAFKA_VOLUME=reqai-local_kafka-data
+REQAI_CLIENT_MODULES_VOLUME=reqai-local_client-node-modules
+REQAI_SERVER_MODULES_VOLUME=reqai-local_server-node-modules
+```
+
+Эти настройки сохраняют прежние данные и зависимости без копирования volumes.
+Не удаляйте подключённые volumes при очистке старого проекта.
+
 ## Запуск
 
 ```bash

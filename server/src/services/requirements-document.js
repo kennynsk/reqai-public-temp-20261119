@@ -38,6 +38,9 @@ export function requirementsDocument(version, title = 'Требования') {
       paragraph(record.text);
       for (const [key, label] of Object.entries(fields)) if (record[key] != null && (!Array.isArray(record[key]) || record[key].length)) paragraph(`${label}: ${Array.isArray(record[key]) ? record[key].join(', ') : record[key]}`);
       if (record.fromResearch) paragraph('Добавлено или изменено после ручной проверки AI-предложения.');
+      const proposal = review.proposals?.[record.researchEnhancementKey];
+      if (proposal?.confirmationConditions) paragraph(`Условия подтверждения: ${proposal.confirmationConditions}`);
+      if (proposal?.rationale) paragraph(`Обоснование предложения: ${proposal.rationale}`);
       if (record.manuallyEdited) paragraph('Изменено вручную.');
       source(record.source);
     }

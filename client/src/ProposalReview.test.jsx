@@ -3,6 +3,7 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, expect, test, vi } from 'vitest';
 import ProposalReview from './ProposalReview.jsx';
+import { reverseProposal } from './proposal-review.js';
 import { DraftContext } from './review-context.js';
 
 afterEach(cleanup);
@@ -70,6 +71,9 @@ test('keeps accepting disabled until text and required structured fields are val
   fireEvent.change(screen.getByRole('textbox', { name: 'Итоговая формулировка' }), { target: { value: 'Есть текст' } });
   expect(accept).toBeDisabled();
   fireEvent.change(screen.getByRole('textbox', { name: 'Категория' }), { target: { value: 'Доступность' } });
+  expect(accept).toBeDisabled();
+  fireEvent.change(screen.getByRole('textbox', { name: 'Область' }), { target: { value: 'Резервирование' } });
+  fireEvent.change(screen.getByRole('textbox', { name: 'Метод проверки' }), { target: { value: 'Тест повторного запроса' } });
   expect(accept).toBeEnabled();
 });
 
@@ -165,4 +169,41 @@ test('can remove a currently accepted proposal when no prior decision exists', (
   fireEvent.click(screen.getByRole('button', { name: 'Удалить принятое требование' }));
   expect(dispatch).toHaveBeenCalledOnce();
   expect(dispatch.mock.calls[0][0].value.content.groups.FR).toEqual([]);
+});
+
+test('accepting or replacing retains confirmation conditions and links existing GAPs only', () => {
+  const state = makeState({ groups: { FR: [{ id: 'FR-001', text: 'Старое', relatedTo: ['BR-001'] }], BR: [{ id: 'BR-001', text: 'Цель' }] } });
+  state.content.analysis.GAP = [{ id: 'GAP-002', text: 'Статусы документов', affectedIds: ['FR-001'] }];
+  const enhancement = { key: 'conditions:0', targetType: 'FR', text: 'Документы доступны сотруднику', confirmationConditions: 'Согласовать статусы (GAP-002), несуществующий GAP-999.', rationale: 'Не запрашивать повторно', targetIds: ['FR-001'] };
+  const { dispatch } = renderProposal({ state, enhancement });
+  fireEvent.click(screen.getByRole('button', { name: 'Открыть принятие' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Принять точное изменение' }));
+  const next = dispatch.mock.calls[0][0].value;
+  expect(next.content.groups.FR.at(-1).relatedTo).toEqual(['GAP-002']);
+  expect(next.content.analysis.traceability).toContainEqual(expect.objectContaining({ to: 'FR-001', status: 'Предполагается' }));
+  expect(next.decisions.review.proposals['conditions:0']).toMatchObject({ confirmationConditions: enhancement.confirmationConditions, rationale: enhancement.rationale });
+});
+
+test('explicit replacement defaults to its target, preserves fields and can be reversed', () => {
+  const original = { id: 'SR-001', text: 'Исходная потребность', role: 'Владелец', relatedTo: ['BR-001'], quality: 'Готово' };
+  const state = makeState({ groups: { SR: [original] } });
+  const enhancement = { key: 'change:0', operation: 'replace', targetId: 'SR-001', targetType: 'SR', text: 'Уточнённая потребность' };
+  const { dispatch } = renderProposal({ state, enhancement });
+  fireEvent.click(screen.getByRole('button', { name: 'Открыть принятие' }));
+  expect(screen.getByLabelText('Действие предложения')).toHaveValue('replace');
+  expect(screen.getByLabelText('Цель замены')).toHaveValue('SR-001');
+  expect(screen.getByRole('button', { name: 'Принять точное изменение' })).toBeEnabled();
+  fireEvent.click(screen.getByRole('button', { name: 'Принять точное изменение' }));
+  const next = dispatch.mock.calls[0][0].value;
+  expect(next.content.groups.SR).toHaveLength(1);
+  expect(next.content.groups.SR[0]).toMatchObject({ id: original.id, role: original.role, text: enhancement.text });
+  expect(next.decisions.review.proposals['change:0'].before).toEqual(original);
+  expect(reverseProposal(next, enhancement.key, false).content.groups.SR).toEqual([original]);
+});
+
+test('missing explicit replacement target blocks acceptance rather than adding', () => {
+  renderProposal({ enhancement: { key: 'missing', operation: 'replace', targetId: 'FR-999', targetType: 'FR', text: 'Новая формулировка' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Открыть принятие' }));
+  expect(screen.getByLabelText('Действие предложения')).toHaveValue('replace');
+  expect(screen.getByRole('button', { name: 'Принять точное изменение' })).toBeDisabled();
 });

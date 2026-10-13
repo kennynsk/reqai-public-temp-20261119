@@ -100,3 +100,15 @@ test('repair trace step can persist under the original checkpoint step', async (
   await executor.execute({ tenantId: 't', jobId: 'j', stepId: 'decompose-chunk:c1:repair', persistenceStepId: 'decompose-chunk:c1', messages: [], policy: { ...policy, models: ['GC-Max'], maxAttemptsPerModel: 1 }, deadlineAt: new Date(Date.now() + 10_000), executionSite: 'dc-a' });
   assert.equal(persistedStepId, 'decompose-chunk:c1');
 });
+
+test('provider retries use the remaining total deadline, not the first attempt timeout again', async () => {
+  let now = 0;
+  const timeouts = [];
+  const executor = createModelExecutor({ clock: () => new Date(now), sleep: async (ms) => { now += ms; },
+    coordination: { acquire: async () => ({ id: 'lease' }), success: async () => {}, failure: async () => {} },
+    attempts: { start: async () => {}, finish: async () => {} },
+    provider: { complete: async ({ timeoutMs }) => { timeouts.push(timeoutMs); if (timeouts.length === 1) { now += 700; throw Object.assign(new Error('reset'), { code: 'ECONNRESET' }); } return { text: 'ok', usage: {} }; } },
+  });
+  await executor.execute({ tenantId: 'test', jobId: 'test', stepId: 'test', messages: [], policy: { ...policy, models: ['GC-Max'] }, deadlineAt: new Date(1000).toISOString() });
+  assert.deepEqual(timeouts, [1000, 290]);
+});

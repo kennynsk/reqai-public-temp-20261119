@@ -132,3 +132,13 @@ describe('review metadata', () => {
     expect(openReviewItems(null)).toEqual([]);
   });
 });
+
+test('current completed checklist supersedes historical invalidation hint', async () => {
+  const { gapReviewHint } = await import('./review-metadata.js');
+  const gap = { id: 'GAP-004', affectedIds: ['BR-001', 'NFR-001'] };
+  const content = { groups: { BR: [{ id: 'BR-001' }], NFR: [{ id: 'NFR-001' }] }, analysis: { GAP: [gap] } };
+  const metadata = { gaps: { 'GAP-004': { state: 'answered', answer: 'Полная заявка без ручной проверки', stale: true, reason: 'Нужна повторная проверка: NFR-001' } }, gapRequirements: { 'GAP-004': { 'BR-001': { state: 'incorporated' }, 'NFR-001': { state: 'pending', stale: true } } } };
+  expect(gapReviewHint(content, gap, metadata)).toContain('Нужна повторная проверка');
+  metadata.gapRequirements['GAP-004']['NFR-001'] = { state: 'incorporated', stale: false };
+  expect(gapReviewHint(content, gap, metadata)).toBe('Ответ и требования проверены — можно закрыть вопрос');
+});

@@ -333,6 +333,27 @@ test('linked research validates parent ownership and requirements version before
   assert.equal(accepted.job.configurationSnapshot.featureMode, 'REQUIREMENTS_INSIGHTS');
 });
 
+test('five-direction research snapshots its BABOK skill and fifteen-minute deadline', async () => {
+  let accepted;
+  const babokSkillProfile = { id: 'babok-requirements-v3', version: '1.0.0', manifestHash: 'c'.repeat(64) };
+  const promptProfile = { id: 'requirements-insights', version: '2.12.0', semanticPolicy: 'babok-semantic.v2', performanceBudgetMs: 900000, requiredResearchCategories: ['trends', 'patterns', 'risks', 'competitors', 'standards'] };
+  const now = new Date('2026-10-13T12:00:00Z');
+  const service = createJobService({
+    config: { asyncEnabled: true, features: { versionedPrompts: true }, process: { siteId: 'test' },
+      jobs: { decompositionDeadlineMs: 3600000, researchDeadlineMs: 14400000 },
+      llm: { models: ['test'], maxModelsPerStep: 1, maxAttemptsPerModel: 1, requestTimeoutMs: 600000 } },
+    babokSkillProfile, promptProfileResolver: { resolve: () => promptProfile }, clock: () => now,
+    requirementsVersionService: { validateResearchInput: async () => {} },
+    jobRepository: { createAccepted: async (value) => { accepted = value; return { job: value.job, replayed: false }; } },
+  });
+  await service.create({ auth: { tenantId: 'test', userId: 'test', roles: ['user'] }, idempotencyKey: 'research-five-directions',
+    body: { type: 'RESEARCH', parentJobId: '00000000-0000-4000-8000-000000000001', inputArtifactId: '00000000-0000-4000-8000-000000000002', options: { mode: 'REQUIREMENTS_INSIGHTS' } } });
+  assert.deepEqual(accepted.job.configurationSnapshot.babokSkillProfile, babokSkillProfile);
+  assert.deepEqual(accepted.audit.metadata.babokSkillProfile, babokSkillProfile);
+  assert.equal(accepted.job.deadlineAt.getTime() - now.getTime(), 900000);
+  assert.equal(accepted.job.configurationSnapshot.promptProfile, promptProfile);
+});
+
 test('linked requirements research publishes an ordered discovery event on its parent stream', async () => {
   const pool = creationPool();
   const repository = new JobRepository(pool);

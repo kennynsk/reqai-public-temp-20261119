@@ -2,7 +2,7 @@ import { ApiError } from '../errors/api-error.js';
 import { canonicalSha256 } from '../prompts/prompt-utils.js';
 
 const fail = (message) => { throw new ApiError({ status: 400, code: 'INVALID_REVIEW_METADATA', message }); };
-const semantic = (value) => Object.fromEntries(['operation', 'targetType', 'targetId', 'originalText', 'before', 'after', 'decision', 'reversal'].filter((key) => value[key] !== undefined).map((key) => [key, value[key]]));
+const semantic = (value) => Object.fromEntries(['operation', 'targetType', 'targetId', 'originalText', 'rationale', 'confirmationConditions', 'before', 'after', 'decision', 'reversal'].filter((key) => value[key] !== undefined).map((key) => [key, value[key]]));
 export function normalizeProposalMetadata({ supplied, inherited = {}, content, baseContent, researchResult, researchJobId, baseVersionId, stamp }) {
   if (!supplied || typeof supplied !== 'object' || Array.isArray(supplied) || Object.keys(supplied).length > 500) fail('Invalid proposal review map');
   const groups = content.groups || content;
@@ -12,7 +12,7 @@ export function normalizeProposalMetadata({ supplied, inherited = {}, content, b
   const proposals = new Map();
   for (const insight of researchResult?.insights || []) {
     const enhancements = insight.enhancements?.length ? insight.enhancements : [{ text: [insight.title, insight.summary].filter(Boolean).join('\n\n') }];
-    enhancements.forEach((enhancement, index) => proposals.set(`${insight.id}:${index}`, enhancement));
+    enhancements.forEach((enhancement, index) => proposals.set(`${insight.id}:${index}`, { ...enhancement, rationale: enhancement.rationale || insight.rationale || '' }));
   }
   const result = structuredClone(inherited);
   for (const [key, value] of Object.entries(supplied)) {
@@ -35,7 +35,7 @@ export function normalizeProposalMetadata({ supplied, inherited = {}, content, b
     if (value.decision === 'accepted') {
       if (!actual || canonicalSha256(actual) !== canonicalSha256(value.after) || actual.researchEnhancementKey !== key || records.filter((record) => record.researchEnhancementKey === key).length !== 1) fail('Accepted proposal must match exactly one saved record');
     } else if (records.some((record) => record.researchEnhancementKey === key)) fail('Rejected proposal must not retain an active proposal record');
-    result[key] = { ...structuredClone(semantic(value)), originalText: original.text.trim(), researchJobId, baseVersionId: prior?.baseVersionId || baseVersionId || null, ...stamp };
+    result[key] = { ...structuredClone(semantic(value)), originalText: original.text.trim(), rationale: original.rationale || '', confirmationConditions: original.confirmationConditions || '', researchJobId, baseVersionId: prior?.baseVersionId || baseVersionId || null, ...stamp };
   }
   return result;
 }

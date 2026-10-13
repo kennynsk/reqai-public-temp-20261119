@@ -1,0 +1,61 @@
+{
+  "id": "requirements-insights",
+  "version": "2.12.0",
+  "displayName": "Five research directions using LLM knowledge with BABOK validation",
+  "workflowPurposes": [
+    "REQUIREMENTS_INSIGHTS"
+  ],
+  "outputSchemaVersion": "requirements-insights.v1",
+  "templates": {
+    "insights": {
+      "path": "insights.md",
+      "requiredVariables": [
+        "babokIdentifierSet",
+        "businessContext",
+        "requirementsSection",
+        "reviewContext",
+        "supportingMaterials"
+      ],
+      "sha256": "aa74c1884cd3168ecf2568329c3d6e4c296b6607a501e9630a46e91751f03e11"
+    },
+    "review": {
+      "path": "review.md",
+      "requiredVariables": [
+        "originalPrompt",
+        "draft",
+        "qualityFindings"
+      ],
+      "sha256": "06d8f212ce3477e56f3be7915fb99c2fd3457adc9b16f4ec376fb45e0b23ff70"
+    },
+    "semantic-audit": {
+      "path": "semantic-audit.md",
+      "requiredVariables": [
+        "semanticContext",
+        "candidates",
+        "qualityFindings",
+        "revision",
+        "narrativeCandidates"
+      ],
+      "sha256": "e114464d736a69bae1fa6c759857972806537f2c0f572aa6869e992cbe8a23a2"
+    },
+    "semantic-repair": {
+      "path": "semantic-repair.md",
+      "requiredVariables": [
+        "semanticContext",
+        "draft",
+        "qualityFindings",
+        "revision"
+      ],
+      "sha256": "4d7959dd4133908b191aa2e99663538bf90ee2346bf37abf4abc982b29b5736f"
+    }
+  },
+  "semanticPolicy": "babok-semantic.v2",
+  "performanceBudgetMs": 900000,
+  "requiredResearchCategories": [
+    "trends",
+    "patterns",
+    "risks",
+    "competitors",
+    "standards"
+  ]
+}

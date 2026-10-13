@@ -242,7 +242,7 @@ describe('AsyncJobWorkspace presentational branches', () => {
     render(<ReviewHarness content={content}><BabokRequirementCard type="NFR" requirement={babokRecord('NFR', { quality: 'Требует уточнения', fromResearch: true, researchEnhancementKey: 'i:0' })} materials={{ primary: { artifactId: 'primary-artifact' } }} manuallyEdited onEdit={onEdit} onDelete={vi.fn()} onDraftChange={vi.fn()} onNavigate={vi.fn()} /></ReviewHarness>);
     expect(screen.getByText('Изменено', { exact: true })).toBeInTheDocument();
     expect(screen.getByText('AI-предложение')).toBeInTheDocument();
-    expect(screen.getByText('решение сохранено')).toBeInTheDocument();
+    expect(screen.queryByText('решение сохранено')).not.toBeInTheDocument();
     fireEvent.click(screen.getByText('Источник и связи'));
     expect(screen.getByText('Производительность')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Действия для NFR-001' }));

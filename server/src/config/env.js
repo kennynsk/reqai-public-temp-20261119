@@ -68,8 +68,8 @@ function promptRelease(env, prefix, defaultActive = '1.0.0', defaultReleased = [
   if (!/^[1-9]\d*\.\d+\.\d+$/.test(active) || released.some((version) => !/^[1-9]\d*\.\d+\.\d+$/.test(version))) {
     throw new Error(`${prefix} versions must use semantic versioning`);
   }
-  if (released.length < 1 || released.length > 10 || new Set(released).size !== released.length) {
-    throw new Error(`${prefix}_RELEASED_VERSIONS must contain 1 to 10 unique versions`);
+  if (released.length < 1 || released.length > 20 || new Set(released).size !== released.length) {
+    throw new Error(`${prefix}_RELEASED_VERSIONS must contain 1 to 20 unique versions`);
   }
   if (!released.includes(active)) throw new Error(`${prefix}_ACTIVE_VERSION must be present in ${prefix}_RELEASED_VERSIONS`);
   return { active, released };
@@ -192,6 +192,8 @@ export function loadConfig(env = process.env, { loadFiles = env === process.env 
       requirementDiscussion: bool(env, 'REQUIREMENT_DISCUSSION_ENABLED', true),
     },
     aiDiscussion: {
+      qualityReassessment: bool(env, 'DISCUSSION_QUALITY_REASSESSMENT_ENABLED', true),
+      semanticReview: bool(env, 'DISCUSSION_SEMANTIC_REVIEW_ENABLED', true),
       messageChars: integer(env, 'DISCUSSION_MESSAGE_MAX_CHARS', 12000, { min: 256, max: 100000 }),
       contextBytes: integer(env, 'DISCUSSION_CONTEXT_MAX_BYTES', 120000, { min: 4096, max: 1048576 }),
       outputChars: integer(env, 'DISCUSSION_OUTPUT_MAX_CHARS', 30000, { min: 256, max: 200000 }),
@@ -202,8 +204,8 @@ export function loadConfig(env = process.env, { loadFiles = env === process.env 
     prompts: {
       maxRenderedBytes: integer(env, 'PROMPT_MAX_RENDERED_BYTES', 2_097_152, { min: 1024, max: 10_485_760 }),
       policy: {
-        'requirements-decomposition': promptRelease(env, 'PROMPT_DECOMPOSITION', '2.3.0', ['1.0.0', '2.0.0', '2.1.0', '2.2.0', '2.3.0']),
-        'requirements-insights': promptRelease(env, 'PROMPT_REQUIREMENTS_INSIGHTS', '2.3.0', ['1.0.0', '2.0.0', '2.1.0', '2.2.0', '2.3.0']),
+        'requirements-decomposition': promptRelease(env, 'PROMPT_DECOMPOSITION', '2.15.0', ['1.0.0', '2.0.0', '2.1.0', '2.2.0', '2.3.0', '2.4.0', '2.5.0', '2.6.0', '2.7.0', '2.8.0', '2.9.0', '2.10.0', '2.11.0', '2.12.0', '2.13.0', '2.14.0', '2.15.0']),
+        'requirements-insights': promptRelease(env, 'PROMPT_REQUIREMENTS_INSIGHTS', '2.13.0', ['1.0.0', '2.0.0', '2.1.0', '2.2.0', '2.3.0', '2.4.0', '2.5.0', '2.6.0', '2.7.0', '2.8.0', '2.9.0', '2.10.0', '2.11.0', '2.12.0', '2.13.0']),
       },
     },
     skills: {

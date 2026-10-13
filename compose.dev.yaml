@@ -1,4 +1,4 @@
-name: reqai-local
+name: reqai
 
 x-dev-server: &dev-server
   build:
@@ -11,7 +11,7 @@ x-dev-server: &dev-server
     - server-node-modules:/app/node_modules
 
 services:
-  reqai-api:
+  api:
     <<: *dev-server
 
   event-worker:
@@ -44,7 +44,7 @@ services:
       dockerfile: client/Dockerfile.dev
     command: ["npm", "-w", "client", "run", "dev", "--", "--host", "0.0.0.0"]
     environment:
-      VITE_API_PROXY_TARGET: http://reqai-api:5178
+      VITE_API_PROXY_TARGET: http://api:5178
       VITE_USE_POLLING: "true"
     ports: !override
       - "5177:5177"
@@ -57,5 +57,9 @@ services:
 
 volumes:
   client-node-modules:
+    name: ${REQAI_CLIENT_MODULES_VOLUME:-${COMPOSE_PROJECT_NAME}_client-node-modules}
+    external: ${REQAI_REUSE_VOLUMES:-false}
   mcp-node-modules:
   server-node-modules:
+    name: ${REQAI_SERVER_MODULES_VOLUME:-${COMPOSE_PROJECT_NAME}_server-node-modules}
+    external: ${REQAI_REUSE_VOLUMES:-false}

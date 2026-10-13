@@ -3,6 +3,7 @@ import { canonicalSha256 } from '../prompts/prompt-utils.js';
 import { babokIdentifierSet, validateBabokRegistry } from './babok-requirements-contract.js';
 import { normalizeReviewMetadata } from './review-metadata.js';
 import { overlayLegacyReview } from './legacy-review-overlay.js';
+import { deterministicSemanticIssues, registrySemanticRecords } from '../domain/babok-semantics.js';
 
 const PRIVILEGED = new Set(['tenant-admin', 'operator', 'auditor', 'system-admin']);
 const REQUIREMENT_GROUPS = ['business', 'functional', 'nonfunctional'];
@@ -48,8 +49,15 @@ function legacyProjection(registry) {
 
 function normalizeRegistry(value) {
   try {
-    return validateBabokRegistry(value);
+    const registry = structuredClone(validateBabokRegistry(value));
+    // A certificate binds the generated candidate, not a later manual review.
+    // Client-supplied certificates must never attest to edited requirements.
+    delete registry.semanticValidation;
+    const issues = deterministicSemanticIssues(registrySemanticRecords(registry)).filter((issue) => issue.code.startsWith('BR_'));
+    if (issues.length) throw new ApiError({ status: 422, code: 'BABOK_SEMANTIC_INVALID', message: 'Бизнес-требование описывает метрику или устройство решения вместо самостоятельного бизнес-результата.', details: { issues } });
+    return registry;
   } catch (error) {
+    if (error instanceof ApiError) throw error;
     throw new ApiError({ status: 400, code: 'INVALID_BABOK_REGISTRY', message: error.message, details: error.details });
   }
 }
@@ -124,7 +132,7 @@ export function createRequirementsVersionService({ config, jobRepository, artifa
       const requirements = registry ? legacyProjection(registry) : normalizeRequirements(body.requirements);
       const now = clock();
       const suppliedDecisions = body.decisions && typeof body.decisions === 'object' && !Array.isArray(body.decisions) ? body.decisions : {};
-      const decisions = { ...(base?.content.decisions || {}), ...suppliedDecisions };
+      const decisions = { ...(base?.content.decisions || {}), ...suppliedDecisions, ...(sourceJob.type === 'RESEARCH' ? { skippedResearch: false } : {}) };
       const businessContextArtifactId = sourceJob.type === 'DECOMPOSITION' ? sourceJob.input_artifact_id : base?.content.businessContextArtifactId || null;
       let researchResult = null;
       if (sourceJob.type === 'RESEARCH' && (suppliedDecisions.review?.proposals || suppliedDecisions.review?.citationChecks) && sourceJob.result_artifact_id) {
@@ -164,9 +172,9 @@ export function createRequirementsVersionService({ config, jobRepository, artifa
             scope: registry.scope,
           },
           materialLineage: {
-            sourceJobMaterials: sourceJob.configuration_snapshot?.materials || null,
+            sourceJobMaterials: sourceJob.type === 'RESEARCH' ? base?.content.materialLineage?.sourceJobMaterials || null : sourceJob.configuration_snapshot?.materials || null,
             resultMaterials: registry.materials,
-            primaryArtifactId: sourceJob.input_artifact_id,
+            primaryArtifactId: businessContextArtifactId,
           },
           promptProfile: sourceJob.configuration_snapshot?.promptProfile || null,
           babokSkillProfile: sourceJob.configuration_snapshot?.babokSkillProfile || null,

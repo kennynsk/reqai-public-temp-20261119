@@ -24,6 +24,7 @@ const activityOptions = {
       'INVALID_DECOMPOSITION_RESULT',
       'UNSUPPORTED_DECOMPOSITION_RESULT',
       'INVALID_REQUIREMENTS_INSIGHTS',
+      'BABOK_SEMANTIC_INVALID',
       'NO_USABLE_OUTPUT',
       'PROMPT_BUNDLE_UNAVAILABLE',
       'PROMPT_INTEGRITY_ERROR',
@@ -32,6 +33,26 @@ const activityOptions = {
   },
 };
 const activities = proxyActivities(activityOptions);
+// A semantic pass includes generation, review and at most two complete
+// correction/audit pairs. Individual provider calls already have their own
+// deadline and retry policy; the enclosing activity must not time out at 10m.
+const semanticActivities = proxyActivities({ ...activityOptions,
+  startToCloseTimeout: '45 minutes', scheduleToCloseTimeout: '55 minutes',
+});
+const compactSemanticActivities = proxyActivities({ ...activityOptions,
+  startToCloseTimeout: '5 minutes', scheduleToCloseTimeout: '6 minutes', retry: { ...activityOptions.retry, maximumAttempts: 1 },
+});
+
+const researchSemanticActivities = proxyActivities({ ...activityOptions,
+  startToCloseTimeout: '16 minutes', scheduleToCloseTimeout: '17 minutes', retry: { ...activityOptions.retry, maximumAttempts: 1 },
+});
+
+function semanticActivitiesFor(input) {
+  if (patched('babok-research-activity-budget-v1') && input.configurationSnapshot.promptProfile?.performanceBudgetMs > 240_000 && input.configurationSnapshot.promptProfile?.id === 'requirements-insights') return researchSemanticActivities;
+  if (patched('babok-compact-activity-budget-v1') && input.configurationSnapshot.promptProfile?.semanticPolicy === 'babok-semantic.v2') return compactSemanticActivities;
+  return patched('babok-semantic-activity-budget-v1') && input.configurationSnapshot.promptProfile?.templates?.['semantic-audit']
+    ? semanticActivities : activities;
+}
 
 function assertDeadline(input) {
   if (Date.now() >= new Date(input.deadlineAt).getTime()) throw Object.assign(new Error('Job deadline expired'), { name: 'JOB_DEADLINE_EXPIRED' });
@@ -85,7 +106,7 @@ export async function decompositionWorkflow(input) {
       return activities.finalizeSucceeded({ ...input, resultArtifactId: null, successfulUnits: 0, failedUnits: sections.length });
     }
     assertDeadline(input);
-    const merged = await activities.mergeDecomposition({ ...input, sectionArtifactIds: successful.map((section) => section.artifactId), failedChunks });
+    const merged = await semanticActivitiesFor(input).mergeDecomposition({ ...input, sectionArtifactIds: successful.map((section) => section.artifactId), failedChunks });
     const textDraft = patched('babok-text-draft-outcome-v1') && merged.textDraft === true;
     return activities.finalizeSucceeded({ ...input, resultArtifactId: merged.artifactId, successfulUnits: successful.length, failedUnits: failedChunks.length, ...(textDraft ? { textDraft: true } : {}) });
   });
@@ -97,7 +118,7 @@ export async function researchWorkflow(input) {
     if (mode !== 'REQUIREMENTS_INSIGHTS') throw Object.assign(new Error(`Unsupported research workflow mode: ${mode || 'missing'}`), { name: 'UNSUPPORTED_JOB_MODE' });
     assertDeadline(input);
     await activities.validateInput(input);
-    const result = await activities.generateRequirementsInsights(input);
+    const result = await semanticActivitiesFor(input).generateRequirementsInsights(input);
     return activities.finalizeSucceeded({ ...input, resultArtifactId: result.artifactId, successfulUnits: 1, failedUnits: 0 });
   });
 }

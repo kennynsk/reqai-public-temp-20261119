@@ -194,7 +194,7 @@ export async function startWorkerRuntime(config, {
       })
       : null;
     if (babokSkillProfile) logEvent('info', 'babok.skill.ready', babokSkillProfile);
-    const handlers = createEnterpriseActivityHandlers({ artifactRepository, modelExecutor, promptCatalog, babokSkillLoader, config });
+    const handlers = createEnterpriseActivityHandlers({ artifactRepository, modelExecutor, jobTraceRepository, promptCatalog, babokSkillLoader, config });
     activities = createCheckpointedActivities({ jobRepository, jobTraceRepository, diagnosticCapture, handlers, siteId: config.process.siteId });
   }
   const worker = await WorkerClass.create({

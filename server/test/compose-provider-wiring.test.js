@@ -10,7 +10,7 @@ test('LLM workers and the discussion API receive provider credentials; event and
   assert.equal((compose.match(/env_file:\n\s+- \.env\.dev/g) || []).length, 3);
   assert.doesNotMatch(compose, /synthesis-worker|requirements-synthesis/);
 
-  const apiBlock = compose.slice(compose.indexOf('  reqai-api:'), compose.indexOf('  event-worker:'));
+  const apiBlock = compose.slice(compose.indexOf('  api:'), compose.indexOf('  event-worker:'));
   const eventBlock = compose.slice(compose.indexOf('  event-worker:'), compose.indexOf('  decomposition-worker:'));
   const maintenanceBlock = compose.slice(compose.indexOf('  maintenance-worker:'), compose.indexOf('  frontend:'));
   assert.match(apiBlock, /env_file:/);

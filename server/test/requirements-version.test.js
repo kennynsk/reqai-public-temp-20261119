@@ -97,6 +97,20 @@ test('reviewed BABOK registry persists complete analysis, material lineage and l
   assert.equal(createdVersion.baseVersionId, null);
 });
 
+test('manual versions never preserve client-supplied semantic certificates for edited requirements', async () => {
+  const registry = createEmptyBabokRegistry();
+  registry.semanticValidation = { status: 'PASSED', contentHash: 'forged-or-stale' };
+  let stored;
+  const service = createRequirementsVersionService({ config,
+    jobRepository: { findVisibleById: async () => ({ id: 'job', type: 'DECOMPOSITION', status: 'SUCCEEDED', input_artifact_id: 'primary' }) },
+    artifactRepository: { createText: async ({ text }) => { stored = JSON.parse(text); return { artifactId: 'version' }; } },
+    versionRepository: { create: async () => ({ id: 'version', source_job_id: 'job', created_at: new Date() }) },
+  });
+  await service.create({ auth, body: { sourceJobId: 'job', registry } });
+  assert.equal(stored.registry.semanticValidation, undefined);
+  assert.equal(registry.semanticValidation.contentHash, 'forged-or-stale');
+});
+
 test('BABOK revisions retain immutable base links and manual decision metadata', async () => {
   let storedEnvelope;
   const registry = createEmptyBabokRegistry();
@@ -236,4 +250,14 @@ test('manual final edits can create a new revision for the same research job', a
   assert.equal(result.baseVersionId, 'final-v1');
   assert.equal(result.requirements.functional[0].researchEnhancementKey, 'insight-1:0');
   assert.equal(storedEnvelope.businessContextArtifactId, 'context');
+});
+
+test('saving cannot promote a historical invalid BR using an old or forged passed certificate', async () => {
+  const registry = createEmptyBabokRegistry();
+  registry.materials.primary = { artifactId: 'primary', role: 'primary', name: null, sha256: null, status: 'AVAILABLE' };
+  registry.groups.BR = [{ id: 'BR-001', text: 'Обеспечить расчёты между покупателем и продавцом, при которых деньги резервируются до выполнения условий.', successIndicator: null, relatedIds: [], source: { artifactId: 'primary', locator: '§1', quote: 'деньги резервируются до выполнения условий' }, provenance: 'Извлечено', quality: 'Готово' }];
+  registry.summary.counts.BR = 1;
+  registry.semanticValidation = { status: 'PASSED' };
+  const service = createRequirementsVersionService({ config, jobRepository: { findVisibleById: async () => ({ id: 'old-job', status: 'SUCCEEDED', type: 'DECOMPOSITION' }) } });
+  await assert.rejects(service.create({ auth, body: { sourceJobId: 'old-job', registry } }), (error) => error.code === 'BABOK_SEMANTIC_INVALID' && error.details.issues[0].code === 'BR_IS_SOLUTION_SCOPE');
 });

@@ -31,7 +31,7 @@ function timestampMs(value) {
 }
 
 function phaseElapsedMs(job, now) {
-  const phaseStartedAt = [job.updatedAt, job.startedAt, job.createdAt].map(timestampMs).find(Number.isFinite);
+  const phaseStartedAt = [job.phaseStartedAt, job.startedAt, job.createdAt, job.updatedAt].map(timestampMs).find(Number.isFinite);
   const currentTime = timestampMs(now);
   if (!Number.isFinite(phaseStartedAt)) return 0;
   return Math.max(0, (Number.isFinite(currentTime) ? currentTime : Date.now()) - phaseStartedAt);
@@ -89,7 +89,9 @@ const WAITING_TIPS = {
   ],
   RESEARCH: [
     'Анализируем требования и контекст задачи',
-    'Рассматриваем подходы к решению',
+    'Рассматриваем рыночные тенденции из знаний модели',
+    'Сравниваем известные модели конкурентных сервисов',
+    'Рассматриваем стандарты и области регулирования',
     'Изучаем архитектурные паттерны',
     'Выявляем риски и ограничения',
     'Оцениваем применимость рекомендаций',
@@ -105,4 +107,41 @@ export function waitingTipForJob(job, now = Date.now()) {
   const current = timestampMs(now);
   const elapsed = Number.isFinite(started) && Number.isFinite(current) ? Math.max(0, current - started) : 0;
   return tips[Math.floor(elapsed / 15_000) % tips.length];
+}
+
+const REVIEW_TIPS = [
+  'Бизнес-требования описывают цель: какой результат нужен бизнесу.',
+  'Сравните требования с исходной задачей: не потерялось ли важное условие.',
+  'Убедитесь, что функциональные требования описывают конкретные действия системы.',
+  'Вопросы без ответа можно будет разобрать вручную или с помощью AI.',
+  'Критерий успеха помогает понять, достигнута ли бизнес-цель.',
+  'Проверьте, учтены ли потребности всех участников процесса.',
+  'Один вопрос может затрагивать несколько требований.',
+  'Обратите внимание на ограничения: сроки, безопасность и правила работы.',
+  'Пробел в требованиях — повод задать вопрос, а не додумать ответ.',
+  'Проверьте нестандартные ситуации: ошибки, отмену и продолжение прерванного действия.',
+  'Проверьте, нет ли противоречий или повторов между требованиями.',
+  'Перед финальной версией проверьте формулировки, требующие уточнения.',
+];
+
+const RESEARCH_REVIEW_TIPS = [
+  'AI предлагает гипотезы по вашим материалам и знаниям модели. Внешний поиск не выполняется; новые условия требуют согласования.',
+  'Рекомендации AI нужно проверить на применимость к вашей задаче и ограничениям проекта.',
+  'Архитектурный паттерн — типовой подход к решению. Проверьте, какую проблему он решает в вашем случае.',
+  'Для каждого риска оцените возможные последствия и способ их предотвратить.',
+  'Проверяйте источники: дату публикации, содержание и связь с рекомендацией.',
+  'Практика конкурентов может подсказать вариант решения, но её нужно соотнести с вашими целями.',
+  'Упоминание стандарта или норматива требует проверки его актуальности и области применения.',
+  'Сопоставьте предложенное улучшение с исходным требованием: сохраняется ли бизнес-цель.',
+  'Если рекомендация опирается на неизвестные условия, сначала уточните их у заинтересованных сторон.',
+  'Предложения исследования можно просмотреть и выбрать перед применением к требованиям.',
+];
+
+export function reviewTipForJob(job, now = Date.now()) {
+  if (!waitingTipForJob(job, now)) return null;
+  const started = [job.startedAt, job.createdAt].map(timestampMs).find(Number.isFinite);
+  const current = timestampMs(now);
+  const elapsed = Number.isFinite(started) && Number.isFinite(current) ? Math.max(0, current - started) : 0;
+  const tips = job.type === 'RESEARCH' ? RESEARCH_REVIEW_TIPS : REVIEW_TIPS;
+  return tips[Math.floor(elapsed / 20_000) % tips.length];
 }

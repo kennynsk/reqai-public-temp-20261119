@@ -401,7 +401,7 @@ export function collectBabokQualityIssues(value, { final = false } = {}) {
       if (type === 'SR' && record.quality === 'Готово' && !record.role) {
         contractViolation(`${path}.role`, `${record.id}: уточните роль заинтересованной стороны.`);
       }
-      if (type === 'TR' && !record.completionCriterion) {
+      if (type === 'TR' && !record.completionCriterion && !(record.quality === 'Требует уточнения' && gapsFor(record).length)) {
         contractViolation(`${path}.completionCriterion`, `${record.id}: уточните критерий завершения перехода.`);
       }
     }
@@ -410,13 +410,20 @@ export function collectBabokQualityIssues(value, { final = false } = {}) {
   if (value.analysis.questions.length > 7) contractViolation('$.analysis.questions', 'В списке больше семи вопросов: уточните приоритеты.');
   if (final) {
     const records = BABOK_REQUIREMENT_TYPES.flatMap((type) => value.groups[type]);
-    const linked = (parent, child) => (parent.relatedIds || []).includes(child.id)
-      || (child.relatedTo || []).includes(parent.id)
-      || value.analysis.traceability.some((link) => link.from === parent.id && link.to === child.id && link.status === 'Подтверждено источником');
+    const linked = (parent, child) => value.analysis.traceability.some((link) => link.from === parent.id && link.to === child.id
+      && /^(обосновыва|реализу|уточня)/i.test(link.relation || '')
+      && BABOK_TRACEABILITY_STATUSES.includes(link.status));
     for (const record of [...value.groups.BR, ...value.groups.SR]) {
-      const childTypes = record.id.startsWith('BR-') ? ['SR-'] : ['SR-', 'FR-', 'NFR-'];
+      const childTypes = record.id.startsWith('BR-') ? ['SR-', 'NFR-'] : ['FR-', 'NFR-'];
       if (!records.some((child) => child.id !== record.id && childTypes.some((prefix) => child.id.startsWith(prefix)) && linked(record, child)) && !gapsFor(record).length) {
         contractViolation('$.analysis.GAP', `${record.id}: не показано покрытие дочерними требованиями или связь с пробелом GAP. Проверьте полноту декомпозиции.`);
+      }
+    }
+    for (const record of [...value.groups.SR, ...value.groups.FR, ...value.groups.NFR]) {
+      const parents = record.id.startsWith('SR-') ? value.groups.BR
+        : record.id.startsWith('NFR-') ? [...value.groups.SR, ...value.groups.BR] : value.groups.SR;
+      if (!parents.some((parent) => linked(parent, record)) && !gapsFor(record).length) {
+        contractViolation('$.analysis.traceability', `${record.id}: отсутствует явная связь с родительским требованием или GAP, объясняющий разрыв трассировки.`);
       }
     }
     if (gapIds.size && !value.analysis.questions.length) contractViolation('$.analysis.questions', 'Для выявленных пробелов не сформулированы вопросы. Добавьте вопросы для уточнения.');

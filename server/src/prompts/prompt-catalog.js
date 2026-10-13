@@ -28,6 +28,11 @@ function validateManifest(manifest, bundleDir) {
   if (!Array.isArray(manifest.workflowPurposes) || !manifest.workflowPurposes.length || manifest.workflowPurposes.some((purpose) => !PURPOSES.has(purpose))) fail(`Bundle ${manifest.id}@${manifest.version} has unsupported workflow purposes`);
   if (!hasOutputContract(manifest.outputSchemaVersion)) fail(`Bundle ${manifest.id}@${manifest.version} references unsupported output contract`);
   if (!manifest.templates || typeof manifest.templates !== 'object' || Array.isArray(manifest.templates) || !Object.keys(manifest.templates).length) fail(`Bundle ${manifest.id}@${manifest.version} has no templates`);
+  if (manifest.semanticPolicy !== undefined && !['babok-semantic.v1', 'babok-semantic.v2'].includes(manifest.semanticPolicy)) fail('Unsupported semantic validation policy');
+  if (manifest.semanticPolicy && !manifest.templates['semantic-audit']) fail('Semantic validation requires its audit template');
+  const maxBudgetMs = manifest.workflowPurposes.includes('REQUIREMENTS_INSIGHTS') ? 900_000 : 240_000;
+  if (manifest.requiredResearchCategories !== undefined && (manifest.id !== 'requirements-insights' || JSON.stringify([...manifest.requiredResearchCategories].sort()) !== JSON.stringify(['competitors', 'patterns', 'risks', 'standards', 'trends']))) fail('Research coverage must contain all five directions exactly once');
+  if (manifest.semanticPolicy === 'babok-semantic.v2' && (!manifest.templates['semantic-repair'] || !Number.isInteger(manifest.performanceBudgetMs) || manifest.performanceBudgetMs < 60_000 || manifest.performanceBudgetMs > maxBudgetMs)) fail('Compact semantic validation requires targeted repair and a workflow-specific execution budget');
   const templates = {};
   for (const [step, declaration] of Object.entries(manifest.templates)) {
     if (!ID.test(step) || !declaration || typeof declaration !== 'object') fail(`Bundle ${manifest.id}@${manifest.version} has an invalid step`);

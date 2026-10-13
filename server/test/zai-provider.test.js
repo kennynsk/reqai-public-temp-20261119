@@ -111,3 +111,14 @@ test('ZAI provider classifies nested Undici header timeouts as retryable and pre
   );
   assert.equal(request.options.dispatcher != null, true);
 });
+
+test('internal request timeout destroys the dispatcher instead of waiting for graceful socket close', async () => {
+  const cleanup = [];
+  const provider = new ZaiProvider({ apiKey: 'test', baseUrl: 'https://example.invalid', fetchImpl: async (_url, { signal, dispatcher }) => {
+    dispatcher.close = async () => { cleanup.push('close'); };
+    dispatcher.destroy = async () => { cleanup.push('destroy'); };
+    return new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true }));
+  } });
+  await assert.rejects(provider.complete({ model: 'glm-5.3-flash', messages: [], timeoutMs: 5 }), (error) => error.reasonCode === 'MODEL_TIMEOUT');
+  assert.deepEqual(cleanup, ['destroy']);
+});

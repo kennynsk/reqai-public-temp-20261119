@@ -1,5 +1,16 @@
 import { expect, test } from 'vitest';
-import { executionPhaseIndex, focusMessageForJob, waitingTipForJob, isModelPhase, progressAriaText, progressPresentationForJob, visualProgressForJob } from './job-progress.js';
+import { executionPhaseIndex, focusMessageForJob, waitingTipForJob, reviewTipForJob, isModelPhase, progressAriaText, progressPresentationForJob, visualProgressForJob } from './job-progress.js';
+
+test('review guidance follows the job type and restores its rotation after reload', () => {
+  const startedAt = '2026-10-05T10:00:00Z';
+  const start = Date.parse(startedAt);
+  const research = { type: 'RESEARCH', status: 'RUNNING', startedAt };
+  expect(reviewTipForJob(research, start)).toMatch(/AI предлагает гипотезы по вашим материалам/);
+  expect(reviewTipForJob(research, start + 20_000)).toMatch(/применимость/);
+  expect(reviewTipForJob({ ...research }, start + 20_000)).toBe(reviewTipForJob(research, start + 20_000));
+  expect(reviewTipForJob({ ...research, type: 'DECOMPOSITION' }, start)).toMatch(/Бизнес-требования описывают цель/);
+  expect(reviewTipForJob({ ...research, status: 'SUCCEEDED' }, start)).toBeNull();
+});
 
 test('model progress moves from the server milestone without crossing assembly', () => {
   const job = { type: 'DECOMPOSITION', status: 'RUNNING', currentStep: 'model', progress: 20, updatedAt: '2026-08-28T12:00:00Z' };
@@ -79,4 +90,14 @@ test('research progress moves smoothly and waits for server confirmation before 
   }
   expect(progressPresentationForJob({ ...job, currentStep: 'assembly', progress: 90 }, start + 60_000)).toMatchObject({ estimated: true, progress: 99 });
   expect(progressPresentationForJob({ ...job, status: 'SUCCEEDED', progress: 100 }, start + 60_000)).toMatchObject({ estimated: false, progress: 100 });
+});
+
+test('repair and metadata updates cannot rewind a running task, including after reload', () => {
+  const start = Date.parse('2026-10-03T10:00:00Z');
+  const job = { type: 'DECOMPOSITION', status: 'RUNNING', currentStep: 'model', progress: 20, startedAt: start, updatedAt: start };
+  const before = visualProgressForJob(job, start + 90_000);
+  const repaired = { ...job, updatedAt: start + 95_000 };
+  expect(visualProgressForJob(repaired, start + 96_000)).toBeGreaterThanOrEqual(before);
+  expect(visualProgressForJob(JSON.parse(JSON.stringify(repaired)), start + 96_000)).toBe(visualProgressForJob(repaired, start + 96_000));
+  expect(visualProgressForJob(repaired, start + 999_000)).toBeLessThan(70);
 });

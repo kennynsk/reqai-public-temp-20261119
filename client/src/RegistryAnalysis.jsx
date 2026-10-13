@@ -25,6 +25,7 @@ function TraceabilityNode({ node, registry, onNavigate }) {
         {gaps.length > 0 && <span className="text-xs text-amber-900">{ /^(BR|SR)-/.test(record.id) ? 'Покрытие требует уточнения' : 'Есть пробелы' }</span>}
       </div>
       <p className="mt-1 break-words text-sm leading-6 text-slate-700">{record.text}</p>
+      {node.hierarchyNote && <p className="mt-1 text-xs text-slate-500">{node.hierarchyNote}</p>}
     </div>
     {children.length > 0 && <ul className="ml-3 border-l border-slate-200 pl-3 sm:ml-5 sm:pl-5">{children.map((child) => <TraceabilityNode key={child.record.id} node={child} registry={registry} onNavigate={onNavigate} />)}</ul>}
   </li>;
@@ -50,10 +51,10 @@ function TraceabilityLinks({ registry, onNavigate }) {
   </section>;
 }
 
-export default function RegistryAnalysis({ registry, section, onNavigate, onDiscuss, readOnly }) {
+export default function RegistryAnalysis({ registry, section, onNavigate, onDiscuss, readOnly, onOpenQuestion }) {
   const analysis = registry.analysis;
   return <div className="space-y-4">
-    {section === 'questions' && <ReviewQuestions registry={registry} onNavigate={onNavigate} onDiscuss={onDiscuss} readOnly={readOnly} />}
+    {section === 'questions' && <ReviewQuestions onOpenQuestion={onOpenQuestion} registry={registry} onNavigate={onNavigate} onDiscuss={onDiscuss} readOnly={readOnly} />}
     {section === 'links' && <TraceabilityLinks registry={registry} onNavigate={onNavigate} />}
     {section === 'report' && <details className="rounded-xl border bg-white p-4"><summary className="cursor-pointer font-semibold text-sm p-1">Приложения: контекст, материалы и анализ</summary><div className="mt-4 space-y-4">
       {registry.summary?.conclusions?.length > 0 && <ul className="list-disc pl-5 text-sm">{registry.summary.conclusions.map((text, index) => <li key={index}>{text}</li>)}</ul>}

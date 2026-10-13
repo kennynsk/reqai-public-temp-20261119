@@ -272,3 +272,49 @@ test('cancellation, deadline and unexpected errors are never masked as successfu
     assert.equal(h.saved.length, 0);
   }
 });
+
+test('coverage requires explicit hierarchy edges and does not accept SR peers or generic references', () => {
+  const value = registry();
+  const base = { source: { ...source }, provenance: 'Извлечено', quality: 'Готово' };
+  value.groups.BR = [{ ...base, id: 'BR-001', text: 'Цель', successIndicator: null, relatedIds: ['SR-001'] }];
+  value.groups.SR = [{ ...base, id: 'SR-001', role: 'Клиент', text: 'Потребность', relatedTo: ['BR-001'] }];
+  value.groups.FR[0].relatedTo = ['SR-001'];
+  value.summary.counts.BR = 1;
+  value.summary.counts.SR = 1;
+  const issues = collectBabokQualityIssues(value, { final: true });
+  assert.ok(issues.some((issue) => issue.reason.includes('BR-001')));
+  assert.ok(issues.some((issue) => issue.reason.includes('FR-001')));
+  value.analysis.traceability = [
+    { from: 'BR-001', to: 'SR-001', relation: 'обосновывает', status: 'Предполагается', source: null },
+    { from: 'SR-001', to: 'FR-001', relation: 'реализует', status: 'Подтверждено источником', source: null },
+  ];
+  assert.equal(collectBabokQualityIssues(value, { final: true }).length, 0);
+});
+
+test('a scoped common NFR can be grounded directly in a business goal without an artificial SR', () => {
+  const value = registry();
+  const base = { source: { ...source }, provenance: 'Извлечено', quality: 'Готово' };
+  value.groups.FR = [];
+  value.summary.counts.FR = 0;
+  value.groups.BR = [{ ...base, id: 'BR-001', text: 'Сократить обработку до одного дня', successIndicator: 'Один день', relatedIds: [] }];
+  value.groups.NFR = [{ ...base, id: 'NFR-001', text: 'Обработка не более одного дня', category: 'Производительность', scope: 'Весь процесс обработки заявки', verificationMethod: 'Измерение длительности', relatedTo: [] }];
+  value.summary.counts.BR = 1;
+  value.summary.counts.NFR = 1;
+  value.analysis.traceability = [{ from: 'BR-001', to: 'NFR-001', relation: 'обосновывает', status: 'Подтверждено источником', source: null }];
+  assert.deepEqual(collectBabokQualityIssues(value, { final: true }), []);
+  value.analysis.traceability = [];
+  assert.ok(collectBabokQualityIssues(value, { final: true }).some((issue) => issue.reason.includes('NFR-001')));
+});
+
+test('2.4 reviews the final draft against the original source and saves the corrected result', async () => {
+  const draft = registry(); const corrected = registry();
+  draft.groups.FR[0].text = 'Показывать и удалять статус';
+  const h = harness([draft, corrected]);
+  h.input.configurationSnapshot.promptProfile = createPromptProfileResolver({ catalog, policy: { 'requirements-decomposition': { active: '2.4.0', released: ['2.4.0'] } } }).resolve({ type: 'DECOMPOSITION', mode: 'DECOMPOSITION' });
+  await h.handlers.mergeDecomposition(h.input);
+  assert.equal(h.calls.length, 2);
+  assert.match(h.calls[1].messages[1].content, /Полный источник/);
+  assert.match(h.calls[1].messages[1].content, /Показывать и удалять статус/);
+  assert.match(h.calls[1].messages[1].content, /цитата только о действии роли не доказывает вклад/);
+  assert.equal(h.saved[0].groups.FR[0].text, corrected.groups.FR[0].text);
+});

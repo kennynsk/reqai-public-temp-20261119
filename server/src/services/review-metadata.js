@@ -3,6 +3,8 @@ import { canonicalSha256 } from '../prompts/prompt-utils.js';
 import { normalizeProposalMetadata } from './proposal-metadata.js';
 import { safeCitationUrl, normalizeCitations } from '../domain/research-evidence.js';
 import { currentGapClarification } from './gap-review-state.js';
+import { QUALITY_POLICY, QUALITY_VALUES } from './requirement-quality-context.js';
+import { validateQualityEvidence } from './quality-evidence.js';
 
 const fail = (message) => { throw new ApiError({ status: 400, code: 'INVALID_REVIEW_METADATA', message }); };
 const object = (value) => value && typeof value === 'object' && !Array.isArray(value);
@@ -118,9 +120,30 @@ function normalizeDiscussionProposals({ supplied, inherited = {}, content, stamp
       if (changes.some((change) => !seen.has(change.targetId))) fail('A guided change needs a requirement disposition');
       clarification = { gapId: item.gapId, answer, canResolve: item.canResolve, remainingQuestions, checks };
     }
+    let qualityAssessment;
+    if (value.qualityAssessment !== undefined) {
+      const assessment = value.qualityAssessment;
+      // Historical evidence is immutable. Superseding an old receipt must not
+      // require regenerating or upgrading its already saved certificate.
+      if (prior?.qualityAssessment && same(prior.qualityAssessment, assessment)) qualityAssessment = copy(assessment);
+      else {
+      if (!object(assessment) || assessment.schemaVersion !== QUALITY_POLICY || !object(assessment.basis) || !Array.isArray(assessment.assessedRecords) || !Array.isArray(assessment.assessments) || !assessment.assessments.length || assessment.assessments.length > 10000) fail('Invalid AI quality assessment receipt');
+      const seen = new Set();
+      if (assessment.semanticReview?.pass !== true || assessment.semanticReview?.schemaVersion !== 'babok-quality-review.v1' || assessment.semanticReview?.revision !== assessment.revision || !Array.isArray(assessment.semanticReview?.checks) || assessment.semanticReview.checks.length !== assessment.assessments.length || assessment.semanticReview.checks.some((check) => check.pass !== true || !Array.isArray(check.issues) || check.issues.length) || new Set(assessment.semanticReview.checks.map((check) => check.id)).size !== assessment.assessments.length) fail('AI quality assessment needs an independent review of every record');
+      if (assessment.assessments.length !== assessment.assessedRecords.length || new Set(assessment.assessedRecords.map((record) => record.id)).size !== assessment.assessments.length) fail('AI quality evidence must cover the assessed registry');
+      for (const item of assessment.assessments) {
+        if (!records.has(item?.id) || seen.has(item.id) || !QUALITY_VALUES.includes(item.quality) || !cleanText(item.reason, 2000, 'Quality assessment reason') || !Array.isArray(item.blockingGapIds)) fail('Invalid AI quality assessment');
+        seen.add(item.id);
+        if (!assessment.semanticReview.checks.some((check) => check.id === item.id)) fail('Missing independent quality review');
+        try { validateQualityEvidence(item, { records: assessment.assessedRecords, gaps: content.analysis?.GAP || [] }); } catch (error) { fail(error.message); }
+        if (value.decision === 'accepted' && !value.superseded && records.get(item.id).quality !== item.quality) fail('AI quality assessment does not match saved statuses');
+      }
+      qualityAssessment = copy(assessment);
+      }
+    }
     const proposalBaseVersionId = value.baseVersionId == null ? undefined : cleanText(value.baseVersionId, 128, 'Discussion proposal base version');
     if (proposalBaseVersionId && baseVersionId && proposalBaseVersionId !== baseVersionId) fail('Discussion proposal base version does not match the saved version');
-    result[proposalId] = { proposalId, decision: value.decision, changes, baseHash, ...(proposalBaseVersionId ? { baseVersionId: proposalBaseVersionId } : {}), ...(gapBases ? { gapBases } : {}), ...(value.discarded === true ? { discarded: true } : {}), ...(value.superseded === true ? { superseded: true } : {}), ...(clarification ? { clarification } : {}), ...stamp };
+    result[proposalId] = { proposalId, decision: value.decision, changes, baseHash, ...(proposalBaseVersionId ? { baseVersionId: proposalBaseVersionId } : {}), ...(gapBases ? { gapBases } : {}), ...(value.discarded === true ? { discarded: true } : {}), ...(value.superseded === true ? { superseded: true } : {}), ...(clarification ? { clarification } : {}), ...(qualityAssessment ? { qualityAssessment } : {}), ...stamp };
   }
   return result;
 }
