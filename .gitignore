@@ -40,3 +40,6 @@ temp/
 
 # Notebooks checkpoints
 .ipynb_checkpoints/
+
+# Local UI test screenshots
+/gui-test-screenshots/
