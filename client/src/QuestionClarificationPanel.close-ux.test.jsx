@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
@@ -84,4 +84,33 @@ test('the AI chat view offers the human override when only the AI objection bloc
   fireEvent.click(screen.getByRole('button', { name: 'Помочь уточнить с AI' }));
   expect(screen.getByRole('status', { name: 'Статус проверки GAP-001' })).toHaveTextContent('Осталось выяснить');
   expect(screen.getByRole('button', { name: 'Не согласен — вопрос выяснен, закрыть' })).toBeVisible();
+});
+
+test('soft-invalidated decisions reconfirm in one click and then close', () => {
+  const decisions = { review: {
+    gaps: { 'GAP-001': { state: 'answered', answer, stale: true, reason: 'Изменился внешний контекст: CON-001.' } },
+    gapRequirements: { 'GAP-001': Object.fromEntries(checkedIds.map((id) => [id, { state: 'incorporated', reason: '', stale: true }])) },
+  } };
+  setup({ decisions }); open();
+  expect(screen.getByRole('status', { name: 'Статус проверки GAP-001' })).toHaveTextContent('повторного подтверждения');
+  const close = screen.getByRole('button', { name: 'Закрыть как решённый' });
+  expect(close).toBeDisabled();
+  fireEvent.click(screen.getByRole('button', { name: 'Подтвердить прежние решения' }));
+  expect(close).toBeEnabled();
+  fireEvent.click(close);
+  expect(screen.getByRole('button', { name: 'Открыть вопрос снова' })).toBeVisible();
+});
+
+test('a draft edit that reopens saved questions warns on the main screen before saving', async () => {
+  const decisions = { review: {
+    gaps: { 'GAP-001': { state: 'closed', closureKind: 'resolved', answer } },
+    gapRequirements: { 'GAP-001': Object.fromEntries(checkedIds.map((id) => [id, { state: 'incorporated', reason: '' }])) },
+  } };
+  setup({ decisions }); open();
+  fireEvent.click(screen.getByRole('button', { name: 'Редактировать FR-004' }));
+  fireEvent.change(screen.getByLabelText('Текст требования FR-004'), { target: { value: 'Обновлённая формулировка требования.' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Применить к черновику' }));
+  await waitFor(() => expect(screen.getByText(/Правка переоткроет вопросы: GAP-001/)).toBeVisible());
+  expect(screen.getByRole('button', { name: 'Подтвердить прежние решения' })).toBeVisible();
+  expect(screen.getByRole('status', { name: 'Статус проверки GAP-001' })).toHaveTextContent('Нужна повторная проверка');
 });

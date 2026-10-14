@@ -4,7 +4,7 @@ import { RequirementsReviewContext } from './requirements-review-context.js';
 import { researchPresentation, reviewPrimary, formatRuDateTime } from './requirements-review-presentation.js';
 import { ResultExportAction } from './ResultExportContext.jsx';
 
-export default function RequirementsReviewHeader({ version, dirty, busy, researchBusy, onSave, onResearch, onFinal }) {
+export default function RequirementsReviewHeader({ version, dirty, busy, researchBusy, onSave, onResearch, onFinal, reopenWarning = [] }) {
   const context = useContext(RequirementsReviewContext);
   const statusId = useId();
   const saved = Boolean(version?.versionId);
@@ -37,5 +37,6 @@ export default function RequirementsReviewHeader({ version, dirty, busy, researc
     </div>
     {context.source}
     {research.status && <p role="status" className="text-sm text-slate-600">{research.status}</p>}
+    {dirty && reopenWarning.length > 0 && <p role="status" className="text-sm text-amber-700">Правка переоткроет вопросы: {reopenWarning.join(', ')} — их прежние решения сохранятся и потребуют повторного подтверждения.</p>}
   </header>;
 }

@@ -153,7 +153,11 @@ test('replacing a linked requirement reopens only its GAP and keeps the answer',
 test('adding a new requirement linked to a closed GAP invalidates the old membership check', () => {
   const accepted = applyProposal(confirmedGapState(), { key: 'new-linked', targetIds: ['GAP-001'], text: 'Дополнительное правило' }, { operation: 'add', targetType: 'FR', text: 'Дополнительное правило', fields: {} });
   expect(accepted.decisions.review.gaps['GAP-001'].state).toBe('answered');
-  expect(accepted.decisions.review.gapRequirements['GAP-001']['FR-001'].state).toBe('pending');
+  expect(accepted.decisions.review.gaps['GAP-001'].stale).toBe(true);
+  // The old member did not change: its decision survives with a reconfirmation mark,
+  // while the new member itself arrives unverified and blocks closure.
+  expect(accepted.decisions.review.gapRequirements['GAP-001']['FR-001'].state).toBe('no-change');
+  expect(accepted.decisions.review.gapRequirements['GAP-001']['FR-001'].stale).toBe(true);
 });
 
 test('retaining a linked requirement as manual content preserves confirmations when only AI lineage changes', () => {

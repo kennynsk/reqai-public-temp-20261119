@@ -142,3 +142,19 @@ test('current completed checklist supersedes historical invalidation hint', asyn
   metadata.gapRequirements['GAP-004']['NFR-001'] = { state: 'incorporated', stale: false };
   expect(gapReviewHint(content, gap, metadata)).toBe('Ответ и требования проверены — можно закрыть вопрос');
 });
+
+test('soft-stale decisions stay collected but block completion until reconfirmed', async () => {
+  const { gapChecklist, gapChecklistComplete, gapReviewHint } = await import('./review-metadata.js');
+  const gap = { id: 'GAP-004', affectedIds: ['BR-001', 'NFR-001'] };
+  const content = { groups: { BR: [{ id: 'BR-001' }], NFR: [{ id: 'NFR-001' }] }, analysis: { GAP: [gap] } };
+  const metadata = { gaps: { 'GAP-004': { state: 'answered', answer: 'Готово', stale: true, reason: 'Изменился внешний контекст: CON-001.' } },
+    gapRequirements: { 'GAP-004': { 'BR-001': { state: 'incorporated', reason: '', stale: true }, 'NFR-001': { state: 'no-change', reason: 'ок', stale: true } } } };
+  expect(gapChecklist(content, gap, metadata).every((item) => item.state !== 'pending')).toBe(true);
+  expect(gapChecklistComplete(content, gap, metadata)).toBe(false);
+  expect(gapReviewHint(content, gap, metadata)).toContain('повторного подтверждения');
+  metadata.gapRequirements['GAP-004']['BR-001'].stale = false;
+  expect(gapChecklistComplete(content, gap, metadata)).toBe(false);
+  metadata.gapRequirements['GAP-004']['NFR-001'].stale = false;
+  expect(gapChecklistComplete(content, gap, metadata)).toBe(true);
+  expect(gapReviewHint(content, gap, metadata)).toBe('Ответ и требования проверены — можно закрыть вопрос');
+});
