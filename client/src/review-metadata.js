@@ -23,6 +23,12 @@ export function gapHasPendingClarification(metadata, gapId) {
   return currentGapClarification(metadata, gapId)?.canResolve === false;
 }
 
+export function gapClarificationObjection(metadata, gapId) {
+  const clarification = currentGapClarification(metadata, gapId);
+  if (clarification?.canResolve !== false) return '';
+  return clarification.remainingQuestions?.length ? clarification.remainingQuestions.join(' ') : 'уточнение частичное: ответ нужно дополнить';
+}
+
 export function requirementGaps(content, requirement) {
   const related = [...(requirement.relatedIds || []), ...(requirement.relatedTo || [])];
   return (content?.analysis?.GAP || []).filter((gap) => (gap.affectedIds || []).includes(requirement.id) || related.includes(gap.id));

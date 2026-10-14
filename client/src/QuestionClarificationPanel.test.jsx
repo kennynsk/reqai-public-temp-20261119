@@ -9,9 +9,9 @@ import { ReviewSessionProvider } from './ReviewDraftProvider.jsx';
 
 const raf = (fn) => requestAnimationFrame(fn);
 afterEach(() => { cleanup(); window.history.replaceState({}, '', '/'); sessionStorage.clear(); });
-function setup({ registry = sharedQuestionFixture(), decisions = {}, workflow = {}, ...props } = {}) {
+function setup({ registry = sharedQuestionFixture(), decisions = {}, workflow = {}, baseVersionId = 'v1', ...props } = {}) {
   const save = vi.fn();
-  const tree = <ReviewSessionProvider scope="test" jobId="shared" baseVersionId="v1"><RequirementsReviewContext.Provider value={workflow}><BabokRegistryResult value={registry} latestVersion={{ versionId: 'v1', registry, decisions }} onSave={save} {...props} /></RequirementsReviewContext.Provider></ReviewSessionProvider>;
+  const tree = <ReviewSessionProvider scope="test" jobId="shared" baseVersionId={baseVersionId}><RequirementsReviewContext.Provider value={workflow}><BabokRegistryResult value={registry} latestVersion={{ versionId: 'v1', registry, decisions }} onSave={save} {...props} /></RequirementsReviewContext.Provider></ReviewSessionProvider>;
   render(tree);
   return { registry, save };
 }
@@ -110,6 +110,12 @@ test('keyboard focus wraps within the active surface and skips hidden AI control
   const shell = screen.getByRole('dialog').querySelector('aside');
   const save = within(shell).getByRole('button', { name: 'Сохранить требования' });
   const closeButton = within(shell).getByRole('button', { name: 'Закрыть вопрос' });
+  expect(save).toBeDisabled();
+  const source = within(shell).getByText('Источник и связи').closest('summary');
+  source.focus(); fireEvent.keyDown(shell, { key: 'Tab' }); expect(closeButton).toHaveFocus();
+  fireEvent.keyDown(shell, { key: 'Tab', shiftKey: true }); expect(source).toHaveFocus();
+  fireEvent.change(screen.getByLabelText('Ответ на GAP-001'), { target: { value: 'Проверяем сохранение' } });
+  expect(save).toBeEnabled();
   save.focus(); fireEvent.keyDown(shell, { key: 'Tab' }); expect(closeButton).toHaveFocus();
   fireEvent.keyDown(shell, { key: 'Tab', shiftKey: true }); expect(save).toHaveFocus();
   expect(screen.getAllByRole('dialog')).toHaveLength(1);
@@ -128,4 +134,38 @@ test('a pending save disables question inputs and actions even though the panel 
   expect(screen.getByLabelText('Ответ на GAP-001')).toBeDisabled();
   expect(screen.getAllByRole('button', { name: 'Изменение не требуется' })[0].closest('fieldset')).toBeDisabled();
   expect(screen.getAllByRole('button', { name: 'Закрыть вопрос' }).at(-1)).toBeEnabled();
+});
+
+
+test('manual confirmation shows wording and records an attestation without rewriting requirements', () => {
+  const { registry, save } = setup(); open();
+  const panel = screen.getByRole('dialog');
+  expect(within(panel).getByText(registry.groups.FR[0].text)).toBeVisible();
+  expect(within(panel).getByText(/Сохранение ответа не меняет формулировки/)).toBeVisible();
+  fireEvent.change(screen.getByLabelText('Ответ на GAP-001'), { target: { value: 'Ответ для проверки' } });
+  fireEvent.click(within(panel).getAllByRole('button', { name: 'Подтвердить учёт ответа' })[0]);
+  fireEvent.click(within(panel).getByRole('button', { name: 'Сохранить требования' }));
+  expect(save.mock.calls[0][0].registry.groups).toEqual(registry.groups);
+  expect(save.mock.calls[0][0].decisions.review.gapRequirements['GAP-001']['BR-001'].state).toBe('incorporated');
+});
+
+test('no-change rationale stays inside its selected requirement row', () => {
+  setup(); open();
+  const edit = screen.getByRole('button', { name: 'Редактировать FR-004' });
+  const row = edit.parentElement.parentElement;
+  fireEvent.click(within(row).getByRole('button', { name: 'Изменение не требуется' }));
+  expect(within(row).getByLabelText('Обоснование отсутствия изменения')).toBeVisible();
+  fireEvent.change(within(row).getByLabelText('Обоснование отсутствия изменения'), { target: { value: 'Уже описано полностью' } });
+  fireEvent.click(within(row).getByRole('button', { name: 'Подтвердить решение' }));
+  expect(within(row).getByText('Уже описано полностью')).toBeVisible();
+});
+
+test('manual save status distinguishes a saved baseline from an initial version and unsaved changes', () => {
+  setup(); open();
+  expect(screen.getByText('Все изменения сохранены в версии требований')).toBeVisible();
+  fireEvent.change(screen.getByLabelText('Ответ на GAP-001'), { target: { value: 'Новый ответ' } });
+  expect(screen.getByText('Есть несохранённые изменения')).toBeVisible();
+  cleanup();
+  setup({ baseVersionId: null }); open();
+  expect(screen.getByText('Версия требований ещё не сохранена')).toBeVisible();
 });
