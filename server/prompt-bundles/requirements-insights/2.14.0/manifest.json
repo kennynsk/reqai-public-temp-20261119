@@ -1,0 +1,61 @@
+{
+  "id": "requirements-insights",
+  "version": "2.14.0",
+  "displayName": "Decision-focused research with concise product language",
+  "workflowPurposes": [
+    "REQUIREMENTS_INSIGHTS"
+  ],
+  "outputSchemaVersion": "requirements-insights.v1",
+  "templates": {
+    "insights": {
+      "path": "insights.md",
+      "requiredVariables": [
+        "babokIdentifierSet",
+        "businessContext",
+        "requirementsSection",
+        "reviewContext",
+        "supportingMaterials"
+      ],
+      "sha256": "7f5825df3ab0234cf5e9c082fcf35a63ef77ddaa79d6f9a8d06309f6dadcbcd0"
+    },
+    "review": {
+      "path": "review.md",
+      "requiredVariables": [
+        "originalPrompt",
+        "draft",
+        "qualityFindings"
+      ],
+      "sha256": "61bbe6ff2c7e3618420eda7121f93978b0e3b8d96dfc477a7e2bb3d3f6a6ea78"
+    },
+    "semantic-audit": {
+      "path": "semantic-audit.md",
+      "requiredVariables": [
+        "semanticContext",
+        "candidates",
+        "qualityFindings",
+        "revision",
+        "narrativeCandidates"
+      ],
+      "sha256": "25aee0c6bb9762b6015e62daa9561a553485d110f73e3e8657f6d6d333a2298e"
+    },
+    "semantic-repair": {
+      "path": "semantic-repair.md",
+      "requiredVariables": [
+        "semanticContext",
+        "draft",
+        "qualityFindings",
+        "revision"
+      ],
+      "sha256": "7b468e728744a1f7088561ef123be63bfe1b75e40281d3b49bb66de3ff113a90"
+    }
+  },
+  "semanticPolicy": "babok-semantic.v2",
+  "performanceBudgetMs": 900000,
+  "requiredResearchCategories": [
+    "trends",
+    "patterns",
+    "risks",
+    "competitors",
+    "standards"
+  ]
+}
