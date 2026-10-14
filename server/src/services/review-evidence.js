@@ -34,19 +34,32 @@ export function reviewEvidenceChanges(before, after) {
   const left = new Map(records(before).map((record) => [record.id, record]));
   const right = new Map(records(after).map((record) => [record.id, record]));
   const changedRecordIds = [...new Set([...left.keys(), ...right.keys()])].filter((id) => fingerprint(evidenceRecord(left.get(id))) !== fingerprint(evidenceRecord(right.get(id))));
+  // A supporting BR supplies the business purpose. Refining only its success
+  // metric does not change downstream operational decisions; GAPs directly
+  // linked to that BR still require review through the checks below.
+  const supportingChanges = new Set(changedRecordIds.filter((id) => {
+    if (!/^BR-/.test(id) || !left.has(id) || !right.has(id)) return true;
+    const withoutMetric = (record) => Object.fromEntries(Object.entries(evidenceRecord(record)).filter(([field]) => field !== 'successIndicator'));
+    return fingerprint(withoutMetric(left.get(id))) !== fingerprint(withoutMetric(right.get(id)));
+  }));
   const gaps = new Map([...(before?.analysis?.GAP || []), ...(after?.analysis?.GAP || [])].map((gap) => [gap.id, gap]));
-  const changedGapIds = [...gaps.keys()].filter((id) => {
+  const hardGapIds = [];
+  const contextGapIds = [];
+  for (const id of gaps.keys()) {
     const oldGap = left.get(id), newGap = right.get(id);
     const linked = [...linkedRequirementIds(before, oldGap), ...linkedRequirementIds(after, newGap)];
     const supporting = linked.flatMap((recordId) => [left.get(recordId), right.get(recordId)].filter(Boolean).flatMap((record) => [...(record.relatedIds || []), ...(record.relatedTo || [])]));
-    return changedRecordIds.includes(id)
+    if (changedRecordIds.includes(id)
       || fingerprint([...linkedRequirementIds(before, oldGap)].sort()) !== fingerprint([...linkedRequirementIds(after, newGap)].sort())
-      || supporting.some((recordId) => changedRecordIds.includes(recordId))
-      || changedRecordIds.some((recordId) => /^CON-/.test(recordId))
       || linked.some((recordId) => changedRecordIds.includes(recordId))
-      || [...(oldGap?.affectedIds || []), ...(newGap?.affectedIds || [])].some((recordId) => changedRecordIds.includes(recordId));
-  });
-  return { changedRecordIds, changedGapIds };
+      || [...(oldGap?.affectedIds || []), ...(newGap?.affectedIds || [])].some((recordId) => changedRecordIds.includes(recordId))) hardGapIds.push(id);
+    // Context-only changes (a referenced record or any CON shifted) do not
+    // touch the question's own basis: keep the collected decisions and ask
+    // for a single reconfirmation instead of a full redo.
+    else if (supporting.some((recordId) => supportingChanges.has(recordId))
+      || changedRecordIds.some((recordId) => /^CON-/.test(recordId))) contextGapIds.push(id);
+  }
+  return { changedRecordIds, changedGapIds: hardGapIds, contextGapIds };
 }
 
 export function invalidateReviewEvidence(decisions, options = {}) {
@@ -54,20 +67,24 @@ export function invalidateReviewEvidence(decisions, options = {}) {
   const previous = decisions.review;
   const changedRecordIds = options.changedRecordIds ? new Set(options.changedRecordIds) : null;
   const changedGapIds = options.changedGapIds ? new Set(options.changedGapIds) : null;
+  const contextGapIds = options.contextGapIds ? new Set(options.contextGapIds) : null;
   const gapRequirements = Object.fromEntries(Object.entries(previous.gapRequirements || {}).map(([gapId, entries]) => [gapId,
     Object.fromEntries(Object.entries(entries || {}).map(([requirementId, entry]) => [requirementId,
-      changedRecordIds && !changedRecordIds.has(requirementId) && !changedGapIds?.has(gapId)
-        ? entry
-        : { ...entry, state: 'pending', stale: true },
+      changedRecordIds?.has(requirementId)
+        ? { ...entry, state: 'pending', stale: true }
+        : changedGapIds?.has(gapId) || contextGapIds?.has(gapId) ? { ...entry, stale: true } : entry,
     ]))]));
   const gaps = Object.fromEntries(Object.entries(previous.gaps || {}).map(([gapId, entry]) => {
     const linkedChanged = changedRecordIds && Object.keys(previous.gapRequirements?.[gapId] || {}).some((id) => changedRecordIds.has(id));
-    const shouldReopen = changedGapIds?.has(gapId) || linkedChanged;
-    if ((changedRecordIds || changedGapIds) && !shouldReopen) return [gapId, entry];
+    const hardReopen = changedGapIds?.has(gapId) || linkedChanged;
+    const softReopen = contextGapIds?.has(gapId);
+    if ((changedRecordIds || changedGapIds || contextGapIds) && !hardReopen && !softReopen) return [gapId, entry];
     if (!entry?.answer && entry?.state !== 'closed') return [gapId, entry];
     const answer = String(entry.answer || '').trim();
     const changed = [...(options.changedRecordIds || [])];
-    const reason = options.reason || `Нужна повторная проверка: ${changed.length ? `изменились связанные записи ${changed.slice(0, 20).join(', ')}.` : 'изменились требования или связи.'}`;
+    const reason = options.reason || (hardReopen
+      ? `Нужна повторная проверка: ${changed.length ? `изменились связанные записи ${changed.slice(0, 20).join(', ')}.` : 'изменились требования или связи.'}`
+      : `Изменился внешний контекст: ${changed.length ? `изменились записи ${changed.slice(0, 20).join(', ')}.` : 'изменились требования или связи.'} Прежние решения сохранены — подтвердите их или пересмотрите.`);
     return [gapId, { ...entry, state: answer ? 'answered' : 'open', closureKind: null, stale: true,
       reason,
       resolutionHistory: entry.state === 'closed' ? [...(entry.resolutionHistory || []), { ...entry, reopenedReason: reason, reopenedAt: new Date().toISOString() }] : entry.resolutionHistory,
