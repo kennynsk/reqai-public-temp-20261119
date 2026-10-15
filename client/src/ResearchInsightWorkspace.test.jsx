@@ -27,7 +27,7 @@ test('all research directions remain visible when a historical run has no result
   for (const label of ['Тренды рынка', 'Конкурентный анализ', 'Стандарты и нормативы']) {
     expect(screen.getByRole('button', { name: `${label} · 0` })).toBeVisible();
   }
-  expect(screen.getAllByRole('note').some((note) => note.textContent.includes('знаниям LLM'))).toBe(true);
+  expect(screen.queryByRole('note')).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Конкурентный анализ · 0' }));
   expect(screen.getByRole('article', { name: 'Пустой результат фильтра' })).toBeVisible();
 });
@@ -100,12 +100,18 @@ test('shows the empty state when the active filter no longer has results', () =>
   expect(screen.getByRole('article', { name: 'Пустой результат фильтра' })).toHaveTextContent('Нет результатов по выбранным фильтрам');
 });
 
-test('unverified evidence is visible before disclosure and decisions can be filtered', () => {
+test('avoids repeated evidence warnings and decisions can be filtered', () => {
   render(<ResearchInsightWorkspace insights={[{ id: 'i1', title: 'Документы', category: 'patterns', applicability: 90, enhancements: [{ key: 'i1:0', text: 'Хранить' }, { key: 'i1:1', text: 'Удалять' }] }]} categoryMeta={categoryMeta} getEnhancements={(item) => item.enhancements} decisions={{ 'i1:0': 'accepted', 'i1:1': 'rejected' }} renderEnhancement={(item) => <p key={item.key}>{item.text}</p>} />);
-  expect(screen.getByRole('note')).toHaveTextContent('ссылки на источники не предоставлены');
+  expect(screen.queryByRole('note')).not.toBeInTheDocument();
   fireEvent.change(screen.getByRole('combobox', { name: /Решение по предложению/ }), { target: { value: 'rejected' } });
   expect(screen.getByText('Удалять')).toBeVisible();
   expect(screen.queryByText('Хранить')).not.toBeInTheDocument();
   fireEvent.change(screen.getByRole('combobox', { name: /Решение по предложению/ }), { target: { value: 'pending' } });
   expect(screen.getByRole('article', { name: 'Пустой результат фильтра' })).toBeVisible();
+});
+
+test('historical model-knowledge prefix is omitted while the actual analysis remains', () => {
+  renderWorkspace([{ id: 'legacy', category: 'patterns', title: 'Механизм', summary: 'Знания модели (без внешней проверки): Округление помогает копить небольшими суммами.', enhancements: [] }]);
+  expect(screen.getByText('Округление помогает копить небольшими суммами.')).toBeVisible();
+  expect(screen.queryByText(/Знания модели/)).not.toBeInTheDocument();
 });

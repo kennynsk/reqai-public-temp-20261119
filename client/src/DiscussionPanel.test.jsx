@@ -48,7 +48,7 @@ test('opens without generation, sends a turn, and exposes proposal actions', asy
   expect(screen.getByText(/Включены записи: GAP-002, FR-005/)).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Применить к черновику' }));
   expect(onApplyProposal).toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button', { name: 'Отклонить пакет' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Отклонить предложение' }));
   expect(onRejectProposal).not.toHaveBeenCalled();
   fireEvent.click(screen.getAllByRole('button', { name: 'Закрыть обсуждение' }).at(-1));
   expect(onClose).toHaveBeenCalled();
@@ -101,7 +101,7 @@ test('distinguishes a discussion answer from a rejected proposal and exposes nei
   const data = { discussionId: 'd1', messages: [{ messageId: 'm1', role: 'assistant', status: 'completed', text: 'Нужно уточнить срок' }], attempt: { attemptId: 'a1', status: 'completed' }, proposal: null };
   mocks.get.mockResolvedValue(data);
   const result = render(<DiscussionPanel jobId="job-1" anchorId="GAP-002" baseVersionId="v1" onClose={vi.fn()} />);
-  expect(await screen.findByRole('status', { name: 'Результат ответа AI' })).toHaveTextContent('предложение для принятия не подготовлено');
+  expect(await screen.findByRole('status', { name: 'Результат ответа AI' })).toHaveTextContent('Обсуждение продолжается');
   expect(screen.queryByRole('region', { name: 'Предложение изменений' })).not.toBeInTheDocument();
   result.unmount();
   mocks.get.mockResolvedValue({ ...data, attempt: { ...data.attempt, errorCode: 'DISCUSSION_PROPOSAL_INVALID' } });
@@ -189,10 +189,10 @@ test.each([true, false])('shows the exact outcome before accepting a guided pack
   mocks.get.mockResolvedValue({ messages: [], proposal });
   const apply = vi.fn(() => true);
   const { rerender } = render(<DiscussionPanel jobId="job-1" anchorId="GAP-002" baseVersionId="v1" proposalDecisions={{}} onApplyProposal={apply} />);
-  const label = complete ? 'Применить уточнение и закрыть вопрос' : 'Применить уточнение';
+  const label = complete ? 'Применить уточнение и закрыть вопрос' : 'Зафиксировать ответ';
   const accept = await screen.findByRole('button', { name: label, exact: true });
   expect(screen.getByText('Канал уже отражён в требовании')).toBeInTheDocument();
-  if (!complete) expect(screen.getByText('Вопрос останется открытым')).toBeInTheDocument();
+  if (!complete) expect(screen.getByText('Вопрос останется открытым.')).toBeInTheDocument();
   fireEvent.click(accept);
   expect(apply).toHaveBeenCalledWith(proposal);
   rerender(<DiscussionPanel jobId="job-1" anchorId="GAP-002" baseVersionId="v1" proposalDecisions={{ 'guided-001': { decision: 'accepted' } }} onApplyProposal={apply} />);
@@ -228,10 +228,40 @@ test('a stale guided package reports rejection without presenting it as accepted
 
 test('offers saving inside the clarification panel and opens the discussion when the saved version arrives', async () => {
   const save = vi.fn();
-  const { rerender } = render(<DiscussionPanel jobId="job-1" anchorId="GAP-002" baseVersionId={null} contextReady={false} contextError="Сначала сохраните требования, чтобы открыть AI-обсуждение." onSaveContext={save} onClose={vi.fn()} />);
+  const { rerender } = render(<DiscussionPanel jobId="job-1" anchorId="GAP-002" baseVersionId={null} contextReady={false} contextError="Сначала сохраните требования, чтобы открыть AI-обсуждение." onSaveContext={save} onSave={save} hasUnsavedChanges embedded onClose={vi.fn()} />);
+  expect(screen.queryByRole('button', { name: 'Сохранить требования' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Начать уточнение' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Закрыть обсуждение' })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Сохранить и начать уточнение' }));
   expect(save).toHaveBeenCalledTimes(1);
   expect(mocks.open).not.toHaveBeenCalled();
   rerender(<DiscussionPanel jobId="job-1" anchorId="GAP-002" baseVersionId="saved-v1" contextReady onClose={vi.fn()} />);
   await waitFor(() => expect(mocks.open).toHaveBeenCalledWith('job-1', 'GAP-002', expect.objectContaining({ baseVersionId: 'saved-v1' }), expect.objectContaining({ signal: expect.any(AbortSignal) })));
+});
+
+
+test('shows the recorded answer and saves the draft without leaving discussion', async () => {
+  const onSave = vi.fn().mockResolvedValue({ versionId: 'v2' });
+  const props = { jobId: 'job-1', anchorId: 'GAP-002', baseVersionId: 'v1', onClose: vi.fn(), onSave,
+    gapStates: { 'GAP-002': { answer: 'Совмещение разрешено' } }, hasUnsavedChanges: true };
+  const view = render(<DiscussionPanel {...props} />);
+  await screen.findByRole('button', { name: 'Начать уточнение' });
+  expect(screen.getByText('Совмещение разрешено')).toBeInTheDocument();
+  expect(screen.getByText('Ваш ответ · в черновике')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Сохранить требования' }));
+  await waitFor(() => expect(onSave).toHaveBeenCalledOnce());
+  expect(mocks.send).not.toHaveBeenCalled();
+  view.rerender(<DiscussionPanel {...props} savedGapStates={props.gapStates} hasUnsavedChanges={false} />);
+  expect(screen.getByText('Ваш ответ · сохранён в версии')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Сохранить требования' })).toBeDisabled();
+});
+
+test('a failed save keeps the answer visible and offers retry in the same panel', async () => {
+  const onSave = vi.fn().mockRejectedValue(new Error('Не удалось сохранить версию'));
+  render(<DiscussionPanel jobId="job-1" anchorId="GAP-002" baseVersionId="v1" onSave={onSave} hasUnsavedChanges gapStates={{ 'GAP-002': { answer: 'Мой ответ' } }} />);
+  await screen.findByRole('button', { name: 'Начать уточнение' });
+  fireEvent.click(screen.getByRole('button', { name: 'Сохранить требования' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Не удалось сохранить версию');
+  expect(screen.getByText('Мой ответ')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Сохранить требования' })).toBeEnabled();
 });

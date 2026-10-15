@@ -30,6 +30,9 @@ test('a no-change clarification reassesses the full registry by type, with prosp
     assert.equal(Object.hasOwn(context.records[0], 'quality'), false);
     assert.match(prompt, /BR не требует SLA/);
     assert.match(prompt, /старую quality не копируй/);
+    assert.match(prompt, /Основание reason пиши кратко и понятным пользователю языком/);
+    assert.match(prompt, /вместо scope пиши «объём задачи»/);
+    assert.match(prompt, /её готовность не означает полноту набора или готовность всего проекта/);
     return { text: JSON.stringify({ schemaVersion: QUALITY_POLICY, revision: prompt.match(/"revision":"([a-f0-9]{16})"/)[1], assessments: verdicts() }) };
   } });
   assert.equal(assessment.assessments.filter((item) => item.quality === 'Готово').length, 2);
@@ -123,4 +126,71 @@ test('persistent semantic rejection cannot publish a quality assessment', async 
     return { text: JSON.stringify({ schemaVersion: QUALITY_POLICY, revision, assessments: verdicts() }) };
   } }), { code: 'QUALITY_ASSESSMENT_INVALID' });
   assert.equal(calls, 4);
+});
+
+test('missing BR success indicator gets exact citation repair with a consistent evidence contract', async () => {
+  const input = fixture();
+  input.content.groups.BR[0].successIndicator = null;
+  let evaluations = 0;
+  const result = await assessClarificationQuality({ ...input, methodology: 'BABOK', execute: async (messages) => {
+    const prompt = messages[1].content;
+    const revision = prompt.match(/"revision":"([a-f0-9]{16})"/)[1];
+    if (messages[0].content.includes('Независимая проверка оснований качества')) return { text: JSON.stringify({ schemaVersion: 'babok-quality-review.v1', revision, checks: verdicts().map(({ id }) => ({ id, pass: true, issues: [] })) }) };
+    evaluations++;
+    assert.match(prompt.split('\nВерни')[1], /"evidence":\[/);
+    assert.match(messages[2].content, /BR.successIndicator=null/);
+    const assessments = verdicts();
+    assessments[0].quality = 'Требует уточнения';
+    assessments[0].reason = 'Показатель успеха не заполнен.';
+    if (evaluations === 1) assessments[0].evidence = [{ recordId: 'BR-001', field: 'successIndicator', quote: 'Показатель не определён' }];
+    else {
+      const repair = messages.at(-1).content;
+      assert.match(repair, /evidence\[0\].*recordId="BR-001".*field="successIndicator"/);
+      assert.match(repair, /значение: null/);
+      assert.ok(repair.includes(input.content.groups.BR[0].text));
+      assert.match(repair, /Существующее поле text/);
+    }
+    return { text: JSON.stringify({ schemaVersion: QUALITY_POLICY, revision, assessments }) };
+  } });
+  assert.equal(evaluations, 2);
+  assert.equal(result.assessments[0].quality, 'Требует уточнения');
+  assert.deepEqual(result.assessments[0].evidence, verdicts()[0].evidence);
+  assert.equal(input.content.groups.BR[0].successIndicator, null);
+});
+
+test('altered citation reports bounded source text and never repairs evidence silently', () => {
+  const input = fixture();
+  input.content.groups.BR[0].text = 'Настоящая формулировка. ' + 'Длинный текст '.repeat(500);
+  const context = qualityAssessmentContext(input.content);
+  const assessments = verdicts();
+  assessments[0].evidence[0].quote = 'Выдуманная цитата '.repeat(500);
+  const original = structuredClone(assessments);
+  assert.throws(() => validateQualityAssessment({ schemaVersion: QUALITY_POLICY, revision: 'rev', assessments }, context, 'rev'), (error) => {
+    assert.equal(error.code, 'QUALITY_ASSESSMENT_INVALID');
+    assert.match(error.message, /evidence\[0\].*field="text"/);
+    assert.match(error.message, /Начало исходного поля/);
+    assert.ok(error.message.includes(input.content.groups.BR[0].text.slice(0, 600)));
+    assert.ok(error.message.length < 1600);
+    return true;
+  });
+  assert.deepEqual(assessments, original);
+});
+
+test('quality assessment includes prospective additions but keeps its basis bound to the original registry', async () => {
+  const input = fixture();
+  const record = { id: 'SR-001', text: 'Клиенту нужна возможность возобновить сервис.', role: 'Клиент', quality: 'Требует уточнения', relatedTo: ['GAP-001'] };
+  input.proposal.additions = [{ type: 'SR', record, rationale: 'Подтверждено.' }];
+  input.proposal.clarification.checks.push({ requirementId: record.id, state: 'incorporated', reason: 'Добавлена потребность.' });
+  const assessments = [...verdicts(), { id: record.id, quality: 'Готово', reason: 'Роль и потребность определены.', blockingGapIds: [], evidence: [{ recordId: record.id, field: 'text', quote: record.text }] }];
+  const result = await assessClarificationQuality({ ...input, methodology: 'BABOK', execute: async (messages) => {
+    const revision = messages[1].content.match(/"revision":"([a-f0-9]{16})"/)[1];
+    if (messages[0].content.includes('Независимая проверка оснований качества')) return { text: JSON.stringify({ schemaVersion: 'babok-quality-review.v1', revision, checks: assessments.map(({ id }) => ({ id, pass: true, issues: [] })) }) };
+    const context = JSON.parse(messages[1].content.split('(данные):\n')[1].split('\nВерни')[0]);
+    assert.equal(context.records.find((item) => item.id === record.id).text, record.text);
+    return { text: JSON.stringify({ schemaVersion: QUALITY_POLICY, revision, assessments }) };
+  } });
+  assert.equal(result.assessedRecords.some((item) => item.id === record.id), true);
+  assert.equal(result.basis.records.some((item) => item.id === record.id), false);
+  assert.equal(input.content.groups.SR, undefined);
+  assert.equal(qualityAssessmentIsCurrent(input.content, input.decisions, result), true);
 });

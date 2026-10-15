@@ -302,7 +302,7 @@ test('guided clarification runs from question to proposal, explicit acceptance a
   expect(save).not.toHaveBeenCalled();
   fireEvent.click(accept);
   expect(screen.getByRole('button', { name: 'Принято в черновик' })).toBeDisabled();
-  fireEvent.click(screen.getAllByRole('button', { name: 'Закрыть обсуждение' }).at(-1));
+  fireEvent.click(screen.getByRole('button', { name: '← К вопросу GAP-007' }));
   expect(screen.getByText('Закрыт · ответ учтён')).toBeVisible();
   expect(screen.getByRole('textbox', { name: 'Ответ на GAP-007' })).toHaveValue('0 конфликтов за месяц');
   fireEvent.click(screen.getByRole('button', { name: 'Сохранить требования' }));

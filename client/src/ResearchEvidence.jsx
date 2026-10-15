@@ -10,10 +10,10 @@ export default function ResearchEvidence({ insight }) {
   const checks = review.state.decisions.review?.citationChecks || {};
   const change = (key, patch) => review.dispatch({ type: 'decisions', value: updateReviewMetadata(review.state.decisions, { citationChecks: { ...checks, [key]: { checked: false, ...checks[key], ...patch } } }) });
   return <section aria-label="Доказательства и ограничения" className="text-xs text-slate-600 mt-3 space-y-2">
-    <p>Применимость — оценка модели, не проверенная вероятность.</p>
+    <p>Анализ по вашим материалам и знаниям AI. Внешний поиск не выполнялся. Применимость — оценка модели.</p>
     <p>Обоснование: {insight.rationale || 'Модель не предоставила отдельного обоснования оценки.'}</p>
     {proposalWarnings(`${insight.title}\n${insight.summary}`).map((warning) => <p key={warning} className="p-2 bg-amber-50 text-amber-900 rounded-lg">{warning}</p>)}
-    <p>Категории источников не являются доказательствами.</p>
+    {insight.sourceTypes?.length > 0 && <p>Категории источников не являются доказательствами.</p>}
     {!citations.length && <p>Ссылки на источники не предоставлены.</p>}
     {citations.map((citation, index) => { const key = `${insight.id}:${index}`; const url = safeCitationUrl(citation.url); const check = checks[key] || {}; return <div key={key} className="p-3 border rounded-lg space-y-2">
       {url ? <a href={url} target="_blank" rel="noopener noreferrer" className="text-indigo-700 underline break-all">{citation.title || 'Источник без названия'}</a> : <p>{citation.title || 'Источник без названия'} · Без безопасной ссылки</p>}

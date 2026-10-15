@@ -11,6 +11,8 @@ export default function VersionExport({ version, isDirty, onSave, placement = 'b
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [printLink, setPrintLink] = useState(null);
+  const [downloadLink, setDownloadLink] = useState(null);
+  useEffect(() => () => { if (downloadLink) URL.revokeObjectURL(downloadLink.url); }, [downloadLink]);
   useEffect(() => () => { if (printLink) URL.revokeObjectURL(printLink.url); }, [printLink]);
   const label = version ? `Редакция от ${formatRuDateTime(version.createdAt)}` : 'Сначала сохраните версию требований';
   async function perform(action, selected) {
@@ -27,14 +29,21 @@ export default function VersionExport({ version, isDirty, onSave, placement = 'b
           setPrintLink({ url, versionId: selected.versionId });
           setMessage('Печатное представление готово. Откройте его по ссылке ниже, затем используйте «Печать» браузера (Ctrl/Cmd+P) и «Сохранить как PDF».');
         } else {
-          const link = document.createElement('a'); link.href = url; link.download = `requirements.${action === 'markdown' ? 'md' : 'docx'}`; link.click(); setMessage('Файл сохранённой версии подготовлен к скачиванию.');
+          const filename = `requirements.${action === 'markdown' ? 'md' : 'docx'}`;
+          setDownloadLink({ url, filename, versionId: selected.versionId });
+          const link = document.createElement('a');
+          link.href = url; link.download = filename; link.hidden = true;
+          document.body.appendChild(link);
+          try { link.click(); } finally { link.remove(); }
+          setMessage('Файл сохранённой версии подготовлен к скачиванию. Если загрузка не началась, нажмите ссылку ниже.');
         }
-        if (action !== 'print') window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+        // Keep the prepared download available for a direct user click in Safari.
       }
     } catch { setMessage('Не удалось получить документ. Версия не изменена; повторите экспорт.'); }
     finally { setBusy(false); }
   }
   function request(action) {
+    if (menu.current) menu.current.open = false;
     if (!version) { setMessage('Для экспорта сначала сохраните требования. Исходный AI-результат не подменяет сохранённую версию.'); return; }
     if (isDirty()) { menu.current.querySelector('summary').focus(); setPending({ action, version }); } else perform(action, version);
   }
@@ -48,6 +57,7 @@ export default function VersionExport({ version, isDirty, onSave, placement = 'b
     {message && <div className={`absolute ${placement === 'top' ? 'bottom-full mb-2' : 'top-full mt-2'} right-0 z-40 w-72 max-w-[calc(100vw-2rem)] rounded-xl border border-slate-200 bg-white p-3 shadow-lg`}>
       <p role="status" className="text-xs text-slate-700">{printLink && printLink.versionId !== version?.versionId ? 'Сохранённая версия изменилась. Для печати подготовьте документ заново.' : message}</p>
       {printLink?.versionId === version?.versionId && printLink && <a href={printLink.url} target="_blank" rel="noopener noreferrer" className="mt-2 inline-block text-sm text-indigo-700 underline">Открыть печатное представление</a>}
+      {downloadLink?.versionId === version?.versionId && downloadLink && <a href={downloadLink.url} download={downloadLink.filename} className="mt-2 inline-block text-sm text-indigo-700 underline">Скачать подготовленный файл</a>}
       <button onClick={() => { setMessage(''); menu.current?.querySelector('summary').focus(); }} className="mt-2 block rounded-lg px-2 py-1 text-xs text-slate-600 hover:bg-slate-100">Скрыть уведомление</button>
     </div>}
     {pending && createPortal(<ReviewDialog label="Экспорт при несохранённых изменениях" onClose={() => setPending(null)}><h2 className="text-lg font-bold">Есть несохранённые изменения</h2><p className="my-3 text-sm">Сохраните их перед экспортом или явно выгрузите предыдущую редакцию от {formatRuDateTime(pending.version.createdAt)}.</p><div className="flex gap-2 flex-wrap"><button className="rounded-lg bg-indigo-600 p-3 text-white hover:bg-indigo-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600" onClick={async () => { const { action } = pending; setPending(null); try { const saved = await onSave(); if (saved?.versionId) perform(action, saved); } catch { setMessage('Сохранение не подтверждено. Экспорт не выполнен; проверьте черновик и повторите сохранение.'); } }}>Сохранить и экспортировать</button><button className="p-3 border rounded-lg" onClick={() => { const { action, version } = pending; setPending(null); perform(action, version); }}>Экспортировать предыдущую версию</button><button className="p-3 border rounded-lg" onClick={() => setPending(null)}>Отмена</button></div></ReviewDialog>, document.body)}

@@ -1,4 +1,4 @@
-import { researchProposalAction } from './research-proposal-action.js';
+import { researchProposalAction, researchProposalFields } from './research-proposal-action.js';
 import { useContext, useState } from 'react';
 import { DraftContext } from './review-context.js';
 import ReviewDialog from './ReviewDialog.jsx';
@@ -21,11 +21,11 @@ export default function ProposalReview({ enhancement, decision, children }) {
       return;
     }
     const action = researchProposalAction(enhancement, review);
-    setPlan({ operation: action.operation || 'add', targetType: action.targetType, targetId: action.operation === 'replace' ? action.targetId || '' : '', text: current?.text || prior?.after?.text || enhancement.text, fields: current || prior?.after || action.target || enhancement });
+    setPlan({ operation: action.operation || 'add', targetType: action.targetType, targetId: action.operation === 'replace' ? action.targetId || '' : '', text: current?.text || prior?.after?.text || enhancement.text, fields: current || prior?.after || researchProposalFields(enhancement, action.target) });
   };
   const target = plan?.operation === 'replace' ? groups[plan.targetType]?.find((record) => record.id === plan.targetId) : current;
   const after = plan ? proposalRecord(review.content, plan.targetType, target?.id || 'новый ID', plan.text, plan.fields, enhancement.key, target) : null;
-  const diff = plan ? ['text', ...(STRUCTURED_FIELDS[plan.targetType] || []).map(([field]) => field)].map((field) => ({ field, label: field === 'text' ? 'Формулировка' : STRUCTURED_FIELDS[plan.targetType].find(([key]) => key === field)[1], before: target?.[field], after: after[field] })) : [];
+  const diff = plan ? ['text', ...(STRUCTURED_FIELDS[plan.targetType] || []).map(([field]) => field)].map((field) => ({ field, label: field === 'text' ? 'Формулировка' : STRUCTURED_FIELDS[plan.targetType].find(([key]) => key === field)[1], before: target?.[field], after: after[field] })).filter((entry) => plan.operation !== 'replace' || (entry.before ?? '') !== (entry.after ?? '')) : [];
   const invalid = plan && (!plan.text.trim() || plan.operation === 'replace' && !target || (STRUCTURED_FIELDS[plan.targetType] || []).some(([field, , required]) => (required || plan.targetType === 'NFR' && ['scope', 'verificationMethod'].includes(field)) && !plan.fields[field]?.trim()));
   return <>
     {children(open, prior?.after || enhancement, decision)}

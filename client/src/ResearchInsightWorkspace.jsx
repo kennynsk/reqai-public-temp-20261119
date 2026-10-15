@@ -2,7 +2,6 @@ import { useMemo, useRef } from 'react';
 import { useReviewUiState } from './review-state.js';
 import { ExternalLink, HelpCircle, Link2 } from 'lucide-react';
 import { RequirementPreviewLink, RequirementPreviewProvider } from './RequirementPreview.jsx';
-import { normalizeCitations } from '../../server/src/domain/research-evidence.js';
 import { buildInsightPresentation, ensureSelectedInsightId, filterInsightPresentations } from './research-review.js';
 
 function applicabilityLabel(value) {
@@ -80,7 +79,6 @@ export default function ResearchInsightWorkspace({
 
   return <RequirementPreviewProvider index={requirementIndex}>
     <section aria-label="Результаты AI-исследования: список и детали" className="space-y-4">
-      {insights.some((item) => item.evidenceMode === 'MODEL_HYPOTHESIS') && <p role="note" className="text-sm text-slate-600">Аналитические гипотезы по вашим материалам и знаниям LLM. Внешний поиск и проверка публикаций не выполнялись. Применимость — оценка модели; предложения требуют вашего согласования.</p>}
       <div role="group" aria-label="Фильтры результатов AI-исследования" className="hidden flex-wrap gap-2 lg:flex">
         {filterOptions.map((option) => <FilterButton key={option.key} option={option} active={activeFilter === option.key} onClick={() => selectFilter(option.key)} />)}
       </div>
@@ -139,7 +137,6 @@ export default function ResearchInsightWorkspace({
             </span>
           </div>
           <h2 className="reqai-research-copy mt-5 text-xl font-bold leading-tight text-slate-950 sm:text-2xl">{selected.title}</h2>
-          <p role="note" className="mt-3 text-sm font-medium text-amber-900">{normalizeCitations(selected.citations).length ? 'Гипотеза AI · ссылки требуют проверки. Наличие ссылки не подтверждает утверждение.' : 'Гипотеза AI · ссылки на источники не предоставлены.'} Оценка применимости — мнение модели, не вероятность достоверности.</p>
           {selected.summary && <p className="reqai-research-copy mt-3 text-base leading-7 text-slate-600">{selected.summary}</p>}
           {selected.detail && <div className="reqai-research-copy mt-5 whitespace-pre-wrap text-sm leading-6 text-slate-700"><p className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-600">Подробности</p><p className="mt-2">{selected.detail}</p></div>}
 

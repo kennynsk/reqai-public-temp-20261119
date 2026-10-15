@@ -92,6 +92,7 @@ function RequirementPreviewSurface({ preview, index, surfaceRef, onClose }) {
           {record.source && <div className="rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600">
             <p className="font-semibold text-slate-700">Источник</p>
             <p className="mt-1">{record.source.label}{record.source.locator ? ` · ${record.source.locator}` : ''}</p>
+            {record.source.quote && <details className="mt-2"><summary className="cursor-pointer font-semibold text-indigo-700">Цитата из источника</summary><blockquote className="mt-2 whitespace-pre-wrap break-words leading-relaxed">{record.source.quote}</blockquote></details>}
           </div>}
           {record.relationships.length > 0 && <div className="space-y-1.5">
             <p className="flex items-center gap-1.5 text-xs font-semibold text-slate-500"><Link2 aria-hidden="true" className="h-3.5 w-3.5" />Связи</p>

@@ -1,5 +1,5 @@
 import { acceptGapClarification, reconcileDiscussionReceipts } from './gap-clarification.js';
-import { useContext, useEffect, useReducer, useState } from 'react';
+import { useContext, useEffect, useReducer, useRef, useState } from 'react';
 import { DraftContext, SessionContext } from './review-context.js';
 import { STRUCTURED_FIELDS, validateReviewContent } from './review-fields.js';
 import { invalidateReviewEvidence, updateReviewMetadata, reviewEvidenceChanges } from './review-metadata.js';
@@ -11,15 +11,40 @@ const recordIds = (content) => Object.values(content.groups || content).filter(A
 
 // The version editor remounts after saving, while its session survives.
 // Keep navigation separately from the requirement draft and its base version.
-export function useReviewUiState(key, initialValue) {
+export function useReviewUiState(key, initialValue, { persist = false } = {}) {
   const session = useContext(SessionContext);
-  const [value, setValue] = useState(() => session?.ui?.has(key) ? session.ui.get(key) : typeof initialValue === 'function' ? initialValue() : initialValue);
-  const update = (next) => setValue((current) => {
-    const resolved = typeof next === 'function' ? next(current) : next;
+  // Independent of the version/recovery draft: saving requirements must not
+  // discard an unfinished message. The session key includes actor and task.
+  const storageKey = persist && session?.key ? `${session.key}:ui:${key}` : null;
+  const current = useRef(null);
+  const [, rerender] = useState(0);
+  if (!current.current || current.current.ui !== session?.ui || current.current.key !== key || current.current.storageKey !== storageKey) {
+    let value = typeof initialValue === 'function' ? initialValue() : initialValue;
+    let storageError = false;
+    if (session?.ui?.has(key)) value = session.ui.get(key);
+    else if (storageKey) {
+      try {
+        const stored = JSON.parse(sessionStorage.getItem(storageKey) || 'null');
+        if (stored?.schemaVersion === 1 && Object.hasOwn(stored, 'value')) value = stored.value;
+      } catch { storageError = true; }
+    }
+    current.current = { ui: session?.ui, key, storageKey, value, storageError };
+  }
+  const scope = current.current;
+  const update = (next) => {
+    // An async completion from a previous actor/task cannot clear or copy the
+    // currently displayed task's message into the old storage key.
+    if (current.current !== scope) return;
+    const resolved = typeof next === 'function' ? next(current.current.value) : next;
+    current.current.value = resolved;
     if (session?.ui) session.ui.set(key, resolved);
-    return resolved;
-  });
-  return [value, update];
+    if (storageKey) {
+      try { sessionStorage.setItem(storageKey, JSON.stringify({ schemaVersion: 1, value: resolved })); scope.storageError = false; }
+      catch { scope.storageError = true; }
+    }
+    rerender((revision) => revision + 1);
+  };
+  return [current.current.value, update, current.current.storageError];
 }
 
 function mergeDecisionChanges(base, local, remote, changes, path = '') {
@@ -50,7 +75,7 @@ export function readReviewDraft(key, storage = sessionStorage, now = Date.now())
   try {
     const saved = JSON.parse(storage.getItem(key) || 'null');
     if (!saved) return null;
-    if (saved.schemaVersion !== 1 || !saved.state?.content || !saved.state?.drafts || !Number.isFinite(saved.updatedAt) || saved.updatedAt > now || now - saved.updatedAt >= DRAFT_TTL) {
+    if (saved.schemaVersion !== 1 || !saved.state?.content || !saved.state?.drafts || !Number.isFinite(saved.updatedAt) || saved.updatedAt > now) {
       storage.removeItem(key); return null;
     }
     return saved;
@@ -104,7 +129,7 @@ export function assembleReview(state, createRecord, normalize = (value) => value
     // Merely opening an empty composer does not add a blank requirement.
     if (draft.isNew && draft.text === '') continue;
     if (!draft.text.trim()) return { error: { id: draft.id, type: draft.group, field: 'text', message: 'Введите формулировку требования.' } };
-    if (draft.isNew) groups[draft.group].push(createRecord(draft.group, draft.text.trim(), groups[draft.group]));
+    if (draft.isNew) groups[draft.group].push(createRecord(draft.group, draft.text.trim(), groups[draft.group], draft));
     else groups[draft.group] = groups[draft.group].map((item) => item.id === draft.id ? { ...item, ...draft.fields, text: draft.text.trim() } : item);
   }
   const error = validateReviewContent(content);
@@ -187,22 +212,52 @@ export function rebaseReview(state, base, remote, baseDecisions = {}, remoteDeci
 export function useReviewState(initialContent, initialDecisions = {}, { readOnly = false, editor = 'requirements' } = {}) {
   const inheritedSession = useContext(SessionContext);
   const session = readOnly ? null : inheritedSession;
-  const [recovery, setRecovery] = useState(() => session?.restoredState ? null : readReviewDraft(session?.key));
+  const [initialDraft] = useState(() => session?.restoredState ? null : readReviewDraft(session?.key));
+  const autoRestore = initialDraft && initialDraft.baseVersionId === session?.baseVersionId
+    && (!initialDraft.state.editor || initialDraft.state.editor === editor);
+  const [recovery, setRecovery] = useState(() => autoRestore ? null : initialDraft);
   const [storageError, setStorageError] = useState(false);
-  const [state, dispatch] = useReducer(reviewReducer, null, () => session?.restoredState || ({ content: copy(initialContent), decisions: copy(initialDecisions), drafts: {}, editor, reservedIds: [...new Set([...recordIds(initialContent), ...(session?.reservedIds || [])])] }));
+  const [state, reduce] = useReducer(reviewReducer, null, () => session?.restoredState || (autoRestore ? initialDraft.state : null) || ({ content: copy(initialContent), decisions: copy(initialDecisions), drafts: {}, editor, reservedIds: [...new Set([...recordIds(initialContent), ...(session?.reservedIds || [])])] }));
   const dirtyFields = Object.values(state.drafts).some((draft) => draft.text !== draft.initialText || Object.keys(draft.fields || {}).length > 0);
   const dirty = dirtyFields || JSON.stringify(state.content) !== JSON.stringify(initialContent) || JSON.stringify(state.decisions) !== JSON.stringify(initialDecisions);
-  useEffect(() => {
+  const stateRef = useRef(state);
+  stateRef.current = state;
+  const ownsDraft = useRef(Boolean(autoRestore || session?.restoredState));
+  function persist(next) {
     if (!session?.key || recovery) return;
     try {
-      if (dirty) sessionStorage.setItem(session.key, JSON.stringify({ schemaVersion: 1, updatedAt: Date.now(), baseVersionId: session.baseVersionId, baseContent: initialContent, baseDecisions: initialDecisions, state }));
-      else sessionStorage.removeItem(session.key);
+      const stored = readReviewDraft(session.key);
+      const foreign = stored && stored.state.editor && stored.state.editor !== editor;
+      if (foreign) { setRecovery(stored); return; }
+      const changed = Object.values(next.drafts).some((item) => item.text !== item.initialText || Object.keys(item.fields || {}).length > 0)
+        || JSON.stringify(next.content) !== JSON.stringify(initialContent) || JSON.stringify(next.decisions) !== JSON.stringify(initialDecisions);
+      if (changed) {
+        sessionStorage.setItem(session.key, JSON.stringify({ schemaVersion: 1, updatedAt: Date.now(), baseVersionId: session.baseVersionId, baseContent: initialContent, baseDecisions: initialDecisions, state: next }));
+        ownsDraft.current = true;
+      } else {
+        // A clean sibling editor must not delete another editor's answers.
+        // After a confirmed save, the snapshot may belong to an older base.
+        const saved = stored && JSON.stringify(stored.state.content) === JSON.stringify(initialContent)
+          && JSON.stringify(stored.state.decisions) === JSON.stringify(initialDecisions)
+          && !Object.values(stored.state.drafts).some((item) => item.text !== item.initialText || Object.keys(item.fields || {}).length > 0);
+        if (ownsDraft.current && stored?.baseVersionId === session.baseVersionId || saved) { sessionStorage.removeItem(session.key); ownsDraft.current = false; }
+      }
     } catch {
-      // Synchronization can fail under browser storage policy/quota; surface that failure.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setStorageError(true);
     }
-  }, [state, dirty, session?.key, session?.baseVersionId, recovery, initialContent, initialDecisions]);
+  }
+  function dispatch(action) {
+    const next = reviewReducer(stateRef.current, action);
+    stateRef.current = next;
+    // Persist in the input handler, before navigation or reload can unmount us.
+    persist(next);
+    reduce(action);
+  }
+  useEffect(() => {
+    persist(state);
+    // These are the persistence inputs; persist is also called synchronously on edits.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state, session?.key, session?.baseVersionId, recovery, initialContent, initialDecisions]);
   const discard = () => {
     try { if (session?.key) sessionStorage.removeItem(session.key); } catch { /* keep in-memory recovery usable */ }
     setRecovery(null);

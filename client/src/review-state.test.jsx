@@ -2,8 +2,69 @@
 import { act, renderHook } from '@testing-library/react';
 import { expect, test, vi } from 'vitest';
 import { SessionContext } from './review-context.js';
-import { assembleReview, reviewReducer, rebaseReview, readReviewDraft, clearReviewDrafts, DRAFT_TTL, useReviewState } from './review-state.js';
+import { assembleReview, reviewReducer, rebaseReview, readReviewDraft, clearReviewDrafts, DRAFT_TTL, useReviewState, useReviewUiState } from './review-state.js';
 import { roomBookingRegistry } from './room-booking.fixture.js';
+
+test('unfinished discussion messages persist synchronously across reload and requirement saves', () => {
+  const key = 'reqai.reviewDraft:message-actor:message-task';
+  const wrapper = ({ children }) => <SessionContext.Provider value={{ key, ui: new Map() }}>{children}</SessionContext.Provider>;
+  sessionStorage.setItem(key, 'requirement recovery');
+  const first = renderHook(() => useReviewUiState('discussionMessages', {}, { persist: true }), { wrapper });
+  act(() => {
+    first.result.current[1]({ 'GAP-1': 'Незаконченный ответ', 'GAP-2': 'Другой ответ' });
+    expect(JSON.parse(sessionStorage.getItem(`${key}:ui:discussionMessages`)).value['GAP-1']).toBe('Незаконченный ответ');
+  });
+  expect(sessionStorage.getItem(key)).toBe('requirement recovery');
+  first.unmount();
+  // A successful requirement save clears only its recovery key; a reload also
+  // replaces the in-memory session Map.
+  sessionStorage.removeItem(key);
+  const second = renderHook(() => useReviewUiState('discussionMessages', {}, { persist: true }), { wrapper });
+  expect(second.result.current[0]['GAP-1']).toBe('Незаконченный ответ');
+  act(() => second.result.current[1]((messages) => ({ ...messages, 'GAP-1': '' })));
+  second.unmount();
+  const third = renderHook(() => useReviewUiState('discussionMessages', {}, { persist: true }), { wrapper });
+  expect(third.result.current[0]).toEqual({ 'GAP-1': '', 'GAP-2': 'Другой ответ' });
+  third.unmount(); sessionStorage.removeItem(`${key}:ui:discussionMessages`);
+});
+
+test('persisted UI drafts isolate actors and tasks, including a mounted scope change', () => {
+  let session = { key: 'reqai.reviewDraft:actor-A:task-A', ui: new Map() };
+  const wrapper = ({ children }) => <SessionContext.Provider value={session}>{children}</SessionContext.Provider>;
+  const hook = renderHook(() => useReviewUiState('discussionMessages', {}, { persist: true }), { wrapper });
+  act(() => hook.result.current[1]({ 'GAP-1': 'Private answer' }));
+  const staleSetter = hook.result.current[1];
+  for (const key of ['reqai.reviewDraft:actor-A:task-B', 'reqai.reviewDraft:actor-B:task-A']) {
+    session = { key, ui: new Map() }; hook.rerender();
+    expect(hook.result.current[0]).toEqual({});
+    act(() => staleSetter(() => ({ 'GAP-1': 'Late completion from another task' })));
+    expect(hook.result.current[0]).toEqual({});
+  }
+  session = { key: 'reqai.reviewDraft:actor-A:task-A', ui: new Map() }; hook.rerender();
+  expect(hook.result.current[0]).toEqual({ 'GAP-1': 'Private answer' });
+  hook.unmount();
+  clearReviewDrafts();
+  expect(sessionStorage.getItem(`${session.key}:ui:discussionMessages`)).toBeNull();
+});
+
+test('message storage failure reports an error while preserving the in-memory draft', () => {
+  const session = { key: 'reqai.reviewDraft:storage-failure:task', ui: new Map() };
+  const wrapper = ({ children }) => <SessionContext.Provider value={session}>{children}</SessionContext.Provider>;
+  const hook = renderHook(() => useReviewUiState('discussionMessages', {}, { persist: true }), { wrapper });
+  const write = vi.spyOn(Object.getPrototypeOf(sessionStorage), 'setItem').mockImplementation(() => { throw new Error('Quota exceeded'); });
+  try {
+    act(() => hook.result.current[1]({ 'GAP-1': 'Не потерять этот ответ' }));
+    expect(hook.result.current[0]).toEqual({ 'GAP-1': 'Не потерять этот ответ' });
+    expect(session.ui.get('discussionMessages')).toEqual(hook.result.current[0]);
+    expect(hook.result.current[2]).toBe(true);
+    write.mockRestore();
+    act(() => hook.result.current[1]((messages) => ({ ...messages, 'GAP-2': 'Сохранено' })));
+    expect(hook.result.current[2]).toBe(false);
+  } finally {
+    write.mockRestore(); hook.unmount();
+    sessionStorage.removeItem(`${session.key}:ui:discussionMessages`);
+  }
+});
 
 test('assessment-only drafts and content updates preserve closed questions and answer checks', () => {
   const content = roomBookingRegistry();
@@ -125,14 +186,14 @@ test('rebase does not replay unchanged editors and merges unrelated server decis
   expect(result.state.decisions).toEqual({ acceptedEnhancementKeys: ['a'], review: { schemaVersion: 1 } });
 });
 
-test('draft recovery enforces TTL and scoped cleanup', () => {
+test('draft recovery keeps older answers until explicit scoped cleanup', () => {
   sessionStorage.clear();
   const saved = { schemaVersion: 1, updatedAt: 500, state: { content: roomBookingRegistry(), drafts: {} } };
   sessionStorage.setItem('reqai.reviewDraft:a', JSON.stringify(saved));
   sessionStorage.setItem('unrelated', 'keep');
   expect(readReviewDraft('reqai.reviewDraft:a', sessionStorage, 500 + DRAFT_TTL - 1)).toEqual(saved);
-  expect(readReviewDraft('reqai.reviewDraft:a', sessionStorage, 500 + DRAFT_TTL)).toBeNull();
-  expect(sessionStorage.getItem('reqai.reviewDraft:a')).toBeNull();
+  expect(readReviewDraft('reqai.reviewDraft:a', sessionStorage, 500 + DRAFT_TTL)).toEqual(saved);
+  expect(sessionStorage.getItem('reqai.reviewDraft:a')).not.toBeNull();
   sessionStorage.setItem('reqai.reviewDraft:b', '{broken');
   expect(readReviewDraft('reqai.reviewDraft:b')).toBeNull();
   clearReviewDrafts();
@@ -203,4 +264,49 @@ test('cancelling a new composer leaves saved review decisions unchanged', () => 
   const editing = reviewReducer(state, { type: 'field', key: 'FR:new', value: { group: 'FR', id: 'new', isNew: true, initialText: '', text: 'Тестовая функция' } });
   const cancelled = reviewReducer(editing, { type: 'clear', key: 'FR:new' });
   expect(cancelled).toEqual(state);
+});
+
+
+test('switching the research owner from read-only to editable cannot erase a final-editor answer', () => {
+  const key = 'reqai.reviewDraft:owner-regression';
+  const content = { FR: [] };
+  const saved = { schemaVersion: 1, updatedAt: Date.now(), baseVersionId: 'v1', state: { content, drafts: {}, decisions: { review: { gaps: { 'GAP-003': { answer: 'допустимо. не требует.' } } } }, editor: 'requirements' } };
+  const wrapper = ({ children }) => <SessionContext.Provider value={{ key, baseVersionId: 'v1' }}>{children}</SessionContext.Provider>;
+  const view = renderHook(({ readOnly }) => useReviewState(content, {}, { editor: 'insights', readOnly }), { wrapper, initialProps: { readOnly: true } });
+  sessionStorage.setItem(key, JSON.stringify(saved));
+  view.rerender({ readOnly: false });
+  expect(readReviewDraft(key)).toEqual(saved);
+  expect(view.result.current.recovery).toEqual(saved);
+  act(() => view.result.current.dispatch({ type: 'decisions', value: { acceptedEnhancementKeys: ['one'] } }));
+  expect(readReviewDraft(key)).toEqual(saved);
+  view.unmount(); sessionStorage.removeItem(key);
+});
+
+test('answers are persisted before unmount and automatically restored on the same version', () => {
+  const key = 'reqai.reviewDraft:answer-reload';
+  const content = { FR: [] };
+  const wrapper = ({ children }) => <SessionContext.Provider value={{ key, baseVersionId: 'v1' }}>{children}</SessionContext.Provider>;
+  const first = renderHook(() => useReviewState(content), { wrapper });
+  act(() => {
+    first.result.current.dispatch({ type: 'decisions', value: { review: { gaps: { 'GAP-003': { answer: 'Мой ответ', state: 'answered' } } } } });
+    expect(readReviewDraft(key).state.decisions.review.gaps['GAP-003'].answer).toBe('Мой ответ');
+  });
+  first.unmount();
+  const second = renderHook(() => useReviewState(content), { wrapper });
+  expect(second.result.current.state.decisions.review.gaps['GAP-003'].answer).toBe('Мой ответ');
+  expect(second.result.current.recovery).toBeNull();
+  expect(second.result.current.dirty).toBe(true);
+  second.unmount(); sessionStorage.removeItem(key);
+});
+
+test('a different base preserves the answer for comparison instead of silently overwriting it', () => {
+  const key = 'reqai.reviewDraft:answer-conflict';
+  const content = { FR: [] };
+  const saved = { schemaVersion: 1, updatedAt: Date.now(), baseVersionId: 'v1', state: { content, drafts: {}, decisions: { review: { gaps: { 'GAP-003': { answer: 'Мой ответ' } } } }, editor: 'requirements' } };
+  sessionStorage.setItem(key, JSON.stringify(saved));
+  const wrapper = ({ children }) => <SessionContext.Provider value={{ key, baseVersionId: 'v2' }}>{children}</SessionContext.Provider>;
+  const view = renderHook(() => useReviewState(content), { wrapper });
+  expect(view.result.current.recovery).toEqual(saved);
+  expect(readReviewDraft(key)).toEqual(saved);
+  view.unmount(); sessionStorage.removeItem(key);
 });

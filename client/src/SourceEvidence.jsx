@@ -1,5 +1,6 @@
+import { presentSource } from './source-presentation.js';
+
 const STATUS_LABELS = { AVAILABLE: 'Доступен', NOT_PROVIDED: 'Не предоставлен', UNAVAILABLE: 'Недоступен' };
-const technical = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f-]{23,}|\b(?:chunk|unit|sha256|artifactId)\b/i;
 
 export function CoverageWarning({ registry }) {
   const { materials = {}, scope = {} } = registry;
@@ -9,10 +10,7 @@ export function CoverageWarning({ registry }) {
 
 export function SourceEvidence({ source, materials = {} }) {
   if (!source) return <span className="text-xs text-slate-500">Источник не указан</span>;
-  const entries = [materials.primary, ...(materials.baseline?.artifacts || []), ...(materials.references || [])].filter(Boolean);
-  const material = entries.find((item) => item.artifactId === source.artifactId);
-  const name = material?.name && !technical.test(material.name) ? material.name : material?.role === 'baseline' ? 'Предыдущая версия' : material?.role === 'reference' ? 'Справочный материал' : 'Исходная бизнес-задача';
-  const locator = source.locator === 'manual-review' ? 'Ручная формулировка' : source.locator === 'manual-research-review' ? 'AI-предложение после ручной проверки' : source.locator?.startsWith('research:') ? 'AI-предложение' : source.locator && !technical.test(source.locator) ? source.locator.replace(/^section:/i, 'Раздел ').replace(/^paragraph:/i, 'Абзац ').replace(/^page:/i, 'Страница ') : null;
+  const { label: name, locator } = presentSource(source, materials);
   return <div className="text-xs text-slate-600 break-words"><span className="font-semibold">{name}</span>{locator && <span> · {locator}</span>}{source.quote ? <blockquote className="mt-2 border-l-2 border-indigo-200 pl-3 whitespace-pre-wrap">{source.quote}</blockquote> : <p className="mt-1 text-slate-500">Дословная цитата не приведена.</p>}</div>;
 }
 

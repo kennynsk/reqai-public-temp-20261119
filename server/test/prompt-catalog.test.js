@@ -140,3 +140,16 @@ test('structured GAP references are compatible with the quality enum during gene
   }
   assert.equal(bundle.performanceBudgetMs, 240000);
 });
+
+
+test('research 2.15 preserves frozen releases and guides decision-focused copy through repair', () => {
+  const catalog = createPromptCatalog({ rootDir: defaultPromptBundleRoot() });
+  for (const step of ['insights', 'review', 'semantic-repair']) {
+    const text = catalog.get('requirements-insights', '2.15.0').templates[step].text;
+    assert.match(text, /показатель успеха/);
+    assert.match(text, /не повторяй summary/);
+    assert.match(text, /хотя бы одно реально отличающееся/);
+    assert.match(text, /неподтверждённое утверждение/);
+  }
+  assert.equal(catalog.get('requirements-insights', '2.13.0').version, '2.13.0');
+});

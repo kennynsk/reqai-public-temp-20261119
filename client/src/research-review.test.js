@@ -96,7 +96,7 @@ describe('research review presentation helpers', () => {
     latestRegistry.groups.FR[0].text = 'Текст из более новой редакции.';
     const index = buildBabokRequirementIndex(baseRegistry);
 
-    expect(index.get('FR-001')).toMatchObject({ type: 'FR', typeLabel: 'Функциональное требование', text: 'Система запрещает пересекающиеся бронирования.', source: { label: 'Бриф переговорных', locator: 'paragraph:1' }, relationships: ['BR-001'] });
+    expect(index.get('FR-001')).toMatchObject({ type: 'FR', typeLabel: 'Функциональное требование', text: 'Система запрещает пересекающиеся бронирования.', source: { label: 'Бриф переговорных', locator: 'Абзац 1' }, relationships: ['BR-001'] });
     expect(index.get('FR-001').text).not.toBe(latestRegistry.groups.FR[0].text);
     expect(index.get('BR-001').source.label).toBe('Бриф переговорных');
   });

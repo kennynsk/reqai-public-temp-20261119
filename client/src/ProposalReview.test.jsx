@@ -207,3 +207,13 @@ test('missing explicit replacement target blocks acceptance rather than adding',
   expect(screen.getByLabelText('Действие предложения')).toHaveValue('replace');
   expect(screen.getByRole('button', { name: 'Принять точное изменение' })).toBeDisabled();
 });
+
+test('prefills and applies the proposed metric when the goal text stays unchanged', () => {
+  const original = { id: 'BR-001', text: 'Увеличить регулярность накоплений', successIndicator: null, relatedIds: [] };
+  const enhancement = { key: 'metric', operation: 'replace', targetType: 'BR', targetId: 'BR-001', text: original.text, successIndicator: 'Доля клиентов с пополнением каждый месяц' };
+  const { dispatch } = renderProposal({ state: makeState({ groups: { BR: [original] } }), enhancement });
+  fireEvent.click(screen.getByRole('button', { name: 'Открыть принятие' }));
+  expect(screen.getByRole('textbox', { name: 'Критерий успеха' })).toHaveValue(enhancement.successIndicator);
+  fireEvent.click(screen.getByRole('button', { name: 'Принять точное изменение' }));
+  expect(dispatch.mock.calls[0][0].value.content.groups.BR[0]).toMatchObject({ text: original.text, successIndicator: enhancement.successIndicator });
+});

@@ -170,7 +170,7 @@ test('GAP answer follows an embedded editor and closes with the applied requirem
   fireEvent.change(editor, { target: { value: 'Сократить конфликты бронирования с уведомлением по электронной почте.' } });
   fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Применить к черновику' }));
   expect(screen.getByLabelText('Ответ на GAP-001')).toHaveValue('Уведомлять по электронной почте.');
-  fireEvent.click(screen.getByRole('button', { name: 'Ответ учтён' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Подтвердить учёт ответа' }));
   fireEvent.click(screen.getByRole('button', { name: 'Закрыть как решённый' }));
   mocks.saveRequirementsVersion.mockImplementation(async (payload) => ({ ...payload, versionId: 'gap-applied', createdAt: new Date().toISOString() }));
   fireEvent.click(screen.getByRole('button', { name: 'Сохранить требования' }));
@@ -239,7 +239,7 @@ test('guards new-task navigation while a card draft is pending', async () => {
   expect(screen.getByRole('textbox', { name: 'Текст требования BR-001' })).toHaveValue('Сохранить мой черновик.');
 });
 
-test('offers same-tab recovery after reload and clears it after a confirmed save', async () => {
+test('automatically restores same-version edits after reload and clears them after a confirmed save', async () => {
   mocks.getCapabilities.mockResolvedValue({ tenantId: 'tenant', userId: 'user', capabilities: { models: ['glm-5.3-flash'] } });
   mocks.saveRequirementsVersion.mockImplementation(async (payload) => ({ ...payload, versionId: 'rooms-v2', createdAt: '2026-08-28T11:00:00Z' }));
   await openSavedRoomReview();
@@ -247,8 +247,7 @@ test('offers same-tab recovery after reload and clears it after a confirmed save
   await waitFor(() => expect(sessionStorage.getItem(key)).toContain('Сохранить мой черновик.'));
   cleanup();
   render(<AsyncJobWorkspace />);
-  fireEvent.click(await screen.findByRole('button', { name: 'Восстановить черновик' }));
-  expect(screen.getByRole('textbox', { name: 'Текст требования BR-001' })).toHaveValue('Сохранить мой черновик.');
+  expect(await screen.findByRole('textbox', { name: 'Текст требования BR-001' })).toHaveValue('Сохранить мой черновик.');
   fireEvent.click(screen.getByRole('button', { name: 'Сохранить изменения' }));
   await screen.findByText('Сохранить мой черновик.');
   expect(sessionStorage.getItem(key)).toBeNull();

@@ -1,3 +1,4 @@
+import { validateDiscussionAddition } from './discussion-additions.js';
 import { ApiError } from '../errors/api-error.js';
 import { canonicalSha256 } from '../prompts/prompt-utils.js';
 import { normalizeProposalMetadata } from './proposal-metadata.js';
@@ -60,7 +61,58 @@ function checkIsCurrent(check, basis) {
     && check.requirementHash === basis.requirementHash;
 }
 
-function normalizeDiscussionProposals({ supplied, inherited = {}, content, stamp, baseVersionId = null, review = {} }) {
+// The generation basis is only needed before acceptance. Keep its digest in the
+// receipt; assessedRecords and citations remain available for history and stale UI checks.
+function compactQualityReceipt(assessment) {
+  if (!object(assessment) || assessment.schemaVersion !== QUALITY_POLICY || !object(assessment.basis)) return copy(assessment);
+  const { basis, ...receipt } = assessment;
+  return { ...copy(receipt), basisHash: canonicalSha256(basis) };
+}
+
+function expandReviewReceipts(review) {
+  const result = copy(review);
+  const pool = result.qualityRecords || {};
+  if (!object(pool) || Object.keys(pool).length > 10000) fail('Invalid quality record pool');
+  for (const [hash, record] of Object.entries(pool)) {
+    if (!object(record) || canonicalSha256(record) !== hash) fail('Invalid quality record digest');
+  }
+  for (const receipt of Object.values(result.discussionProposals || {})) {
+    if (!Array.isArray(receipt.qualityAssessment?.assessedRecords)) continue;
+    receipt.qualityAssessment.assessedRecords = receipt.qualityAssessment.assessedRecords.map((record) => {
+      if (!record?.recordRef) return record;
+      if (Object.keys(record).length !== 1 || !pool[record.recordRef]) fail('Missing quality record reference');
+      return copy(pool[record.recordRef]);
+    });
+  }
+  delete result.qualityRecords;
+  return result;
+}
+
+function compactReviewReceipts(review) {
+  const result = expandReviewReceipts(review);
+  const counts = new Map();
+  for (const receipt of Object.values(result.discussionProposals || {})) {
+    if (receipt.decision === 'accepted' && receipt.qualityAssessment) receipt.qualityAssessment = compactQualityReceipt(receipt.qualityAssessment);
+    for (const record of receipt.qualityAssessment?.assessedRecords || []) {
+      const hash = canonicalSha256(record);
+      counts.set(hash, (counts.get(hash) || 0) + 1);
+    }
+  }
+  const pool = {};
+  for (const receipt of Object.values(result.discussionProposals || {})) {
+    if (!Array.isArray(receipt.qualityAssessment?.assessedRecords)) continue;
+    receipt.qualityAssessment.assessedRecords = receipt.qualityAssessment.assessedRecords.map((record) => {
+      const hash = canonicalSha256(record);
+      if (counts.get(hash) < 2 || JSON.stringify(record).length < 180) return record;
+      pool[hash] = record;
+      return { recordRef: hash };
+    });
+  }
+  if (Object.keys(pool).length) result.qualityRecords = pool;
+  return result;
+}
+
+function normalizeDiscussionProposals({ supplied, inherited = {}, content, stamp, baseVersionId = null, review = {}, baseContent }) {
   if (!object(supplied) || Object.keys(supplied).length > 500) fail('Invalid discussion proposal receipt map');
   const records = new Map(recordsFromContent(content).map((record) => [record.id, record]));
   const result = copy(inherited || {});
@@ -86,6 +138,26 @@ function normalizeDiscussionProposals({ supplied, inherited = {}, content, stamp
       if (value.decision === 'accepted' && !value.superseded && fields.some((field) => String(current[field] ?? '') !== String(change.after[field] ?? ''))) fail('Accepted discussion proposal does not match the saved requirement');
       return { targetId: change.targetId, targetType: type, before, after: Object.fromEntries(fields.map((field) => [field, String(change.after[field]).trim()])), beforeHash: canonicalSha256(before), ...(change.rationale ? { rationale: cleanText(change.rationale, 5000, 'Discussion proposal rationale') } : {}) };
     });
+    if (value.additions !== undefined && (!Array.isArray(value.additions) || value.additions.length > 20)) fail('Invalid discussion additions');
+    const additionIds = new Set();
+    const baseIds = new Set(recordsFromContent(baseContent).map((record) => record.id));
+    const additions = (value.additions || []).map((addition) => {
+      const record = addition?.record;
+      const type = addition?.type;
+      if (!DISCUSSION_REQUIREMENT_FIELDS[type] || !object(record) || typeof record.id !== 'string' || !new RegExp(`^${type}-[0-9]{3,}$`).test(record.id) || additionIds.has(record.id) || changes.some((change) => change.targetId === record.id)) fail('Invalid new discussion requirement');
+      const gapId = value.clarification?.gapId || (type === 'BR' ? record.relatedIds : record.relatedTo)?.[0];
+      try { validateDiscussionAddition(record, type, gapId); } catch (error) { fail(error.message); }
+      if (!content.analysis?.GAP?.some((gap) => gap.id === gapId) || record.source.artifactId !== content.materials?.primary?.artifactId) fail('New requirement source is outside this registry');
+      additionIds.add(record.id);
+      if (!cleanText(record.text, 20000, 'New requirement text')) fail('New requirement needs text');
+      if (!prior && baseIds.has(record.id)) fail('New requirement ID already exists in the base version');
+      const related = [...(record.relatedTo || []), ...(record.relatedIds || [])];
+      if (value.clarification && !related.includes(value.clarification.gapId)) fail('New requirement must link to its clarification');
+      const current = records.get(record.id);
+      const withoutQuality = (item) => Object.fromEntries(Object.entries(item || {}).filter(([key]) => key !== 'quality'));
+      if (value.decision === 'accepted' && !value.superseded && (!current || !same(withoutQuality(current), withoutQuality(record)))) fail('Accepted new requirement does not match the saved record');
+      return { type, record: copy(record), rationale: cleanText(addition.rationale, 5000, 'New requirement rationale') };
+    });
     const baseHash = canonicalSha256(changes.map(({ targetId, beforeHash }) => ({ targetId, beforeHash })));
     if (value.baseHash !== undefined && value.baseHash !== baseHash) fail('Discussion proposal hash does not match its changes');
     let gapBases;
@@ -95,7 +167,9 @@ function normalizeDiscussionProposals({ supplied, inherited = {}, content, stamp
         if (!/^GAP-[A-Za-z0-9_-]{1,96}$/.test(gapId) || !object(basis)) fail('Invalid discussion proposal GAP basis');
         const question = cleanText(basis.question, 20000, 'Discussion proposal GAP question');
         const answer = cleanText(basis.answer, 20000, 'Discussion proposal GAP answer');
-        return [gapId, { question, answer }];
+        if (basis.state !== undefined && !['open', 'answered', 'closed'].includes(basis.state)) fail('Invalid discussion proposal GAP basis state');
+        if (basis.stale !== undefined && typeof basis.stale !== 'boolean') fail('Invalid discussion proposal GAP basis stale flag');
+        return [gapId, { question, answer, ...(basis.state !== undefined ? { state: basis.state } : {}), ...(basis.stale !== undefined ? { stale: basis.stale } : {}) }];
       }));
     }
     let clarification;
@@ -113,11 +187,11 @@ function normalizeDiscussionProposals({ supplied, inherited = {}, content, stamp
         if (!object(check) || !linkage.records.has(check.requirementId) || !linkage.ids.includes(check.requirementId) || seen.has(check.requirementId) || !['incorporated', 'no-change'].includes(check.state)) fail('Invalid guided requirement disposition');
         seen.add(check.requirementId);
         const reason = cleanText(check.reason, 5000, 'Clarification check reason');
-        if (!reason || (check.state === 'incorporated') !== changes.some((change) => change.targetId === check.requirementId)) fail('Guided checks must match the changes');
+        if (!reason || (check.state === 'incorporated') !== (additionIds.has(check.requirementId) || changes.some((change) => change.targetId === check.requirementId))) fail('Guided checks must match the changes');
         if (!value.superseded && !same({ state: check.state, reason }, { state: review.gapRequirements?.[item.gapId]?.[check.requirementId]?.state, reason: review.gapRequirements?.[item.gapId]?.[check.requirementId]?.reason })) fail('Guided checks do not match the saved confirmations');
         return { requirementId: check.requirementId, state: check.state, reason };
       });
-      if (changes.some((change) => !seen.has(change.targetId))) fail('A guided change needs a requirement disposition');
+      if (changes.some((change) => !seen.has(change.targetId)) || [...additionIds].some((id) => !seen.has(id))) fail('A guided change needs a requirement disposition');
       clarification = { gapId: item.gapId, answer, canResolve: item.canResolve, remainingQuestions, checks };
     }
     let qualityAssessment;
@@ -125,7 +199,7 @@ function normalizeDiscussionProposals({ supplied, inherited = {}, content, stamp
       const assessment = value.qualityAssessment;
       // Historical evidence is immutable. Superseding an old receipt must not
       // require regenerating or upgrading its already saved certificate.
-      if (prior?.qualityAssessment && same(prior.qualityAssessment, assessment)) qualityAssessment = copy(assessment);
+      if (prior?.qualityAssessment && same(compactQualityReceipt(prior.qualityAssessment), compactQualityReceipt(assessment))) qualityAssessment = copy(assessment);
       else {
       if (!object(assessment) || assessment.schemaVersion !== QUALITY_POLICY || !object(assessment.basis) || !Array.isArray(assessment.assessedRecords) || !Array.isArray(assessment.assessments) || !assessment.assessments.length || assessment.assessments.length > 10000) fail('Invalid AI quality assessment receipt');
       const seen = new Set();
@@ -143,7 +217,7 @@ function normalizeDiscussionProposals({ supplied, inherited = {}, content, stamp
     }
     const proposalBaseVersionId = value.baseVersionId == null ? undefined : cleanText(value.baseVersionId, 128, 'Discussion proposal base version');
     if (proposalBaseVersionId && baseVersionId && proposalBaseVersionId !== baseVersionId) fail('Discussion proposal base version does not match the saved version');
-    result[proposalId] = { proposalId, decision: value.decision, changes, baseHash, ...(proposalBaseVersionId ? { baseVersionId: proposalBaseVersionId } : {}), ...(gapBases ? { gapBases } : {}), ...(value.discarded === true ? { discarded: true } : {}), ...(value.superseded === true ? { superseded: true } : {}), ...(clarification ? { clarification } : {}), ...(qualityAssessment ? { qualityAssessment } : {}), ...stamp };
+    result[proposalId] = { proposalId, decision: value.decision, changes, ...(additions.length ? { additions } : {}), baseHash, ...(proposalBaseVersionId ? { baseVersionId: proposalBaseVersionId } : {}), ...(gapBases ? { gapBases } : {}), ...(value.discarded === true ? { discarded: true } : {}), ...(value.superseded === true ? { superseded: true } : {}), ...(clarification ? { clarification } : {}), ...(qualityAssessment ? { qualityAssessment } : {}), ...stamp };
   }
   return result;
 }
@@ -158,9 +232,9 @@ export function reviewIssues(content, gaps = {}) {
 
 export function normalizeReviewMetadata({ supplied, inherited, content, allowedGaps = [], contextId, actorId, now, baseVersionId, finalizing = false, baseContent, researchResult, researchJobId }) {
   if (supplied === undefined && !inherited) return undefined;
-  if (supplied !== undefined && (!object(supplied) || supplied.schemaVersion !== 1 || Buffer.byteLength(JSON.stringify(supplied), 'utf8') > 262144)) fail('review must use schemaVersion 1 and fit in 256 KiB');
-  const previous = object(inherited) ? inherited : {};
-  const input = supplied || {};
+  if (supplied !== undefined && (!object(supplied) || supplied.schemaVersion !== 1 || Buffer.byteLength(JSON.stringify(compactReviewReceipts(supplied)), 'utf8') > 262144)) fail('review must use schemaVersion 1 and fit in 256 KiB');
+  const previous = object(inherited) ? expandReviewReceipts(inherited) : {};
+  const input = supplied ? expandReviewReceipts(supplied) : {};
   const allowedFields = new Set(['schemaVersion', 'gaps', 'gapRequirements', 'omissions', 'completeness', 'acknowledgment', 'proposals', 'citationChecks', 'discussionProposals']);
   if (Object.keys(input).some((key) => !allowedFields.has(key) && (!(key in previous) || !same(input[key], previous[key])))) fail('Unknown review field');
   const stamp = { actorUserId: actorId, recordedAt: now.toISOString() };
@@ -170,7 +244,7 @@ export function normalizeReviewMetadata({ supplied, inherited, content, allowedG
   const gapById = new Map(allowedGaps.map((gap) => [gap.id, gap]));
   const next = { ...copy(previous), schemaVersion: 1, gaps: copy(previous.gaps || {}) };
   if (input.proposals !== undefined) next.proposals = normalizeProposalMetadata({ supplied: input.proposals, inherited: previous.proposals, content, baseContent, researchResult, researchJobId, baseVersionId, stamp });
-  if (input.discussionProposals !== undefined) next.discussionProposals = normalizeDiscussionProposals({ supplied: input.discussionProposals, inherited: previous.discussionProposals, content, stamp, baseVersionId, review: input });
+  if (input.discussionProposals !== undefined) next.discussionProposals = normalizeDiscussionProposals({ supplied: input.discussionProposals, inherited: previous.discussionProposals, content, stamp, baseVersionId, review: input, baseContent });
   if (input.citationChecks !== undefined) {
     if (!object(input.citationChecks) || Object.keys(input.citationChecks).length > 600) fail('Invalid citation checks');
     const sources = new Map((researchResult?.insights || []).flatMap((insight) => normalizeCitations(insight.citations).map((citation, index) => [`${insight.id}:${index}`, citation])));
@@ -343,5 +417,7 @@ export function normalizeReviewMetadata({ supplied, inherited, content, allowedG
   if (supplied && finalizing && issues.length && (!next.acknowledgment?.confirmed || next.acknowledgment.stale)) {
     throw new ApiError({ status: 409, code: 'REVIEW_ACKNOWLEDGMENT_REQUIRED', message: 'Acknowledge the current open review items before finalizing', details: { issueIds: issues.map((issue) => issue.id) } });
   }
-  return next;
+  const compacted = compactReviewReceipts(next);
+  if (Buffer.byteLength(JSON.stringify(compacted), 'utf8') > 262144) fail('review must use schemaVersion 1 and fit in 256 KiB');
+  return compacted;
 }

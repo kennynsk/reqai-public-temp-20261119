@@ -34,7 +34,7 @@ export function automaticQualityReason(record, decisions = {}, content = null) {
     const assessment = receipt.qualityAssessment;
     if (assessment?.schemaVersion !== QUALITY_POLICY || assessment?.semanticReview?.pass !== true) continue;
     const item = assessment?.assessments.find((item) => item.id === record.id && item.quality === record.quality);
-    const assessed = assessment?.assessedRecords.find((item) => item.id === record.id);
+    const assessed = assessment?.assessedRecords.map((item) => item.recordRef ? decisions.review?.qualityRecords?.[item.recordRef] : item).find((item) => item?.id === record.id);
     if (!item || !assessed) continue;
     if (currentRecords && (item.evidence.some((citation) => !currentRecords.get(citation.recordId)?.[citation.field]?.includes(citation.quote)) || (item.reason.match(/\b(?:BR|SR|FR|NFR|TR|CON|GAP)-[A-Za-z0-9-]+\b/g) || []).some((id) => !currentIds.has(id)))) continue;
     const basis = { ...assessed }; delete basis.type; delete basis.quality;

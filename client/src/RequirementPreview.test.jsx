@@ -31,7 +31,7 @@ test('opens one non-navigating desktop preview with snapshot content and switche
 
   expect(dialog).toHaveTextContent('Система запрещает пересекающиеся бронирования.');
   expect(dialog).toHaveTextContent('Качество: Готово');
-  expect(dialog).toHaveTextContent('Бриф переговорных · paragraph:1');
+  expect(dialog).toHaveTextContent('Бриф переговорных · Абзац 1');
   expect(dialog).toHaveTextContent('Связи');
   expect(trigger).toHaveAttribute('aria-haspopup', 'dialog');
   expect(trigger).toHaveAttribute('aria-expanded', 'true');

@@ -130,7 +130,7 @@ export function createJobService({ config, jobRepository, operationalRepository,
             materials,
             reasoning,
             ...(decompositionMode && config.llm.decompositionThinking ? { thinking: config.llm.decompositionThinking } : {}),
-            ...((decompositionMode || ['2.5.0', '2.6.0', '2.7.0', '2.8.0', '2.9.0', '2.10.0', '2.11.0', '2.12.0', '2.13.0'].includes(promptProfile?.version)) && babokSkillProfile ? { babokSkillProfile } : {}),
+            ...((decompositionMode || ['2.5.0', '2.6.0', '2.7.0', '2.8.0', '2.9.0', '2.10.0', '2.11.0', '2.12.0', '2.13.0', '2.14.0', '2.15.0'].includes(promptProfile?.version)) && babokSkillProfile ? { babokSkillProfile } : {}),
             ...(Array.isArray(body.babokIdentifierSet) ? { babokIdentifierSet: [...new Set(body.babokIdentifierSet)] } : {}),
           },
         },
@@ -159,7 +159,7 @@ export function createJobService({ config, jobRepository, operationalRepository,
               baselineArtifactIds: materials.baseline.artifacts.map((item) => item.artifactId),
               referenceArtifactIds: materials.references.map((item) => item.artifactId),
             },
-            ...(babokSkillProfile && (featureMode === 'DECOMPOSITION' || ['2.5.0', '2.6.0', '2.7.0', '2.8.0', '2.9.0', '2.10.0', '2.11.0', '2.12.0', '2.13.0'].includes(promptProfile?.version)) ? { babokSkillProfile } : {}),
+            ...(babokSkillProfile && (featureMode === 'DECOMPOSITION' || ['2.5.0', '2.6.0', '2.7.0', '2.8.0', '2.9.0', '2.10.0', '2.11.0', '2.12.0', '2.13.0', '2.14.0', '2.15.0'].includes(promptProfile?.version)) ? { babokSkillProfile } : {}),
             ...(promptProfile ? { promptProfile: { id: promptProfile.id, version: promptProfile.version, manifestHash: promptProfile.manifestHash, outputSchemaVersion: promptProfile.outputSchemaVersion } } : {}),
           },
         },
@@ -169,7 +169,7 @@ export function createJobService({ config, jobRepository, operationalRepository,
           logEvent('warn', 'job.trace.append.failed', { jobId: result.job.id, category: entry.category, errorType: error?.name || 'Error' });
         });
         await append({ category: 'LIFECYCLE', name: 'Task created', status: 'COMPLETED', startedAt: now, completedAt: now, durationMs: 0, metadata: { type: body.type, mode: body.options?.mode || null, requestId, ...(promptProfile ? { promptProfile: { id: promptProfile.id, version: promptProfile.version, manifestHash: promptProfile.manifestHash, outputSchemaVersion: promptProfile.outputSchemaVersion } } : {}) } });
-        await append({ category: 'INSTRUCTIONS', name: 'Adapted Skill instructions', status: 'INFO', startedAt: now, completedAt: now, durationMs: 0, metadata: { skillUsage: babokSkillProfile && (featureMode === 'DECOMPOSITION' || ['2.5.0', '2.6.0', '2.7.0', '2.8.0', '2.9.0', '2.10.0', '2.11.0', '2.12.0', '2.13.0'].includes(promptProfile?.version)) ? 'BUNDLE_SNAPSHOTTED' : 'NOT_APPLICABLE', ...(babokSkillProfile && (featureMode === 'DECOMPOSITION' || ['2.5.0', '2.6.0', '2.7.0', '2.8.0', '2.9.0', '2.10.0', '2.11.0', '2.12.0', '2.13.0'].includes(promptProfile?.version)) ? { skillProfile: { id: babokSkillProfile.id, version: babokSkillProfile.version, manifestHash: babokSkillProfile.manifestHash } } : {}) } });
+        await append({ category: 'INSTRUCTIONS', name: 'Adapted Skill instructions', status: 'INFO', startedAt: now, completedAt: now, durationMs: 0, metadata: { skillUsage: babokSkillProfile && (featureMode === 'DECOMPOSITION' || ['2.5.0', '2.6.0', '2.7.0', '2.8.0', '2.9.0', '2.10.0', '2.11.0', '2.12.0', '2.13.0', '2.14.0', '2.15.0'].includes(promptProfile?.version)) ? 'BUNDLE_SNAPSHOTTED' : 'NOT_APPLICABLE', ...(babokSkillProfile && (featureMode === 'DECOMPOSITION' || ['2.5.0', '2.6.0', '2.7.0', '2.8.0', '2.9.0', '2.10.0', '2.11.0', '2.12.0', '2.13.0', '2.14.0', '2.15.0'].includes(promptProfile?.version)) ? { skillProfile: { id: babokSkillProfile.id, version: babokSkillProfile.version, manifestHash: babokSkillProfile.manifestHash } } : {}) } });
       }
       return result;
     },

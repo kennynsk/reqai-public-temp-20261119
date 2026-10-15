@@ -36,12 +36,13 @@ export function reconcileDiscussionReceipts(decisions, content) {
   const records = new Map(Object.values(content.groups || content).filter(Array.isArray).flat().map((record) => [record.id, record]));
   const receipts = Object.fromEntries(Object.entries(decisions.review.discussionProposals).map(([id, receipt]) => {
     if (receipt.recordedAt || receipt.decision !== 'accepted' || receipt.superseded) return [id, receipt];
+    const changedAddition = (receipt.additions || []).some(({ record }) => { const current = records.get(record.id); return !current || Object.entries(record).some(([field, value]) => field !== 'quality' && !same(current[field], value)); });
     const changed = receipt.changes.some((change) => Object.entries(change.after).some(([field, value]) => String(records.get(change.targetId)?.[field] ?? '') !== value));
     const item = receipt.clarification;
     const gap = item && decisions.review.gaps?.[item.gapId];
     const changedAnswer = item && (gap?.answer !== item.answer || item.canResolve && (gap?.state !== 'closed' || gap.closureKind !== 'resolved')
       || item.checks.some((check) => { const current = decisions.review.gapRequirements?.[item.gapId]?.[check.requirementId]; return current?.state !== check.state || current?.reason !== check.reason || current?.stale; }));
-    return [id, changed || changedAnswer ? { ...receipt, superseded: true } : receipt];
+    return [id, changed || changedAddition || changedAnswer ? { ...receipt, superseded: true } : receipt];
   }));
   return { ...decisions, review: { ...decisions.review, discussionProposals: receipts } };
 }

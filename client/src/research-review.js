@@ -1,3 +1,5 @@
+import { presentSource } from './source-presentation.js';
+
 const LEGACY_TYPE_LABELS = {
   business: 'Бизнес-требование',
   functional: 'Функциональное требование',
@@ -45,28 +47,8 @@ export function normalizeApplicability(value) {
   return Math.min(100, Math.max(0, number));
 }
 
-function materialName(materials, artifactId) {
-  if (!materials || !artifactId) return '';
-  const candidates = [
-    materials.primary,
-    materials.baseline,
-    ...(Array.isArray(materials.references) ? materials.references : []),
-    ...(Array.isArray(materials.artifacts) ? materials.artifacts : []),
-  ].filter(Boolean);
-  const match = candidates.find((item) => item.artifactId === artifactId || item.id === artifactId);
-  return textValue(match?.name || match?.title || match?.filename);
-}
-
 export function humanReadableSource(source, materials) {
-  if (!source || typeof source !== 'object') return null;
-  const name = textValue(source.name || source.title) || materialName(materials, source.artifactId);
-  const locator = textValue(source.locator);
-  if (!name && !locator && !source.quote) return null;
-  return {
-    label: name || 'Источник требований',
-    locator,
-    quote: textValue(source.quote),
-  };
+  return presentSource(source, materials);
 }
 
 function normalizeRequirementRecord(type, item, index, materials, typeLabels) {
@@ -160,7 +142,7 @@ export function buildInsightPresentation(insight, { categoryMeta = {}, enhanceme
     categoryLabel: meta.label,
     categoryMeta: meta,
     title: textValue(raw.title) || 'Без названия',
-    summary: textValue(raw.summary),
+    summary: textValue(raw.summary).replace(/^Знания модели\s*\(без внешней проверки\)\s*:\s*/iu, ''),
     detail: textValue(raw.detail),
     applicability: normalizeApplicability(raw.applicability),
     sourceTypes: idList(raw.source_types),

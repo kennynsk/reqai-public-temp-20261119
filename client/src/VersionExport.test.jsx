@@ -72,8 +72,12 @@ test('copies successfully and prepares a downloadable Markdown file', async () =
   Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
   const create = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:markdown');
   const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+  const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function () {
+    expect(this.isConnected).toBe(true);
+    expect(this.download).toMatch(/^requirements\.(md|docx)$/);
+  });
   vi.useFakeTimers();
-  render(<VersionExport version={version} isDirty={() => false} />);
+  const result = render(<VersionExport version={version} isDirty={() => false} />);
   fireEvent.click(screen.getByRole('button', { name: 'Экспорт ▾' }));
   screen.getByRole('button', { name: 'Экспорт ▾' }).parentElement.open = true;
   fireEvent.click(screen.getByRole('button', { name: 'Копировать Markdown' }));
@@ -81,17 +85,27 @@ test('copies successfully and prepares a downloadable Markdown file', async () =
   expect(writeText).toHaveBeenCalledWith('# Требования');
   expect(screen.getByRole('status')).toHaveTextContent('скопирован');
 
+  screen.getByRole('button', { name: 'Экспорт ▾' }).parentElement.open = true;
   fireEvent.click(screen.getByRole('button', { name: 'Скачать Markdown' }));
+  expect(screen.getByRole('button', { name: 'Экспорт ▾' }).parentElement.open).toBe(false);
   await act(async () => { await Promise.resolve(); await Promise.resolve(); });
   expect(create).toHaveBeenCalledWith(blob);
   expect(screen.getByRole('status')).toHaveTextContent('подготовлен к скачиванию');
+  const prepared = screen.getByRole('link', { name: 'Скачать подготовленный файл' });
+  expect(prepared).toHaveAttribute('href', 'blob:markdown');
+  expect(prepared).toHaveAttribute('download', 'requirements.md');
+  vi.advanceTimersByTime(60_000);
+  expect(revoke).not.toHaveBeenCalled();
+  create.mockReturnValue('blob:docx');
   screen.getByRole('button', { name: 'Экспорт ▾' }).parentElement.open = true;
   fireEvent.click(screen.getByRole('button', { name: 'Скачать DOCX' }));
   await act(async () => { await Promise.resolve(); await Promise.resolve(); });
   expect(mocks.exportRequirementsVersion).toHaveBeenLastCalledWith('saved-v1', 'docx');
-  vi.advanceTimersByTime(60_000);
   expect(revoke).toHaveBeenCalledWith('blob:markdown');
-  create.mockRestore(); revoke.mockRestore();
+  expect(screen.getByRole('link', { name: 'Скачать подготовленный файл' })).toHaveAttribute('download', 'requirements.docx');
+  result.unmount();
+  expect(revoke).toHaveBeenCalledWith('blob:docx');
+  click.mockRestore(); create.mockRestore(); revoke.mockRestore();
 });
 
 test('does not export when the save-first callback returns no saved version', async () => {
