@@ -12,39 +12,6 @@ import { modelCapabilities } from '../domain/model-capabilities.js';
 import { requirementsDocument, documentMarkdown, documentHtml } from '../services/requirements-document.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const DECOMPOSITION_MODES = new Set(['DECOMPOSITION']);
-const REASONING_LEVELS = new Set(['disabled', 'low', 'high', 'max']);
-
-function validateJobOptions(type, options = {}) {
-  const allowed = new Set(['mode', 'model', 'temperature', 'reasoning', 'promptVersion']);
-  const unsupported = Object.keys(options).filter((key) => !allowed.has(key));
-  if (unsupported.length) throw badRequest('VALIDATION_ERROR', 'options contains unsupported fields', { fields: unsupported });
-  const mode = options.mode || (type === 'DECOMPOSITION' ? 'DECOMPOSITION' : null);
-  if (type !== 'DECOMPOSITION' || mode !== 'DECOMPOSITION') {
-    throw badRequest('UNSUPPORTED_JOB_MODE', 'Generic job creation supports DECOMPOSITION only; use requirements-version research for AI insights', { mode });
-  }
-  if (!DECOMPOSITION_MODES.has(mode)) throw badRequest('VALIDATION_ERROR', `Unsupported mode ${mode} for ${type}`, { field: 'options.mode' });
-  if (options.model != null && (typeof options.model !== 'string' || !options.model.trim())) throw badRequest('VALIDATION_ERROR', 'options.model must be a non-empty string', { field: 'options.model' });
-  if (options.temperature != null && (!Number.isFinite(options.temperature) || options.temperature < 0 || options.temperature > 2)) throw badRequest('VALIDATION_ERROR', 'options.temperature must be from 0 to 2', { field: 'options.temperature' });
-  if (options.reasoning != null && !REASONING_LEVELS.has(options.reasoning)) throw badRequest('VALIDATION_ERROR', 'options.reasoning must be disabled, low, high or max', { field: 'options.reasoning' });
-  if (options.promptVersion != null && !/^[1-9]\d*\.\d+\.\d+$/.test(options.promptVersion)) throw badRequest('VALIDATION_ERROR', 'options.promptVersion must use semantic versioning', { field: 'options.promptVersion' });
-  return { ...options, mode };
-}
-
-function validateCreateJob(body) {
-  if (!body || typeof body !== 'object' || Array.isArray(body)) throw badRequest('VALIDATION_ERROR', 'JSON object body is required');
-  const allowed = new Set(['type', 'inputArtifactId', 'parentJobId', 'options']);
-  const unsupported = Object.keys(body).filter((key) => !allowed.has(key));
-  if (unsupported.length) throw badRequest('VALIDATION_ERROR', 'Request contains unsupported fields', { fields: unsupported });
-  if (!['DECOMPOSITION', 'RESEARCH'].includes(body.type)) throw badRequest('VALIDATION_ERROR', 'type must be DECOMPOSITION or RESEARCH', { field: 'type' });
-  if (!UUID_PATTERN.test(body.inputArtifactId || '')) throw badRequest('VALIDATION_ERROR', 'inputArtifactId must be a UUID', { field: 'inputArtifactId' });
-  if (body.parentJobId != null && !UUID_PATTERN.test(body.parentJobId)) throw badRequest('VALIDATION_ERROR', 'parentJobId must be a UUID', { field: 'parentJobId' });
-  if (body.options != null && (typeof body.options !== 'object' || Array.isArray(body.options))) {
-    throw badRequest('VALIDATION_ERROR', 'options must be an object', { field: 'options' });
-  }
-  return { ...body, options: validateJobOptions(body.type, body.options || {}) };
-}
-
 function asyncRoute(handler) {
   return (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
 }
@@ -152,16 +119,6 @@ export function createApiV1Router({ config, services = {} }) {
       }));
     }));
   }
-
-  router.post('/api/v1/jobs', requireAnyRole('user', 'tenant-admin', 'system-admin'), asyncRoute(async (req, res) => {
-    const result = await services.jobService.create({
-      auth: req.auth,
-      idempotencyKey: req.get('Idempotency-Key'),
-      body: validateCreateJob(req.body),
-      requestId: req.context?.requestId,
-    });
-    acceptedResponse(res, result);
-  }));
 
   router.get('/api/v1/jobs', requireAnyRole('user', 'tenant-admin', 'operator', 'auditor', 'system-admin'), asyncRoute(async (req, res) => {
     res.json(await services.jobQueryService.list({

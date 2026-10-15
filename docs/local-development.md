@@ -65,6 +65,12 @@ docker compose -f compose.yaml -f compose.dev.yaml ps -a
 
 ## Проверка
 
+Frontend использует Tailwind CSS 4 через `@tailwindcss/vite`; отдельные
+PostCSS/Tailwind JS-конфигурации не нужны. Источники классов ограничены
+`client/src` и `client/index.html` в `client/src/index.css`. Палитра и базовые
+стили сохранены при миграции с v3. Поддерживаемый минимум браузеров:
+Safari 16.4+, Chrome 111+, Firefox 128+.
+
 ```bash
 REQAI_E2E_MODEL=glm-5.3-flash node scripts/qualification/local-e2e.mjs FULL
 REQAI_E2E_MODEL=glm-5.3-flash node scripts/qualification/local-mcp-e2e.mjs
@@ -85,11 +91,10 @@ SSE-клиента к тому же `jobId`, сравнивает сохранё
 Crash-recovery проверка аварийно завершает decomposition worker во время активной задачи и убеждается, что новый экземпляр завершает тот же `jobId`:
 
 ```bash
-LLM_MOCK_DELAY_MS=10000 docker compose up -d --force-recreate decomposition-worker
-node scripts/qualification/local-restart-recovery.mjs
+QUAL_ALLOW_DISRUPTION=YES-I-UNDERSTAND node scripts/qualification/local-restart-recovery.mjs
 ```
 
-После проверки скрипт поднимает worker с обычным значением задержки из Compose.
+Скрипт проверяет labels существующего `reqai-decomposition-worker-1` (можно задать `REQAI_RECOVERY_WORKER_CONTAINER`), аварийно останавливает и запускает тот же контейнер. Новые контейнеры, images и конфигурации он не создаёт. Запускайте только в согласованном локальном окне, когда synthetic задача успевает перейти в RUNNING; прогон использует текущую модель и может быть платным.
 
 ## Остановка
 

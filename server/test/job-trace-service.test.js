@@ -73,3 +73,11 @@ test('stack detail is system-admin only and expired content stays explicit', asy
   const expired = setup({ entry: { id: entryId, detail_visibility: 'SYSTEM_ADMIN', detail_kind: 'ERROR_STACK', detail_artifact_id: 'artifact-1', expires_at: '2020-01-01T00:00:00Z' } });
   assert.equal((await expired.service.detail({ auth: { tenantId: 'tenant-a', userId: 'admin-a', roles: ['system-admin'] }, jobId, entryId })).state, 'EXPIRED');
 });
+
+test('historical model reasons are redacted on ordinary trace reads', async () => {
+  const marker = 'PRIVATE_REQUIREMENT_тест';
+  const { service } = setup({ snapshot: { job: { id: jobId, type: 'DECOMPOSITION', status: 'FAILED', configuration_snapshot: {}, created_at: '2026-01-01T00:00:00Z' }, steps: [], attempts: [], events: [], versions: [], entries: [{ id: entryId, sequence: 1, category: 'ERROR', name: 'validation', status: 'FAILED', metadata: { issues: [{ key: '$', code: 'SOURCE_LOSS', reason: marker }], message: marker }, created_at: '2026-01-01T00:00:00Z' }] } });
+  const result = await service.trace({ auth: { tenantId: 't', userId: 'u', roles: ['user'] }, jobId, limit: 2 });
+  assert.equal(JSON.stringify(result).includes(marker), false);
+  assert.equal(result.timeline[0].metadata.issues[0].code, 'SOURCE_LOSS');
+});

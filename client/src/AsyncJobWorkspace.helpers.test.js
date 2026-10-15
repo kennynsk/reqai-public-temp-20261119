@@ -15,7 +15,6 @@ import {
   failureMessage,
   formatDuration,
   formatElapsed,
-  inferTargetTypeFromInsightCategory,
   isBabokRegistry,
   jobIdFromPath,
   makeLegacyRecord,
@@ -178,9 +177,6 @@ describe('AsyncJobWorkspace compatibility helpers', () => {
   });
 
   test('normalizes insight enhancement targets and historical fallbacks', () => {
-    expect(inferTargetTypeFromInsightCategory('risks')).toBe('nonfunctional');
-    expect(inferTargetTypeFromInsightCategory('standards')).toBe('business');
-    expect(inferTargetTypeFromInsightCategory('trends')).toBe('functional');
     expect(displayEnhancementsForInsight({ category: 'patterns', enhancements: [{ targetType: 'business', text: '  Цель  ' }, { targetType: 'invalid', text: 'Функция' }, { text: '   ' }] })).toEqual([
       { targetType: 'business', text: 'Цель', sourceIndex: 0, targetIds: [] },
       { targetType: 'functional', text: 'Функция', sourceIndex: 1, targetIds: [] },

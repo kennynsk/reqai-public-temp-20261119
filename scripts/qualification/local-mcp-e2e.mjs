@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
@@ -21,21 +21,22 @@ await client.connect(transport);
 
 async function call(name, args) {
   const response = await client.callTool({ name, arguments: args });
-  if (response.isError || response.structuredContent?.error) throw new Error(`${name} failed: ${JSON.stringify(response.structuredContent || response.content)}`);
+  if (response.isError || response.structuredContent?.error) throw new Error(`${name} failed: ${response.structuredContent?.error?.code || 'MCP_TOOL_ERROR'}`);
   return response.structuredContent;
 }
 
 try {
   const listed = await client.listTools();
   const tools = listed.tools.map((tool) => tool.name);
-  const expectedTools = ['decompose_requirements', 'research_requirements', 'get_task_status', 'get_task_result', 'upload_artifact', 'cancel_task', 'get_task_result_content'];
+  const expectedTools = ['decompose_requirements', 'research_requirements', 'get_task_status', 'get_task_result'];
   if (JSON.stringify(tools) !== JSON.stringify(expectedTools)) throw new Error(`Unexpected MCP tools: ${JSON.stringify(tools)}`);
+  if (listed.tools.some((tool) => tool._meta?.['reqai/toolSchemaVersion'] !== '3.0.0')) throw new Error('MCP client requires tool schema 3.0.0');
 
-  const material = await call('upload_artifact', { content: businessContext, contentType: 'text/plain' });
+  const material = await json(await fetch(`${baseUrl}/api/v1/artifacts`, { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'text/plain', 'X-Content-SHA256': createHash('sha256').update(businessContext).digest('hex') }, body: businessContext }));
   const decomposition = await call('decompose_requirements', {
     idempotencyKey: `mcp-decompose-${randomUUID()}`,
     inputArtifactId: material.artifactId,
-    promptVersion: '2.3.0',
+    promptVersion: '2.17.0',
     model,
     temperature: 0.2,
   });
@@ -43,18 +44,18 @@ try {
   const decompositionStatus = await waitForJob(baseUrl, decomposition.jobId, readMcpStatus);
   const decompositionMetadata = await call('get_task_result', { jobId: decomposition.jobId });
   verifyModel(decompositionMetadata, model);
-  const raw = await call('get_task_result_content', { jobId: decomposition.jobId, format: 'raw' });
+  const raw = { content: await (await fetch(`${baseUrl}/api/v1/jobs/${decomposition.jobId}/result/content?format=raw`, { headers: { authorization: `Bearer ${token}` } })).text() };
   const decompositionResult = { metadata: decompositionMetadata, content: JSON.parse(raw.content) };
-  const report = await call('get_task_result_content', { jobId: decomposition.jobId, format: 'markdown' });
+  const report = { content: await (await fetch(`${baseUrl}/api/v1/jobs/${decomposition.jobId}/result/content?format=markdown`, { headers: { authorization: `Bearer ${token}` } })).text() };
   if ((report.content.match(/^## /gm) || []).length !== 12) throw new Error('Expected 12 BABOK report sections');
   const registry = decompositionResult.content;
   const requirements = registry.schemaVersion === 'babok-requirements.v1' ? registry : collectRequirements(registry);
   if (!Object.values(registry.groups || requirements).some((items) => Array.isArray(items) && items.length)) throw new Error('MCP decomposition returned no requirements to save');
 
-  // Version persistence is a REST domain resource; all asynchronous operations and reads stay on MCP.
+  // Version persistence is a REST domain resource; MCP starts and metadata stay on the four-tool surface.
   const version = await json(await fetch(`${baseUrl}/api/v1/requirements/versions`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
     body: JSON.stringify({ sourceJobId: decomposition.jobId, ...(registry.schemaVersion === 'babok-requirements.v1' ? { registry } : { requirements }), decisions: { qualification: 'direct-mcp' } }),
   }));
   const research = await call('research_requirements', {

@@ -1,5 +1,5 @@
 import { ApiError } from '../errors/api-error.js';
-import { redactSensitive } from '../middleware/safe-logging.js';
+import { redactSensitive, redactDiagnosticMetadata } from '../middleware/safe-logging.js';
 
 const PRIVILEGED_READ_ROLES = new Set(['tenant-admin', 'operator', 'auditor', 'system-admin']);
 const DIAGNOSTIC_DETAIL_ROLES = new Set(['operator', 'auditor', 'system-admin']);
@@ -35,27 +35,27 @@ function compose(snapshot) {
   const custom = snapshot.entries.map((row) => ({
     id: row.id, source: 'TRACE', sequence: Number(row.sequence), category: row.category, name: row.name,
     status: row.status, stepId: row.step_id, startedAt: iso(row.started_at || row.created_at), completedAt: iso(row.completed_at),
-    durationMs: duration(row.started_at, row.completed_at, row.duration_ms), metadata: redactSensitive(row.metadata || {}),
+    durationMs: duration(row.started_at, row.completed_at, row.duration_ms), metadata: redactDiagnosticMetadata(row.metadata || {}),
     detail: { state: row.detail_artifact_id ? (row.expires_at && new Date(row.expires_at) <= new Date() ? 'EXPIRED' : 'AVAILABLE') : 'NOT_RECORDED', kind: row.detail_kind || null, visibility: row.detail_visibility },
     inputArtifactId: row.input_artifact_id || null, outputArtifactId: row.output_artifact_id || null,
   }));
   const steps = snapshot.steps.map((row) => ({
     id: `step:${row.step_id}`, source: 'STEP', category: 'WORKFLOW', name: row.step_type, status: row.status,
     stepId: row.step_id, startedAt: iso(row.started_at || row.created_at), completedAt: iso(row.completed_at),
-    durationMs: duration(row.started_at, row.completed_at), metadata: redactSensitive({ outcome: row.outcome, summary: row.summary, attempts: row.attempt_count }),
+    durationMs: duration(row.started_at, row.completed_at), metadata: redactDiagnosticMetadata({ outcome: row.outcome, summary: row.summary, attempts: row.attempt_count }),
     detail: { state: 'NOT_RECORDED', kind: null, visibility: 'METADATA' }, inputArtifactId: null, outputArtifactId: row.result_artifact_id || null,
   }));
   const attempts = snapshot.attempts.map((row) => ({
     id: `attempt:${row.id}`, source: 'MODEL_ATTEMPT', category: row.status === 'FAILED' ? 'ERROR' : 'MODEL', name: `LLM: ${row.actual_model}`,
     status: row.status === 'SUCCEEDED' ? 'COMPLETED' : row.status, stepId: row.step_id, startedAt: iso(row.started_at), completedAt: iso(row.completed_at),
     durationMs: duration(row.started_at, row.completed_at, row.duration_ms),
-    metadata: redactSensitive({ requestedModel: row.requested_model, actualModel: row.actual_model, executionId: row.execution_id, attempt: row.attempt, reasonCode: row.reason_code, providerRequestId: row.provider_request_id, executionSite: row.execution_site, tokenUsage: row.input_tokens == null && row.output_tokens == null ? null : { input: Number(row.input_tokens || 0), output: Number(row.output_tokens || 0) } }),
+    metadata: redactDiagnosticMetadata({ requestedModel: row.requested_model, actualModel: row.actual_model, executionId: row.execution_id, attempt: row.attempt, reasonCode: row.reason_code, providerRequestId: row.provider_request_id, executionSite: row.execution_site, tokenUsage: row.input_tokens == null && row.output_tokens == null ? null : { input: Number(row.input_tokens || 0), output: Number(row.output_tokens || 0) } }),
     detail: { state: 'NOT_RECORDED', kind: null, visibility: 'METADATA' }, inputArtifactId: null, outputArtifactId: null,
   }));
   const events = snapshot.events.map((row) => ({
     id: `event:${row.event_id}`, source: 'SERVER_EVENT', sequence: Number(row.sequence), category: 'EVENT', name: row.event_type, status: 'INFO', stepId: null,
     startedAt: iso(row.created_at), completedAt: iso(row.created_at), durationMs: 0,
-    metadata: redactSensitive({ schemaVersion: row.schema_version, sequence: Number(row.sequence), payload: row.payload }),
+    metadata: redactDiagnosticMetadata({ schemaVersion: row.schema_version, sequence: Number(row.sequence), payload: row.payload }),
     detail: { state: 'NOT_RECORDED', kind: null, visibility: 'METADATA' }, inputArtifactId: null, outputArtifactId: null,
   }));
   const versions = snapshot.versions.map((row) => ({

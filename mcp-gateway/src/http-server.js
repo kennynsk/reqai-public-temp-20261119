@@ -30,7 +30,7 @@ export function createHttpRuntime({ config, client, metrics }) {
 
   app.get('/health/live', (req, res) => res.json({ ok: true, service: 'reqai-mcp-gateway', buildVersion: config.buildVersion, schemaVersion: config.schemaVersion }));
   app.get('/health/ready', (req, res) => res.status(config.enabled && !draining && backendReady ? 200 : 503).json({ ok: config.enabled && !draining && backendReady, enabled: config.enabled, backendCompatible: backendReady, draining }));
-  app.get('/version', (req, res) => res.json({ buildVersion: config.buildVersion, toolSchemaVersion: config.schemaVersion, sdk: '1.30.0', transport: 'streamable-http' }));
+  app.get('/version', (req, res) => res.json({ buildVersion: config.buildVersion, toolSchemaVersion: config.schemaVersion, sdk: '1.32.1', transport: 'streamable-http' }));
   app.get('/metrics', (req, res) => { res.type('text/plain; version=0.0.4').send(metrics.render()); });
 
   app.all(config.path, async (req, res) => {

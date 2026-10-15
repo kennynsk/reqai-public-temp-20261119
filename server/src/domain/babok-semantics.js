@@ -13,8 +13,13 @@ export function sourceCoverageFor(source, registry) {
   let text = source;
   try { text = JSON.parse(source).content || source; } catch { /* plain source */ }
   const units = String(text || '').split(/(?<=[.!?])\s+|\n+/u).map((text) => text.trim()).filter(Boolean).map((text, index) => ({ key: `SOURCE-${index + 1}`, text }));
+  // Preserve explicit dated audit labels as metadata; they contain no product
+  // action or condition and must not consume the obligation-repair budget.
+  const isMetadata = (unit) => /^(?:\d{4}-\d{2}-\d{2}|(?:Аудит|Audit)\s+[\p{L}\p{N}_-]+\s+\d{4}-\d{2}-\d{2})[.!]?$/iu.test(unit.text);
+  const metadataUnits = units.filter(isMetadata);
+  const obligationUnits = units.filter((unit) => !isMetadata(unit));
   const targets = [...registrySemanticRecords(registry), ...registry.context.map((record) => ({ key: record.id, type: 'CTX', record }))];
-  return { revision: canonicalSha256({ units, targets }).slice(0, 16), units, targets };
+  return { revision: canonicalSha256({ units, metadataUnits, targets }).slice(0, 16), units: obligationUnits, metadataUnits, targets };
 }
 
 export function validateSourceCoverage(audit, coverage) {
@@ -24,7 +29,9 @@ export function validateSourceCoverage(audit, coverage) {
   for (const check of audit.sourceChecks) {
     if (!expected.has(check.key) || seen.has(check.key)) issues.push(fail(check.key, 'Неизвестный или повторный фрагмент источника.'));
     seen.add(check.key);
-    if (check.preservesConditions !== true || !Array.isArray(check.targetKeys) || !check.targetKeys.length || check.targetKeys.some((key) => !targets.has(key)) || !Array.isArray(check.issues) || check.issues.length) issues.push(fail(check.key, check.reason || 'Исходное обязательство, условие или контекст не сохранены в указанных записях.'));
+    const nonObligation = check.disposition === 'non_obligation' && nonempty(check.reason)
+      && Array.isArray(check.targetKeys) && check.targetKeys.length === 0;
+    if (check.preservesConditions !== true || !Array.isArray(check.targetKeys) || (!check.targetKeys.length && !nonObligation) || check.targetKeys.some((key) => !targets.has(key)) || !Array.isArray(check.issues) || check.issues.length) issues.push(fail(check.key, check.reason || 'Исходное обязательство, условие или контекст не сохранены в указанных записях.'));
   }
   for (const key of expected) if (!seen.has(key)) issues.push(fail(key, 'Фрагмент первичного источника не проверен.'));
   if (issues.length) throw semanticViolation(issues);

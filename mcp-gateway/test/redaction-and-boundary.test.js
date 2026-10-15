@@ -26,7 +26,7 @@ test('main ReqAI API does not advertise MCP capabilities', () => {
 });
 
 test('deployment is independent, restricted and disabled by default', () => {
-  const manifest = readFileSync(join(root, '..', 'deploy', 'k8s', 'mcp-gateway.yaml'), 'utf8');
+  const manifest = readFileSync(join(root, '..', 'deploy', 'k8s', 'base', 'mcp-gateway.yaml'), 'utf8');
   const compose = readFileSync(join(root, '..', 'compose.yaml'), 'utf8');
   assert.match(manifest, /replicas: 0/);
   assert.match(manifest, /MCP_ENABLED: "false"/);
@@ -34,7 +34,7 @@ test('deployment is independent, restricted and disabled by default', () => {
   assert.match(manifest, /secretKeyRef: \{ name: reqai-mcp-readiness/);
   assert.match(manifest, /readOnlyRootFilesystem: true/);
   assert.match(compose, /profiles: \["mcp"\]/);
-  assert.match(compose, /MCP_TOOL_SCHEMA_VERSION: 2\.2\.0/);
+  assert.match(compose, /MCP_TOOL_SCHEMA_VERSION: 3\.0\.0/);
 });
 
 test('operations documentation records client, IAM, polling, large artifacts and rollback', () => {

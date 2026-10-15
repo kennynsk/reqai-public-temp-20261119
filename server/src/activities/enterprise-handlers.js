@@ -1,3 +1,4 @@
+import { StringDecoder } from 'node:string_decoder';
 import { normalizeResearchProposalAction } from '../domain/research-proposal-action.js';
 import { BABOK_COMPACT_SEMANTIC_POLICY, BABOK_SEMANTIC_POLICY, deterministicSemanticIssues, insightSemanticRecords, narrativeCoverageFor, qualityIssuesToSemanticIssues, researchNarrativeIssues, registrySemanticRecords, semanticViolation, sourceCoverageFor, validateNarrativeAudit, validateSemanticAudit, validateSourceCoverage } from '../domain/babok-semantics.js';
 import { applyBabokRepairPatch, applyInsightRepairPatch, repairRevision } from '../domain/babok-repair-patch.js';
@@ -581,7 +582,7 @@ export function createEnterpriseActivityHandlers({ artifactRepository, modelExec
         failure = error;
       }
       if (correction === 2) throw failure;
-      await jobTraceRepository?.append({ tenantId: input.tenantId, jobId: input.jobId, category: 'VALIDATION', name: 'BABOK semantic correction required', status: 'INFO', stepId, startedAt: new Date(), completedAt: new Date(), durationMs: 0, metadata: { correction: correction + 1, policy: compact ? BABOK_COMPACT_SEMANTIC_POLICY : BABOK_SEMANTIC_POLICY, issues: failure.details.issues.map(({ key, code, reason }) => ({ key, code, reason })) } });
+      await jobTraceRepository?.append({ tenantId: input.tenantId, jobId: input.jobId, category: 'VALIDATION', name: 'BABOK semantic correction required', status: 'INFO', stepId, startedAt: new Date(), completedAt: new Date(), durationMs: 0, metadata: { correction: correction + 1, policy: compact ? BABOK_COMPACT_SEMANTIC_POLICY : BABOK_SEMANTIC_POLICY, issues: failure.details.issues.map(({ key, code }) => ({ key, code })) } });
       corrections.push({ revision: repairRevision(value), issues: failure.details.issues });
       if (compact) {
         const patchPrompt = renderedPrompt(input, 'semantic-repair', { semanticContext: JSON.stringify({ mode, ...context }), draft: JSON.stringify(value), qualityFindings: JSON.stringify(failure.details.issues), revision: repairRevision(value) }, () => originalPrompt);
@@ -783,17 +784,27 @@ export function createEnterpriseActivityHandlers({ artifactRepository, modelExec
       const targetChars = (input.configurationSnapshot.chunkTargetTokens || config.llm.chunkTargetTokens) * 4;
       const chunks = [];
       let pending = '';
+      const decoder = new StringDecoder('utf8');
+      let trailingCR = false;
+      const normalize = (text, final = false) => {
+        const combined = (trailingCR ? '\r' : '') + text;
+        trailingCR = !final && combined.endsWith('\r');
+        return (trailingCR ? combined.slice(0, -1) : combined).replace(/\r\n/g, '\n');
+      };
       for await (const bytes of artifactRepository.readChunks({ tenantId: input.tenantId, artifactId: input.inputArtifactId })) {
-        pending += bytes.toString('utf8').replace(/\r\n/g, '\n');
+        pending += normalize(decoder.write(bytes));
         while (pending.length >= targetChars) {
           const boundary = pending.lastIndexOf('\n', targetChars);
-          const end = boundary > targetChars / 2 ? boundary : targetChars;
+          let end = boundary > targetChars / 2 ? boundary : targetChars;
+          // UTF-16 slicing must not split a supplementary Unicode character.
+          if (/[\uD800-\uDBFF]/u.test(pending[end - 1]) && /[\uDC00-\uDFFF]/u.test(pending[end])) end -= 1;
           const content = pending.slice(0, end);
           pending = pending.slice(end);
           const saved = await store(input, content);
           chunks.push({ chunkId: `chunk-${chunks.length + 1}`, artifactId: saved.artifactId });
         }
       }
+      pending += normalize(decoder.end(), true);
       if (pending.trim() || !chunks.length) {
         const saved = await store(input, pending);
         chunks.push({ chunkId: `chunk-${chunks.length + 1}`, artifactId: saved.artifactId });

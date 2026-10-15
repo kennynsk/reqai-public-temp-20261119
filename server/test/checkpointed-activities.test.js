@@ -101,6 +101,38 @@ test('contract failures are checkpointed with a safe reason and marked non-retry
     () => activities.decomposeChunk({ tenantId: 't', ownerUserId: 'u', jobId: 'j', chunk: { chunkId: 'c1', artifactId: 'a1' } }),
     (error) => error.type === 'OUTPUT_CONTRACT_VIOLATION' && error.nonRetryable === true,
   );
-  assert.deepEqual(checkpoints.at(-1).summary, { reasonCode: 'OUTPUT_CONTRACT_VIOLATION', details: { path: '$.context[0].provenance', reason: 'expected an enum value' } });
+  assert.deepEqual(checkpoints.at(-1).summary, { reasonCode: 'OUTPUT_CONTRACT_VIOLATION', details: { path: '$.context[0].provenance', reason: '[REDACTED]' } });
   assert.equal(diagnostics.at(-1).content.reasonCode, 'OUTPUT_CONTRACT_VIOLATION');
+});
+
+test('model error text never reaches checkpoints, base trace or Temporal failures', async () => {
+  const marker = 'PRIVATE_REQUIREMENT_синтетический_текст';
+  for (const type of ['BABOK_SEMANTIC_INVALID', 'PROVIDER_TEMPORARY_ERROR']) {
+    const ordinary = [];
+    const activities = createCheckpointedActivities({ siteId: 'test', heartbeatFn() {},
+      handlers: { async validateInput() { throw Object.assign(new Error(marker), { type, details: { policy: 'babok-semantic.v2', issues: [{ key: '$', code: 'SOURCE_LOSS', reason: marker }], reason: marker, path: marker } }); } },
+      jobRepository: { async findCheckpoint() {}, async saveCheckpoint(value) { ordinary.push(value); } },
+      jobTraceRepository: { async append(value) { ordinary.push(value); } },
+    });
+    await assert.rejects(() => activities.validateInput({ tenantId: 't', jobId: 'j' }), (error) => {
+      assert.equal(error.message, type);
+      assert.equal(error.nonRetryable, type === 'BABOK_SEMANTIC_INVALID');
+      assert.equal(JSON.stringify(error).includes(marker), false);
+      assert.equal(String(error.stack).includes(marker), false);
+      return true;
+    });
+    assert.equal(JSON.stringify(ordinary).includes(marker), false);
+  }
+});
+
+test('lifecycle activities return only references, never repository rows with source-derived metadata', async () => {
+  const marker = 'PRIVATE_REQUIREMENT_TEXT';
+  const activities = createCheckpointedActivities({ siteId: 'test', handlers: {}, jobRepository: { async transition() { return { id: 'j', title: marker, search_summary: marker, configuration_snapshot: { requirements: marker }, message: marker }; } } });
+  const input = { tenantId: 't', jobId: 'j', resultArtifactId: 'result', successfulUnits: 1, failedUnits: 0, reasonCode: 'TEST_CANCELLED' };
+  for (const [method, status] of [['markRunning', 'RUNNING'], ['finalizeSucceeded', 'SUCCEEDED'], ['finalizeFailed', 'FAILED'], ['finalizeCancelled', 'CANCELLED']]) {
+    const result = await activities[method](input);
+    assert.deepEqual(Object.keys(result).sort(), ['jobId', 'outcome', 'reasonCode', 'resultArtifactId', 'status']);
+    assert.equal(result.jobId, 'j'); assert.equal(result.status, status);
+    assert.equal(JSON.stringify(result).includes(marker), false);
+  }
 });

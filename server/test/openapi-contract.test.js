@@ -11,7 +11,6 @@ const spec = JSON.parse(await readFile(specPath, 'utf8'));
 const requiredOperations = {
   'POST /api/v1/decompositions': ['202', '400', '401', '403', '404', '409', '413', '429', '503'],
   'POST /api/v1/requirements/versions/{versionId}/research': ['202', '400', '401', '403', '404', '409', '429', '503'],
-  'POST /api/v1/jobs': ['202', '400', '401', '409', '429', '503'],
   'GET /api/v1/jobs': ['200', '401'],
   'GET /api/v1/jobs/{jobId}': ['200', '401', '404'],
   'GET /api/v1/jobs/{jobId}/result': ['200', '401', '404', '409'],
@@ -47,9 +46,8 @@ test('OpenAPI v1 contract declares all required operations and responses', () =>
 });
 
 test('OpenAPI v1 contract keeps the control plane reference-only', () => {
-  const createJob = spec.components.schemas.CreateJobRequest;
-  assert.ok(createJob.required.includes('inputArtifactId'));
-  assert.equal(createJob.properties.input, undefined);
+  assert.equal(spec.paths['/api/v1/jobs'].post, undefined);
+  assert.equal(spec.components.schemas.CreateJobRequest, undefined);
   assert.equal(spec.components.schemas.Artifact.properties.size.maximum, 104857600);
 });
 
@@ -77,7 +75,7 @@ test('domain contracts expose product options and strict mutually exclusive inpu
   assert.equal(spec.paths['/api/v1/research'], undefined);
   assert.equal(spec.components.schemas.StandaloneResearchRequest, undefined);
   assert.deepEqual(spec.components.schemas.FeatureMode.enum, ['DECOMPOSITION', 'REQUIREMENTS_INSIGHTS']);
-  assert.equal(spec.components.schemas.CreateJobRequest.properties.type.const, 'DECOMPOSITION');
+
   assert.equal(spec.components.schemas.Job.properties.mode.type.includes('string'), true);
   assert.equal(spec.components.schemas.RequirementsResearchRequest.additionalProperties, false);
   assert.ok(spec.components.schemas.JobOptions.properties.promptVersion);

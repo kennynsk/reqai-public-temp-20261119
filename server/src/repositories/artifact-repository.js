@@ -1,6 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { once } from 'node:events';
 
+import { createTextMaterialValidator } from '../domain/text-material.js';
+
 import { ApiError } from '../errors/api-error.js';
 
 const CHUNK_BYTES = 1024 * 1024;
@@ -47,6 +49,7 @@ export class ArtifactRepository {
   }
 
   async upload({ tenantId, ownerUserId, readable, expectedSha256, contentType, maxBytes, expiresAt }) {
+    const validator = createTextMaterialValidator(contentType);
     const client = await this.pool.connect();
     const artifactId = randomUUID(); const hash = createHash('sha256'); let size = 0; let index = 0; let pending = Buffer.alloc(0);
     try {
@@ -56,6 +59,7 @@ export class ArtifactRepository {
       for await (const value of readable) {
         const incoming = Buffer.from(value); size += incoming.length;
         if (size > maxBytes) throw new ApiError({ status: 413, code: 'ARTIFACT_TOO_LARGE', message: 'Artifact exceeds configured maximum size' });
+        validator.write(incoming);
         hash.update(incoming); pending = Buffer.concat([pending, incoming]);
         while (pending.length >= CHUNK_BYTES) {
           await client.query(`INSERT INTO ${this.artifactSchema}.artifact_content(artifact_id,tenant_id,chunk_index,content) VALUES($1,$2,$3,$4)`, [artifactId, tenantId, index++, pending.subarray(0, CHUNK_BYTES)]);
@@ -65,9 +69,19 @@ export class ArtifactRepository {
       if (pending.length) await client.query(`INSERT INTO ${this.artifactSchema}.artifact_content(artifact_id,tenant_id,chunk_index,content) VALUES($1,$2,$3,$4)`, [artifactId, tenantId, index, pending]);
       const sha256 = hash.digest('hex');
       if (sha256.toLowerCase() !== expectedSha256.toLowerCase()) throw new ApiError({ status: 400, code: 'ARTIFACT_CHECKSUM_MISMATCH', message: 'Artifact checksum does not match X-Content-SHA256' });
+      validator.finish();
       const result = await client.query(`UPDATE ${this.schema}.artifacts SET size_bytes=$3,sha256=$4,storage_status='AVAILABLE',completed_at=now() WHERE tenant_id=$1 AND id=$2 RETURNING *`, [tenantId, artifactId, size, sha256]);
       await client.query('COMMIT'); return result.rows[0];
     } catch (error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
+  }
+
+  async validateMaterial({ tenantId, ownerUserId, artifactId }) {
+    const metadata = await this.metadata({ tenantId, ownerUserId, artifactId });
+    if (!metadata) throw new ApiError({ status: 404, code: 'ARTIFACT_NOT_FOUND', message: 'Материал не найден.' });
+    const validator = createTextMaterialValidator(metadata.content_type);
+    for await (const bytes of this.readChunks({ tenantId, artifactId })) validator.write(bytes);
+    validator.finish();
+    return metadata;
   }
 
   async metadata({ tenantId, ownerUserId = null, artifactId }) {

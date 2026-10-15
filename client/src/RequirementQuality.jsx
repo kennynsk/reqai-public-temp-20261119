@@ -35,8 +35,8 @@ export default function RequirementQuality({ type, requirement, readOnly, onRevi
     <p>{summary}</p>
     {missing.length > 0 && <p><span className="font-semibold text-slate-700">Не заполнено:</span> {missing.join(', ')}. {readOnly ? 'Уточните эти сведения в редактируемой версии требований.' : 'Уточните эти сведения в редакторе требования.'}</p>}
     {(open.length > 0 && onShowQuestions || !readOnly && onReview) && <div className="flex flex-wrap gap-x-4 gap-y-1">
-      {open.length > 0 && onShowQuestions && <button type="button" onClick={onShowQuestions} className="min-h-9 rounded px-1 py-2 text-sm font-semibold text-indigo-700 underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">Показать связанные вопросы</button>}
-    {!readOnly && onReview && <button type="button" onClick={onReview} className="min-h-9 rounded px-1 py-2 text-sm font-semibold text-indigo-700 underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">Проверить формулировку и оценку</button>}
+      {open.length > 0 && onShowQuestions && <button type="button" onClick={onShowQuestions} className="min-h-9 rounded-sm px-1 py-2 text-sm font-semibold text-indigo-700 underline underline-offset-2 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-indigo-500">Показать связанные вопросы</button>}
+    {!readOnly && onReview && <button type="button" onClick={onReview} className="min-h-9 rounded-sm px-1 py-2 text-sm font-semibold text-indigo-700 underline underline-offset-2 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-indigo-500">Проверить формулировку и оценку</button>}
     </div>}
     {!ready && <p className="text-xs text-slate-500">{readOnly ? 'Здесь показана оценка сохранённой формулировки. Пересмотреть её можно в редактируемой версии требований.' : 'После проверки выберите оценку качества в редакторе. Закрытие вопросов само по себе её не меняет.'}</p>}
   </section>;

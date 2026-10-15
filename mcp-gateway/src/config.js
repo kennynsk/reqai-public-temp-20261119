@@ -1,4 +1,5 @@
 const TRUE = new Set(['1', 'true', 'yes', 'on']);
+export const TOOL_SCHEMA_VERSION = '3.0.0';
 
 function bool(value, fallback = false) {
   return value == null ? fallback : TRUE.has(String(value).toLowerCase());
@@ -23,6 +24,9 @@ export function loadConfig(env = process.env) {
   const environment = env.MCP_ENVIRONMENT || env.NODE_ENV || 'development';
   const production = environment === 'production';
   const enabled = bool(env.MCP_ENABLED, false);
+  if (env.MCP_TOOL_SCHEMA_VERSION && env.MCP_TOOL_SCHEMA_VERSION !== TOOL_SCHEMA_VERSION) {
+    throw new Error(`MCP_TOOL_SCHEMA_VERSION must be ${TOOL_SCHEMA_VERSION}; update the client and deployment configuration`);
+  }
   const transport = env.MCP_TRANSPORT || 'streamable-http';
   if (!['streamable-http', 'stdio'].includes(transport)) throw new Error('MCP_TRANSPORT must be streamable-http or stdio');
   if (production && transport !== 'streamable-http') throw new Error('Production MCP transport must be streamable-http');
@@ -52,7 +56,7 @@ export function loadConfig(env = process.env) {
     bodyLimitBytes: integer(env.MCP_BODY_LIMIT_BYTES, 1_100_000, { min: 1024, max: 2_000_000, name: 'MCP_BODY_LIMIT_BYTES' }),
     responseLimitBytes: integer(env.MCP_RESPONSE_LIMIT_BYTES, 262_144, { min: 4096, max: 1_000_000, name: 'MCP_RESPONSE_LIMIT_BYTES' }),
     maxConcurrency: integer(env.MCP_MAX_CONCURRENCY, 32, { min: 1, max: 512, name: 'MCP_MAX_CONCURRENCY' }),
-    schemaVersion: env.MCP_TOOL_SCHEMA_VERSION || '2.2.0',
+    schemaVersion: TOOL_SCHEMA_VERSION,
     buildVersion: env.MCP_BUILD_VERSION || '1.0.0',
     allowedHosts,
     audienceMode,

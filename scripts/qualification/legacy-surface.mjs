@@ -5,16 +5,20 @@ const root = new URL('../../', import.meta.url);
 const forbiddenByFile = new Map([
   ['client/src/App.jsx', ['BizReqResearcher', 'RequirementsDecomposer']],
   ['client/src/AsyncJobWorkspace.jsx', ['Дополнительные инструменты', 'start_research']],
-  ['server/src/routes/api-v1-routes.js', ["router.post('/api/v1/research'", 'standalone-research']],
+  ['server/src/routes/api-v1-routes.js', ["router.post('/api/v1/jobs'", "router.post('/api/v1/research'", 'standalone-research']],
   ['server/src/workflows/index.js', ['DECOMPOSITION_WITH_INSIGHTS', 'STANDARD_RESEARCH', 'AGENT_RESEARCH', 'MODEL_COMPARE', 'AGENT_COMPARE', 'PROMPT_TEST', 'requirements-synthesis']],
   ['server/src/activities/enterprise-handlers.js', ['analyzeCategories', 'researchCategory', 'synthesizeResearch', 'improveRequirements', 'promptTest']],
   ['server/src/config/env.js', ['TEMPORAL_TASK_QUEUE_SYNTHESIS', 'JOB_MAX_RESEARCH_CATEGORIES', 'LLM_CATEGORY_CONCURRENCY', 'PROMPT_STANDARD_RESEARCH', 'PROMPT_AGENT_RESEARCH', 'PROMPT_LEGACY_DECOMPOSITION_WITH_INSIGHTS']],
   ['mcp-gateway/src/schemas.js', ['start_research']],
   ['mcp-gateway/src/tools.js', ['start_research']],
   ['mcp-gateway/src/rest-client.js', ['start_research', 'startResearch']],
+  ['scripts/qualification/task-permalink-debug.mjs', ['DECOMPOSITION_WITH_INSIGHTS', 'fetch(`${baseUrl}/api/v1/jobs`, {']],
+  ['scripts/qualification/local-restart-recovery.mjs', ['fetch(`${baseUrl}/api/v1/jobs`, {']],
+  ['scripts/qualification/load.mjs', ['researchCategories', "api('/api/v1/jobs', token, { method: 'POST'"]],
+  ['scripts/qualification/soak.mjs', ['application/octet-stream', "api('/api/v1/jobs', token, { method: 'POST'"]],
   ['compose.yaml', ['synthesis-worker', 'requirements-synthesis', 'MCP_TOOL_SCHEMA_VERSION: 1.0.0']],
-  ['deploy/k8s/workers.yaml', ['synthesis-worker', 'requirements-synthesis']],
-  ['deploy/k8s/platform.yaml', ['TEMPORAL_TASK_QUEUE_SYNTHESIS', 'JOB_MAX_RESEARCH_CATEGORIES']],
+  ['deploy/k8s/base/workers.yaml', ['synthesis-worker', 'requirements-synthesis']],
+  ['deploy/k8s/base/platform.yaml', ['TEMPORAL_TASK_QUEUE_SYNTHESIS', 'JOB_MAX_RESEARCH_CATEGORIES']],
 ]);
 
 const activeDocs = [
@@ -42,6 +46,12 @@ const removedPaths = [
 ];
 
 const failures = [];
+for (const file of ['docs/configuration.md', 'docs/qualification.md']) {
+  const source = await readFile(new URL(file, root), 'utf8');
+  if (source.includes('MCP schema `2.1.0`') || source.includes('| `MCP_TOOL_SCHEMA_VERSION` | `2.1.0`')) failures.push(`${file}: stale MCP schema`);
+}
+const { TOOL_DEFINITIONS } = await import('../../mcp-gateway/src/schemas.js');
+if (JSON.stringify(Object.keys(TOOL_DEFINITIONS)) !== JSON.stringify(['decompose_requirements', 'research_requirements', 'get_task_status', 'get_task_result'])) failures.push('MCP tool inventory must contain exactly four approved tools');
 for (const [path, markers] of forbiddenByFile) {
   const source = await readFile(new URL(path, root), 'utf8');
   for (const marker of markers) if (source.includes(marker)) failures.push(`${path}: contains ${marker}`);

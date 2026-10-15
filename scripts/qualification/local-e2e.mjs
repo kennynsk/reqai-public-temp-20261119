@@ -29,12 +29,14 @@ verifyModel(decompositionResult.metadata, model);
 const evidence = { channel: 'direct-api', requestedModel: model, decomposition: summarizeJob(decompositionStatus, decompositionResult) };
 
 if (scenario !== 'DECOMPOSITION') {
-  const requirements = collectRequirements(decompositionResult.content);
-  if (!Object.values(requirements).some((items) => items.length)) throw new Error('Decomposition returned no requirements to save');
+  const content = decompositionResult.content;
+  const registry = content?.schemaVersion === 'babok-requirements.v1' ? content : null;
+  const requirements = registry ? null : collectRequirements(content);
+  if (!Object.values(registry?.groups || requirements).some((items) => Array.isArray(items) && items.length)) throw new Error('Decomposition returned no requirements to save');
   const version = await json(await fetch(`${baseUrl}/api/v1/requirements/versions`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ sourceJobId: decomposition.jobId, requirements, decisions: { qualification: 'direct-api' } }),
+    body: JSON.stringify({ sourceJobId: decomposition.jobId, ...(registry ? { registry } : { requirements }), decisions: { qualification: 'direct-api' } }),
   }));
   const research = await json(await fetch(`${baseUrl}/api/v1/requirements/versions/${version.versionId}/research`, {
     method: 'POST',

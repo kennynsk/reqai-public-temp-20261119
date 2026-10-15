@@ -279,12 +279,12 @@ function WorkflowStepper({ currentStage = 1, completedStage = 0, skippedStages =
 
 function AiSettingsDisclosure({ model, children }) {
   return <details className="relative group">
-    <summary aria-label="Настройки AI" className="list-none cursor-pointer p-2 sm:px-3 sm:py-2 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-100 flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">
+    <summary aria-label="Настройки AI" className="list-none cursor-pointer p-2 sm:px-3 sm:py-2 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-100 flex items-center gap-2 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-indigo-500">
       <Settings2 className="w-4 h-4 text-indigo-500" />
       <span className="hidden sm:inline">Настройки AI</span>
       <span className="hidden lg:inline text-xs font-normal text-slate-600">{model} · рекомендуется</span>
     </summary>
-    <div className="absolute right-0 top-full mt-2 w-[min(24rem,calc(100vw-2rem))] rounded-xl border border-slate-200 bg-white p-4 shadow-xl z-50">{children}</div>
+    <div className="fixed left-4 right-4 top-16 mt-2 rounded-xl border border-slate-200 bg-white p-4 shadow-xl z-50 sm:absolute sm:left-auto sm:right-0 sm:top-full sm:w-[min(24rem,calc(100vw-2rem))]">{children}</div>
   </details>;
 }
 
@@ -464,11 +464,11 @@ function EditableRequirementCard({ type, requirement, onEdit, onDelete, onDraftC
     <article id={`record-${requirement.id}`} tabIndex={-1} style={{ scrollMarginTop: '9rem' }} className={`group relative py-5 first:pt-0 last:pb-0 ${requirement.fromResearch ? 'bg-indigo-50/40 -mx-3 px-3 rounded-xl' : ''}`}>
       <div className="flex flex-wrap items-start justify-between gap-2 mb-2">
         <div className="flex items-center gap-2">
-          <a href={`#record-${requirement.id}`} className="text-xs font-bold text-indigo-700 bg-indigo-50 px-2 py-1 rounded underline underline-offset-2">{requirement.id}</a>
+          <a href={`#record-${requirement.id}`} className="text-xs font-bold text-indigo-700 bg-indigo-50 px-2 py-1 rounded-sm underline underline-offset-2">{requirement.id}</a>
           {requirement.fromResearch && <span className="inline-flex items-center gap-1 text-xs font-bold text-indigo-600"><Sparkles className="w-3.5 h-3.5" />AI</span>}
         </div>
         {!editing && !readOnly && <details className="relative">
-          <summary role="button" aria-label={`Действия для ${requirement.id}`} title="Действия" className="list-none cursor-pointer rounded-lg p-1.5 text-slate-600 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"><MoreHorizontal className="w-5 h-5" /></summary>
+          <summary role="button" aria-label={`Действия для ${requirement.id}`} title="Действия" className="list-none cursor-pointer rounded-lg p-1.5 text-slate-600 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-indigo-500"><MoreHorizontal className="w-5 h-5" /></summary>
           <div className="absolute right-0 top-full mt-1 z-20 w-44 rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg">
             <button onClick={(event) => { setEditing(true); event.currentTarget.closest('details').removeAttribute('open'); }} className="w-full rounded-lg px-3 py-2 text-left text-sm text-slate-600 hover:bg-slate-50 flex items-center gap-2"><Pencil className="w-4 h-4" />Редактировать</button>
             <button onClick={onDelete} className="w-full rounded-lg px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"><Trash2 className="w-4 h-4" />Удалить</button>
@@ -477,7 +477,7 @@ function EditableRequirementCard({ type, requirement, onEdit, onDelete, onDraftC
       </div>
       {editing ? (
         <div>
-          <textarea aria-label={`Текст требования ${requirement.id}`} value={text} onChange={(event) => { setText(event.target.value); onDraftChange?.(event.target.value !== requirement.text); }} rows={3} autoFocus className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm resize-none focus:border-indigo-500 focus:outline-none" />
+          <textarea aria-label={`Текст требования ${requirement.id}`} value={text} onChange={(event) => { setText(event.target.value); onDraftChange?.(event.target.value !== requirement.text); }} rows={3} autoFocus className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm resize-none focus:border-indigo-500 focus:outline-hidden" />
           <div className="flex gap-2 mt-2">
             <button onClick={save} className="text-xs px-3 py-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">Готово</button>
             <button onClick={cancel} className="text-xs px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200">Отмена</button>
@@ -541,14 +541,14 @@ function BabokRequirementCard({ type, requirement, requirementIndex, onEdit, onD
           <RecordLinks ids={[requirement.id]} onNavigate={onNavigate} />
           {(manuallyEdited || requirement.manuallyEdited) && <span className="text-xs text-slate-600">Изменено</span>}
           {!onOpenQuestion && focused && requirement.quality === 'Готово' && <span className="text-xs font-semibold text-emerald-700">Оценка качества: Готово</span>}
-          {!onOpenQuestion && requirement.quality !== 'Готово' && <span title="Оценка формулировки требования. Основания и следующий шаг приведены ниже." className="text-xs rounded bg-amber-50 px-2 py-1 text-amber-800">Оценка качества: {BABOK_QUALITY_LABELS[requirement.quality] || 'Не определена'}</span>}
+          {!onOpenQuestion && requirement.quality !== 'Готово' && <span title="Оценка формулировки требования. Основания и следующий шаг приведены ниже." className="text-xs rounded-sm bg-amber-50 px-2 py-1 text-amber-800">Оценка качества: {BABOK_QUALITY_LABELS[requirement.quality] || 'Не определена'}</span>}
           {requirement.fromResearch && <span className="inline-flex items-center gap-1 text-xs font-bold text-indigo-600"><Sparkles className="w-3.5 h-3.5" />AI-предложение</span>}
         </div>
         <div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-1">
         {onOpenQuestion && !editing && <button type="button" onClick={() => setEditing(true)} className="rounded-lg px-3 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-50">Редактировать</button>}
         {!editing && onDiscuss && <button type="button" onClick={() => onDiscuss(requirement.id)} className="min-h-9 shrink-0 rounded-lg px-3 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-50 focus-visible:ring-2 focus-visible:ring-indigo-500">Обсудить с AI</button>}
         {!editing && (onDiscuss || !readOnly) && <details className="relative">
-          <summary role="button" aria-label={`Действия для ${requirement.id}`} title="Действия" className="list-none cursor-pointer rounded-lg p-1.5 text-slate-600 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"><MoreHorizontal className="w-5 h-5" /></summary>
+          <summary role="button" aria-label={`Действия для ${requirement.id}`} title="Действия" className="list-none cursor-pointer rounded-lg p-1.5 text-slate-600 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-indigo-500"><MoreHorizontal className="w-5 h-5" /></summary>
           <div className="absolute right-0 top-full mt-1 z-20 w-44 rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg">
             {onDiscuss && <button type="button" onClick={(event) => { onDiscuss(requirement.id); event.currentTarget.closest('details').removeAttribute('open'); }} className="w-full rounded-lg px-3 py-2 text-left text-sm text-indigo-700 hover:bg-indigo-50 flex items-center gap-2"><MessageCircle className="w-4 h-4" />{onOpenQuestion ? 'Обсудить требование с AI' : 'Обсудить с AI'}</button>}
             {!readOnly && <>
@@ -561,7 +561,7 @@ function BabokRequirementCard({ type, requirement, requirementIndex, onEdit, onD
       </div>
       {editing && onOpenQuestion ? <RequirementContentEditor type={type} requirement={requirement} onApply={(text, fields) => { onEdit(text, fields); onDraftChange?.(false); }} onCancel={() => onDraftChange?.(false)} /> : editing ? (
         <div>
-          <textarea aria-label={`Текст требования ${requirement.id}`} value={text} onChange={(event) => { setText(event.target.value); onDraftChange?.(event.target.value !== (requirement.text || '')); }} rows={3} autoFocus className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm resize-none focus:border-indigo-500 focus:outline-none" />
+          <textarea aria-label={`Текст требования ${requirement.id}`} value={text} onChange={(event) => { setText(event.target.value); onDraftChange?.(event.target.value !== (requirement.text || '')); }} rows={3} autoFocus className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm resize-none focus:border-indigo-500 focus:outline-hidden" />
           {fieldError && <p role="alert" className="text-sm text-red-700">{fieldError}</p>}
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
             {(STRUCTURED_FIELDS[type] || []).map(([name, label, required]) => <label key={name} className="text-xs font-semibold text-slate-600">{label}{required ? ' *' : ''}<input data-review-field={`${requirement.id}:${name}`} aria-label={`${label} ${requirement.id}`} value={(Object.hasOwn(field.draft?.fields || {}, name) ? field.draft.fields[name] : requirement[name]) ?? ''} onChange={(event) => field.changeField(name, event.target.value || (required ? '' : null))} className="block w-full mt-1 rounded-lg border p-2 text-sm font-normal" /></label>)}
@@ -574,7 +574,7 @@ function BabokRequirementCard({ type, requirement, requirementIndex, onEdit, onD
             <button onClick={cancel} className="text-xs px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200">Отмена</button>
           </div>
         </div>
-      ) : focused ? <h2 className="text-lg font-semibold leading-relaxed text-slate-900 sm:text-xl">{requirement.text}</h2> : <p className="text-[15px] text-slate-700 leading-7 w-full">{requirement.text}</p>}
+      ) : focused ? <h2 className="text-lg font-semibold leading-relaxed text-slate-900 sm:text-xl sm:leading-7">{requirement.text}</h2> : <p className="text-[15px] text-slate-700 leading-7 w-full">{requirement.text}</p>}
       {researchDecision?.confirmationConditions && <p className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-900"><strong>Условия подтверждения:</strong> {researchDecision.confirmationConditions}</p>}
       {researchDecision?.rationale && <p className="mt-2 text-sm text-slate-600"><strong>Обоснование предложения:</strong> {researchDecision.rationale}</p>}
       {qualityReason && <p className="mt-2 text-sm text-slate-600" aria-label={`Основание оценки качества ${requirement.id}`}><strong>Почему выставлена эта оценка:</strong> {qualityReason}</p>}
@@ -593,7 +593,7 @@ function BabokRequirementCard({ type, requirement, requirementIndex, onEdit, onD
       <RequirementClarifications onOpenQuestion={onOpenQuestion} requirement={requirement} editing={editing} readOnly={readOnly} onNavigate={onNavigate} onDiscuss={focused && !editing ? onDiscuss : undefined} detailsRef={clarificationDetailsRef} />
       {onOpenQuestion && (!source || [materials?.primary, ...(materials?.references || []), ...(materials?.baseline?.artifacts || [])].some((material) => material?.artifactId === source?.artifactId && material.status === 'UNAVAILABLE')) && <p role="status" className="mt-3 text-xs text-amber-800">{source ? 'Источник недоступен' : 'Источник не указан'}</p>}
       <details className="mt-3 rounded-lg border border-slate-100 bg-slate-50/70 group/evidence">
-        <summary className="cursor-pointer list-none px-3 py-2 text-xs font-semibold text-slate-600 flex items-center justify-between gap-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">
+        <summary className="cursor-pointer list-none px-3 py-2 text-xs font-semibold text-slate-600 flex items-center justify-between gap-3 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-indigo-500">
           <span>Источник и связи</span><ChevronDown className="w-3.5 h-3.5 group-open/evidence:hidden" /><ChevronUp className="w-3.5 h-3.5 hidden group-open/evidence:block" />
         </summary>
         <div className="border-t border-slate-100 px-3 py-3 space-y-2 text-xs text-slate-600">
@@ -632,11 +632,11 @@ function BabokAddRequirementForm({ type, categoryLabel, onAdd, onDraftChange }) 
     setOpen(false);
   }
 
-  if (!open) return <button data-add-requirement onClick={() => setOpen(true)} className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-indigo-600 hover:bg-indigo-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"><Plus className="w-4 h-4" />Добавить требование</button>;
+  if (!open) return <button data-add-requirement onClick={() => setOpen(true)} className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-indigo-600 hover:bg-indigo-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-indigo-500"><Plus className="w-4 h-4" />Добавить требование</button>;
   return (
     <div className="rounded-xl bg-slate-50 p-4">
       <p className="text-sm font-semibold text-slate-700 mb-2">Новое требование · {type} · {categoryLabel}</p>
-      <textarea data-review-field={`new-${type}:text`} required aria-label={`Новое требование: ${type}`} value={text} onChange={(event) => { setText(event.target.value); setError(''); onDraftChange?.(Boolean(event.target.value)); }} rows={3} autoFocus placeholder="Введите формулировку требования..." className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm resize-none focus:border-indigo-500 focus:outline-none bg-white" />
+      <textarea data-review-field={`new-${type}:text`} required aria-label={`Новое требование: ${type}`} value={text} onChange={(event) => { setText(event.target.value); setError(''); onDraftChange?.(Boolean(event.target.value)); }} rows={3} autoFocus placeholder="Введите формулировку требования..." className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm resize-none focus:border-indigo-500 focus:outline-hidden bg-white" />
       {error && <p role="alert" className="text-xs text-red-600 mt-2">{error}</p>}
       <div className="mt-2 flex gap-2">
         <button onClick={add} disabled={!text.trim()} className="px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 disabled:bg-slate-300">Добавить</button>
@@ -661,11 +661,11 @@ function AddRequirementForm({ type, onAdd, onDraftChange, categoryLabel }) {
     setText('');
     setOpen(false);
   }
-  if (!open) return <button data-add-requirement onClick={() => setOpen(true)} className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-indigo-600 hover:bg-indigo-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"><Plus className="w-4 h-4" />Добавить требование</button>;
+  if (!open) return <button data-add-requirement onClick={() => setOpen(true)} className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-indigo-600 hover:bg-indigo-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-indigo-500"><Plus className="w-4 h-4" />Добавить требование</button>;
   return (
     <div className="rounded-xl bg-slate-50 p-4">
       <p className="text-sm font-semibold text-slate-700 mb-2">Новое требование · {categoryLabel}</p>
-      <textarea data-review-field={`new-${type}:text`} aria-label={`Новое требование: ${categoryLabel}`} value={text} onChange={(event) => { setText(event.target.value); onDraftChange?.(Boolean(event.target.value)); }} rows={3} autoFocus placeholder="Введите формулировку требования..." className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm resize-none focus:border-indigo-500 focus:outline-none bg-white" />
+      <textarea data-review-field={`new-${type}:text`} aria-label={`Новое требование: ${categoryLabel}`} value={text} onChange={(event) => { setText(event.target.value); onDraftChange?.(Boolean(event.target.value)); }} rows={3} autoFocus placeholder="Введите формулировку требования..." className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm resize-none focus:border-indigo-500 focus:outline-hidden bg-white" />
       <div className="mt-2 flex gap-2">
         <button onClick={add} disabled={!text.trim()} className="px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 disabled:bg-slate-300">Добавить</button>
         <button onClick={() => { setText(''); onDraftChange?.(false); setOpen(false); }} className="px-4 py-2 text-slate-600 text-sm font-semibold rounded-lg hover:bg-slate-200">Отмена</button>
@@ -684,7 +684,7 @@ function useRequirementsLayout() {
 }
 
 function RequirementsLayoutToggle({ layout, onChange }) {
-  return <div role="group" aria-label="Вид требований" className="inline-flex rounded-lg border border-slate-200 bg-white p-1 shadow-sm">
+  return <div role="group" aria-label="Вид требований" className="inline-flex rounded-lg border border-slate-200 bg-white p-1 shadow-xs">
     <button type="button" aria-pressed={layout === 'columns'} onClick={() => onChange('columns')} className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold ${layout === 'columns' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-500 hover:bg-slate-50'}`}><Columns3 className="w-3.5 h-3.5" />Все требования</button>
     <button type="button" aria-pressed={layout === 'rows'} onClick={() => onChange('rows')} className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold ${layout === 'rows' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-500 hover:bg-slate-50'}`}><List className="w-3.5 h-3.5" />По типам</button>
   </div>;
@@ -967,10 +967,10 @@ function BabokRegistryResult({ value, latestVersion, onSave, onStartResearch, on
           <div className="min-w-0"><h1 className="text-base font-semibold text-slate-900">{title || (finalMode ? 'Финальная версия требований' : 'Проверка требований')}</h1><p id="babok-save-status" role="status" className={`text-xs mt-0.5 ${hasSavedVersion && !hasUnsavedChanges ? 'text-emerald-700' : 'text-slate-600'}`}>{statusText}</p>{hasUnsavedChanges && cascadeReopenedIds.length > 0 && <p role="status" className="text-xs mt-0.5 text-amber-700">Правка переоткроет вопросы: {cascadeReopenedIds.join(', ')} — их прежние решения сохранятся и потребуют повторного подтверждения.</p>}<RequirementsReadiness registry={registry} decisions={review.state.decisions} onQuestions={() => setReviewSection('questions')} onLinks={() => setReviewSection('links')} /></div>
         </div>
         <div className="flex flex-wrap items-center gap-2 lg:justify-end">
-          {onBack && <button onClick={onBack} className="h-10 shrink-0 whitespace-nowrap px-4 py-2 border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 hover:bg-slate-50 flex items-center justify-center gap-2"><ArrowLeft className="w-4 h-4" />К результатам AI-исследования</button>}
+          {onBack && <button onClick={onBack} className="min-h-10 max-w-full px-4 py-2 border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 hover:bg-slate-50 flex items-center justify-center gap-2 sm:h-10 sm:shrink-0 sm:whitespace-nowrap"><ArrowLeft className="w-4 h-4 shrink-0" />К результатам AI-исследования</button>}
         {!readOnly && <>
           <ResultExportAction />
-          {hasUnsavedChanges && <button disabled={busy} onClick={() => saveRegistry()} className="h-10 shrink-0 whitespace-nowrap px-4 py-2 text-sm font-semibold rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:bg-slate-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">{hasSavedVersion ? 'Сохранить изменения' : 'Сохранить проверенную версию'}</button>}
+          {hasUnsavedChanges && <button disabled={busy} onClick={() => saveRegistry()} className="h-10 shrink-0 whitespace-nowrap px-4 py-2 text-sm font-semibold rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:bg-slate-300 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-indigo-500">{hasSavedVersion ? 'Сохранить изменения' : 'Сохранить проверенную версию'}</button>}
           {!finalMode && <>
             <button aria-label={researchBusy ? 'AI-исследование выполняется…' : 'Улучшить требования с помощью AI'} aria-describedby="babok-save-status" title={!hasSavedVersion || hasUnsavedChanges ? 'Сначала сохраните текущую версию требований' : researchBusy ? 'Дождитесь завершения текущего AI-исследования' : 'Необязательный следующий шаг'} disabled={busy || researchBusy || !hasSavedVersion || hasUnsavedChanges} onClick={() => onStartResearch?.({ requirementsVersionId: latestVersion.versionId })} className="h-10 shrink-0 whitespace-nowrap px-4 py-2 border border-indigo-200 bg-white text-indigo-700 text-sm font-semibold rounded-lg hover:bg-indigo-50 disabled:border-slate-200 disabled:text-slate-600 disabled:bg-slate-100 flex items-center justify-center gap-2">{researchBusy ? <><Loader2 className="w-4 h-4 animate-spin" />AI-исследование выполняется…</> : <><Sparkles className="w-4 h-4" />Улучшить с AI</>}</button>
             <button aria-label="Перейти к финальной версии" aria-describedby="babok-save-status" title={!hasSavedVersion || hasUnsavedChanges ? 'Сначала сохраните текущую версию требований' : 'Пропустить необязательное AI-исследование'} disabled={busy || researchBusy || !hasSavedVersion || hasUnsavedChanges} onClick={() => saveRegistry({ ...(latestVersion?.decisions || {}), skippedResearch: true })} className="h-10 shrink-0 whitespace-nowrap px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed">К финальной версии</button>
@@ -1080,44 +1080,6 @@ function DecompositionResult({ value, latestVersion, onSave, onStartResearch, on
   );
 }
 
-function ApplicabilityBars({ value }) {
-  if (value == null || !Number.isFinite(Number(value))) return <span className="text-xs text-slate-500">Оценка не указана</span>;
-  const numericValue = Number(value);
-  const normalizedValue = Number.isFinite(numericValue) ? Math.min(100, Math.max(0, numericValue)) : 50;
-  const bars = 5;
-  const filled = Math.round((normalizedValue / 100) * bars);
-
-  return (
-    <div
-      role="meter"
-      aria-label="Применимость · оценка модели"
-      aria-valuemin="0"
-      aria-valuemax="100"
-      aria-valuenow={normalizedValue}
-      aria-valuetext={`Оценка модели: применимость ${normalizedValue}%`}
-      className="flex items-center gap-1.5"
-    >
-      <span aria-hidden="true" className="flex gap-0.5">
-        {Array.from({ length: bars }, (_, index) => (
-          <span
-            key={index}
-            data-testid="applicability-segment"
-            data-active={index < filled ? 'true' : 'false'}
-            className={`w-1 h-3.5 rounded-sm ${index < filled ? 'bg-emerald-500' : 'bg-gray-200'}`}
-          />
-        ))}
-      </span>
-      <span aria-hidden="true" className="text-xs text-gray-500 font-medium">{normalizedValue}%</span>
-    </div>
-  );
-}
-
-function inferTargetTypeFromInsightCategory(category) {
-  if (category === 'risks') return 'nonfunctional';
-  if (category === 'standards') return 'business';
-  return 'functional';
-}
-
 function displayEnhancementsForInsight(insight) {
   const raw = Array.isArray(insight.enhancements) ? insight.enhancements : [];
   const structured = raw
@@ -1166,7 +1128,7 @@ function InsightEnhancementDecisionRow({ enhancement, decision, onDecision }) {
           aria-pressed={accepted}
           onClick={() => onDecision('accepted')}
           title={accepted ? 'Проверить принятое изменение' : 'Проверить перед принятием'}
-          className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${accepted ? 'border-emerald-600 bg-emerald-600 text-white' : TARGET_TYPE_COLORS[type] || TARGET_TYPE_COLORS.functional}`}
+          className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-indigo-500 ${accepted ? 'border-emerald-600 bg-emerald-600 text-white' : TARGET_TYPE_COLORS[type] || TARGET_TYPE_COLORS.functional}`}
         >
           {accepted ? <Check className="h-4 w-4" /> : action.operation === 'replace' ? <Pencil className="h-4 w-4" /> : <Plus className={`h-4 w-4 ${accepted ? '' : TARGET_TYPE_ICON_COLORS[type] || TARGET_TYPE_ICON_COLORS.functional}`} />}Принять
         </button>
@@ -1175,7 +1137,7 @@ function InsightEnhancementDecisionRow({ enhancement, decision, onDecision }) {
           aria-label={`Отклонить улучшение: ${enhancement.text}`}
           aria-pressed={rejected}
           onClick={() => onDecision('rejected')}
-          className={`rounded-lg border px-3 py-2 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${rejected ? 'border-slate-700 bg-slate-700 text-white' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
+          className={`rounded-lg border px-3 py-2 text-xs font-semibold transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-indigo-500 ${rejected ? 'border-slate-700 bg-slate-700 text-white' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
         >
           Отклонить
         </button>
@@ -1187,7 +1149,7 @@ function InsightEnhancementDecisionRow({ enhancement, decision, onDecision }) {
 function SourceRequirementsSnapshot({ requirements, onBack, initialRecordId }) {
   return (
     <section className="space-y-5">
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+      <div className="bg-white rounded-2xl shadow-xs border border-slate-200 p-5">
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
             <div className="flex items-center gap-2 flex-wrap">
@@ -1197,7 +1159,7 @@ function SourceRequirementsSnapshot({ requirements, onBack, initialRecordId }) {
             </div>
             <p className="text-sm text-slate-500 mt-2">Эта неизменяемая версия использовалась для формирования результатов исследования.</p>
           </div>
-          <button onClick={onBack} className="px-4 py-2 border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"><ArrowLeft className="w-4 h-4" />К результатам AI-исследования</button>
+          <button onClick={onBack} className="px-4 py-2 border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-2 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-indigo-500"><ArrowLeft className="w-4 h-4" />К результатам AI-исследования</button>
         </div>
       </div>
       <div role="region" aria-label="Требования, переданные в AI-исследование" className="grid gap-4 grid-cols-1"><RecordFocus id={initialRecordId} />
@@ -1240,7 +1202,7 @@ function OriginalBusinessContext({ value, loading = false, editable = false, com
   const context = value?.trim();
   return (
     <details className={compact ? "group text-sm" : "group border-t border-slate-200"}>
-      <summary aria-label="Исходный бизнес-контекст" className={compact ? "cursor-pointer flex flex-wrap items-center gap-x-3 gap-y-1 py-1 text-sm focus-visible:outline-indigo-600" : "list-none cursor-pointer px-5 md:px-6 py-3.5 flex items-center justify-between gap-4 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"}>
+      <summary aria-label="Исходный бизнес-контекст" className={compact ? "cursor-pointer flex flex-wrap items-center gap-x-3 gap-y-1 py-1 text-sm focus-visible:outline-indigo-600" : "list-none cursor-pointer px-5 md:px-6 py-3.5 flex items-center justify-between gap-4 text-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-indigo-500"}>
         <span className="min-w-0">
           <span className="font-semibold text-slate-700">{compact ? 'Исходная задача' : 'Исходная бизнес-задача'}</span>
           <span className={compact ? "hidden sm:inline-block ml-2 text-xs text-slate-600 align-bottom truncate max-w-md" : "block text-xs text-slate-500 truncate mt-0.5 max-w-3xl"}>{loading ? 'Загружаем исходный контекст…' : context || 'Исходный контекст недоступен'}</span>
@@ -1271,7 +1233,7 @@ function BusinessContextInputCard({ open, onOpenChange, running, summary, childr
         {!expanded && summary && <p className="text-xs text-slate-600 truncate mt-1 max-w-3xl" title={summary}>{summary}</p>}
         {running && expanded && <p className="text-xs font-semibold text-indigo-700 mt-3">Декомпозиция выполняется</p>}
       </div>
-      {collapsible && <button type="button" aria-expanded={expanded} aria-controls="business-context-form" aria-label={expanded ? 'Свернуть форму бизнес-задачи' : 'Развернуть форму бизнес-задачи'} onClick={() => onOpenChange(!expanded)} className="shrink-0 inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">
+      {collapsible && <button type="button" aria-expanded={expanded} aria-controls="business-context-form" aria-label={expanded ? 'Свернуть форму бизнес-задачи' : 'Развернуть форму бизнес-задачи'} onClick={() => onOpenChange(!expanded)} className="shrink-0 inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-indigo-500">
         <span className="hidden sm:inline">{expanded ? 'Свернуть' : 'Развернуть'}</span>
         {expanded ? <ChevronUp className="w-4 h-4" aria-hidden="true" /> : <ChevronDown className="w-4 h-4" aria-hidden="true" />}
       </button>}
@@ -1323,7 +1285,7 @@ function FinalRequirementsEditor({ latestVersion, onSave, onShowInsights, onShow
     <ReviewDraftProvider review={review} submit={saveReview} busy={busy}><section className="space-y-5">
       <LegacyDeletionNotice deletion={deletion} />
       {validationError && <p role="alert">{validationError.id}: {validationError.message}</p>}
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+      <div className="bg-white rounded-2xl shadow-xs border border-slate-200 p-5">
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
             <div className="flex items-center gap-2 flex-wrap"><CheckCircle2 className="w-5 h-5 text-emerald-600" /><h1 className="text-xl font-bold text-slate-900">Финальная версия требований</h1></div>
@@ -1338,7 +1300,7 @@ function FinalRequirementsEditor({ latestVersion, onSave, onShowInsights, onShow
         </div>
       </div>
 
-      {hasUnsavedChanges && <div className="sticky top-16 z-30 -mx-4 px-4 py-3 bg-gray-50/95 backdrop-blur border-y border-slate-200 flex items-center justify-between gap-4 flex-wrap">
+      {hasUnsavedChanges && <div className="sticky top-16 z-30 -mx-4 px-4 py-3 bg-gray-50/95 backdrop-blur-sm border-y border-slate-200 flex items-center justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-3"><span className={`w-8 h-8 rounded-full flex items-center justify-center ${hasUnsavedChanges ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>{hasUnsavedChanges ? <Pencil className="w-4 h-4" /> : <Check className="w-4 h-4" />}</span><div><p className="font-semibold text-slate-900">{hasUnsavedChanges ? 'Есть несохранённые изменения' : 'Изменения сохранены'}</p><p className="text-xs text-slate-500 mt-0.5">Редакция от {formatRuDateTime(latestVersion.createdAt)}</p></div></div>
         <div className="flex flex-wrap items-center gap-2"><ResultExportAction /><button disabled={busy} onClick={() => saveReview()} className="w-full sm:w-auto px-5 py-2.5 bg-indigo-600 text-white text-sm font-semibold rounded-xl hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed">Сохранить изменения</button></div>
       </div>}
@@ -1448,7 +1410,7 @@ function BabokRequirementsInsightsResult({ value, latestVersion, businessContext
   const finalVersionSaved = !review.dirty && Boolean(latestVersion?.versionId) && sameKeys(acceptedKeys, savedAcceptedKeys) && sameKeys(rejectedKeys, savedRejectedKeys);
   return (
     <ReviewDraftProvider review={review} submit={saveInsights} busy={busy}><section className="space-y-5">
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-5">
+      <div className="bg-white rounded-2xl shadow-xs border border-gray-200 p-5">
         <div className="flex items-start justify-between gap-4 flex-wrap"><div><div className="flex items-center gap-2"><Sparkles className="w-5 h-5 text-indigo-500" /><h1 className="text-xl font-bold text-gray-900">Результаты AI-исследования</h1></div><p className="text-sm text-gray-500 mt-2">Выберите полезные улучшения для финальной версии требований.</p></div><SourceDataMenu onShowContext={() => setActiveView('context')} onShowRequirements={() => setActiveView('source')} /></div>
       </div>
       <ResearchInsightWorkspace
@@ -1527,7 +1489,7 @@ function RequirementsInsightsResult({ value, latestVersion, businessContext, bus
   const finalVersionSaved = !review.dirty && Boolean(latestVersion?.versionId) && sameKeys(acceptedKeys, savedAcceptedKeys) && sameKeys(rejectedKeys, savedRejectedKeys);
   return (
     <ReviewDraftProvider review={review} submit={saveInsights} busy={busy}><section className="space-y-5">
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-5">
+      <div className="bg-white rounded-2xl shadow-xs border border-gray-200 p-5">
         <div className="flex items-start justify-between gap-4 flex-wrap"><div><div className="flex items-center gap-2"><Sparkles className="w-5 h-5 text-indigo-500" /><h1 className="text-xl font-bold text-gray-900">Результаты AI-исследования</h1></div><p className="text-sm text-gray-500 mt-2">Выберите полезные улучшения для финальной версии требований.</p></div><SourceDataMenu onShowContext={() => setActiveView('context')} onShowRequirements={() => setActiveView('source')} /></div>
       </div>
       <ResearchInsightWorkspace
@@ -1567,7 +1529,7 @@ function ResultView({ content, latestVersion, businessContext, businessContextLo
 function ModelControls({ models, model, setModel, temperature, setTemperature, reasoning, setReasoning, capabilities }) {
   const levels = reasoningLevels(model, capabilities);
   const forcedReasoningModel = !levels.includes('disabled');
-  const controlClassName = 'reqai-control reqai-quiet-focus w-full h-10 px-3 border rounded-lg bg-white focus:border-indigo-400 focus:outline-none focus:ring-0';
+  const controlClassName = 'reqai-control reqai-quiet-focus w-full h-10 px-3 border rounded-lg bg-white focus:border-indigo-400 focus:outline-hidden focus:ring-0';
   return (
     <div className="grid gap-3 md:grid-cols-2">
       <p className="md:col-span-2 text-sm text-slate-600">Настройки следующего запуска. Сохранённый результат не изменится.</p>
@@ -1634,7 +1596,7 @@ function ActiveJobPanel({ job, onCancel, onBackground }) {
   const TitleTag = job.type === 'DECOMPOSITION' || job.mode === 'REQUIREMENTS_INSIGHTS' ? 'h2' : 'p';
   const durationHint = job.type === 'DECOMPOSITION' ? 'Оценка ожидания: 2–4 минуты' : 'Оценка ожидания: несколько минут';
   const takingLonger = elapsedMs >= (job.type === 'DECOMPOSITION' ? 4 : 15) * 60_000;
-  return <section aria-label="Выполнение задачи" className="bg-white rounded-2xl border border-indigo-200 shadow-sm overflow-hidden">
+  return <section aria-label="Выполнение задачи" className="bg-white rounded-2xl border border-indigo-200 shadow-xs overflow-hidden">
     <div className="p-4 md:p-5">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-3 min-w-0">
@@ -1661,8 +1623,8 @@ function ActiveJobPanel({ job, onCancel, onBackground }) {
       </div>
       <div className="flex shrink-0 justify-end">
         <div className="flex gap-2 flex-wrap">
-          <button onClick={onBackground} className="px-4 py-2.5 rounded-lg border border-indigo-200 bg-white text-sm font-semibold text-indigo-700 hover:bg-indigo-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">Продолжить в фоне</button>
-          <button onClick={onCancel} className="px-4 py-2.5 rounded-lg border border-slate-300 bg-white text-sm font-semibold text-slate-600 hover:text-red-600 hover:border-red-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">Отменить</button>
+          <button onClick={onBackground} className="px-4 py-2.5 rounded-lg border border-indigo-200 bg-white text-sm font-semibold text-indigo-700 hover:bg-indigo-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-indigo-500">Продолжить в фоне</button>
+          <button onClick={onCancel} className="px-4 py-2.5 rounded-lg border border-slate-300 bg-white text-sm font-semibold text-slate-600 hover:text-red-600 hover:border-red-300 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-indigo-500">Отменить</button>
         </div>
       </div>
       </div>
@@ -1678,7 +1640,7 @@ function BackgroundJobIndicator({ job, onOpen }) {
   }, []);
   const { progress, stageLabel, estimated } = progressPresentationForJob(job, now);
   const accessibleStage = stageLabel ? `. Этап: ${stageLabel}` : '';
-  return <button aria-label={`Фоновая задача: ${job.message || STATUS_LABELS[job.status]}${accessibleStage}`} title={estimated ? 'Процент ориентировочный; этап подтверждается сервером.' : undefined} onClick={onOpen} className="px-3 py-2 rounded-lg text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"><Loader2 className="w-3.5 h-3.5 animate-spin" /><span className="hidden lg:inline">Задача в фоне</span><span>{progress}%</span></button>;
+  return <button aria-label={`Фоновая задача: ${job.message || STATUS_LABELS[job.status]}${accessibleStage}`} title={estimated ? 'Процент ориентировочный; этап подтверждается сервером.' : undefined} onClick={onOpen} className="px-3 py-2 rounded-lg text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 flex items-center gap-2 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-indigo-500"><Loader2 className="w-3.5 h-3.5 animate-spin" /><span className="hidden lg:inline">Задача в фоне</span><span>{progress}%</span></button>;
 }
 
 function JobStateCard({ job, onCancel, onRetry, retryBusy = false }) {
@@ -1708,7 +1670,7 @@ function JobStateCard({ job, onCancel, onRetry, retryBusy = false }) {
             <p className="text-xs text-slate-500 mt-0.5">{active ? 'Результат появится на странице автоматически.' : failed ? failureMessage(job) : onRetry ? 'Можно повторить исследование сохранённых требований.' : 'Можно сформировать требования повторно.'}</p>
           </div>
         </div>
-        {(failed || cancelled) && onRetry && <button type="button" onClick={onRetry} disabled={retryBusy} className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-wait focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2">{retryBusy && <Loader2 aria-hidden="true" className="w-4 h-4 animate-spin" />}{retryBusy ? 'Запускаем исследование…' : 'Повторить исследование'}</button>}
+        {(failed || cancelled) && onRetry && <button type="button" onClick={onRetry} disabled={retryBusy} className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-wait focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2">{retryBusy && <Loader2 aria-hidden="true" className="w-4 h-4 animate-spin" />}{retryBusy ? 'Запускаем исследование…' : 'Повторить исследование'}</button>}
         {active && <button onClick={onCancel} className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-600 hover:border-red-300 hover:text-red-600">Отменить</button>}
       </div>
     </section>
@@ -1775,7 +1737,7 @@ function DebugPanel({ open, onClose, jobId, observations, refreshKey, triggerRef
     <aside ref={panelRef} className="absolute right-0 top-0 h-full w-full lg:max-w-2xl bg-white shadow-2xl flex flex-col overflow-hidden">
       <header className="px-5 py-4 border-b border-slate-200 flex items-start justify-between gap-4">
         <div><p className="text-xs font-semibold text-indigo-600 uppercase tracking-wide">Диагностика</p><h2 className="font-bold text-slate-900 text-lg">Debug задачи</h2><p className="font-mono text-xs text-slate-500 mt-1 break-all">{jobId}</p></div>
-        <button aria-label="Закрыть" onClick={onClose} className="p-2 rounded-lg text-slate-500 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"><X className="w-5 h-5" /></button>
+        <button aria-label="Закрыть" onClick={onClose} className="p-2 rounded-lg text-slate-500 hover:bg-slate-100 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-indigo-500"><X className="w-5 h-5" /></button>
       </header>
       <div className="flex-1 overflow-y-auto p-4 md:p-5">
         {error && <div role="alert" className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
@@ -1790,7 +1752,7 @@ function DebugPanel({ open, onClose, jobId, observations, refreshKey, triggerRef
         <div className="flex items-center justify-between gap-3 mb-3"><h3 className="font-semibold text-slate-900">Timeline</h3><div className="flex gap-2">{onDownload && <button onClick={onDownload} className="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-600"><Download className="inline w-3.5 h-3.5 mr-1" />JSON</button>}<button onClick={() => load()} disabled={loading} className="px-3 py-1.5 rounded-lg border border-indigo-200 text-xs font-semibold text-indigo-700 disabled:opacity-50">Обновить</button></div></div>
         {loading && !trace ? <div className="py-12 text-center text-sm text-slate-500"><Loader2 className="w-5 h-5 animate-spin mx-auto mb-2" />Загрузка трассировки…</div> : entries.length === 0 ? <p className="py-12 text-center text-sm text-slate-600">События пока не записаны.</p> : <ol className="space-y-3" aria-label="Timeline выполнения задачи">{entries.map((entry) => {
           const isOpen = expanded.has(entry.id); const detail = details[entry.id];
-          return <li key={entry.id} className="relative pl-5 before:absolute before:left-[5px] before:top-4 before:bottom-[-14px] before:w-px before:bg-slate-200 last:before:hidden"><span className="absolute left-0 top-4 w-2.5 h-2.5 rounded-full bg-indigo-500 ring-4 ring-white" /><div className="rounded-xl border border-slate-200 bg-white overflow-hidden"><button aria-expanded={isOpen} onClick={() => toggle(entry)} className="w-full p-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500"><div className="flex justify-between gap-3"><div className="min-w-0"><div className="flex gap-2 items-center flex-wrap"><span className="font-semibold text-sm text-slate-800">{entry.name}</span><span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${TRACE_TONES[entry.status] || TRACE_TONES.INFO}`}>{entry.status}</span>{entry.source === 'CLIENT_LOCAL' && <span className="text-[10px] text-violet-700 bg-violet-50 rounded-full px-2 py-0.5">текущая вкладка</span>}</div><p className="text-xs text-slate-600 mt-1">{entry.category}{entry.stepId ? ` · ${entry.stepId}` : ''}</p></div><div className="text-right shrink-0"><time className="text-[11px] text-slate-600">{entry.startedAt ? new Date(entry.startedAt).toLocaleTimeString() : '—'}</time><p className="text-[11px] text-slate-500 mt-1">{formatDuration(entry.durationMs)}</p></div></div></button>{isOpen && <div className="border-t border-slate-100 bg-slate-50 p-3 space-y-2"><p className="text-xs text-slate-500">Детали: {entry.detail?.state === 'NOT_RECORDED' ? 'не записаны' : entry.detail?.state === 'EXPIRED' ? 'срок хранения истёк' : entry.detail?.state === 'REDACTED' ? 'скрыты политикой доступа' : entry.detail?.state || '—'}</p><pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-slate-900 p-3 text-[11px] text-slate-100">{JSON.stringify(detail?.content ?? detail ?? entry.metadata ?? {}, null, 2)}</pre></div>}</div></li>;
+          return <li key={entry.id} className="relative pl-5 before:absolute before:left-[5px] before:top-4 before:bottom-[-14px] before:w-px before:bg-slate-200 last:before:hidden"><span className="absolute left-0 top-4 w-2.5 h-2.5 rounded-full bg-indigo-500 ring-4 ring-white" /><div className="rounded-xl border border-slate-200 bg-white overflow-hidden"><button aria-expanded={isOpen} onClick={() => toggle(entry)} className="w-full p-3 text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500"><div className="flex justify-between gap-3"><div className="min-w-0"><div className="flex gap-2 items-center flex-wrap"><span className="font-semibold text-sm text-slate-800">{entry.name}</span><span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${TRACE_TONES[entry.status] || TRACE_TONES.INFO}`}>{entry.status}</span>{entry.source === 'CLIENT_LOCAL' && <span className="text-[10px] text-violet-700 bg-violet-50 rounded-full px-2 py-0.5">текущая вкладка</span>}</div><p className="text-xs text-slate-600 mt-1">{entry.category}{entry.stepId ? ` · ${entry.stepId}` : ''}</p></div><div className="text-right shrink-0"><time className="text-[11px] text-slate-600">{entry.startedAt ? new Date(entry.startedAt).toLocaleTimeString() : '—'}</time><p className="text-[11px] text-slate-500 mt-1">{formatDuration(entry.durationMs)}</p></div></div></button>{isOpen && <div className="border-t border-slate-100 bg-slate-50 p-3 space-y-2"><p className="text-xs text-slate-500">Детали: {entry.detail?.state === 'NOT_RECORDED' ? 'не записаны' : entry.detail?.state === 'EXPIRED' ? 'срок хранения истёк' : entry.detail?.state === 'REDACTED' ? 'скрыты политикой доступа' : entry.detail?.state || '—'}</p><pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-slate-900 p-3 text-[11px] text-slate-100">{JSON.stringify(detail?.content ?? detail ?? entry.metadata ?? {}, null, 2)}</pre></div>}</div></li>;
         })}</ol>}
         {trace?.nextCursor && <button disabled={loading} onClick={() => load({ cursor: trace.nextCursor, append: true })} className="mt-4 w-full px-4 py-2.5 rounded-xl border border-indigo-200 text-indigo-700 text-sm font-semibold disabled:opacity-50">Загрузить ещё</button>}
       </div>
@@ -1801,7 +1763,7 @@ function DebugPanel({ open, onClose, jobId, observations, refreshKey, triggerRef
 function ArchivedLegacyResult({ job, result, onDownload }) {
   const status = primaryStatus(result || job);
   const timestamps = [['Создана', job.createdAt], ['Запущена', job.startedAt], ['Завершена', job.completedAt]].filter(([, value]) => value);
-  return <section aria-label="Архивный результат" className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 md:p-6">
+  return <section aria-label="Архивный результат" className="bg-white rounded-2xl border border-slate-200 shadow-xs p-5 md:p-6">
     <div className="flex items-start justify-between gap-4 flex-wrap">
       <div><p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Архивная задача · только чтение</p><h1 className="text-2xl font-bold text-slate-900 mt-1">Результат старой версии</h1><p className="text-sm text-slate-500 mt-2">Этот сценарий больше нельзя запускать или повторять. Сохранённые данные и диагностика остаются доступны.</p></div>
       <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${status.tone}`}>{status.label}</span>
@@ -2232,10 +2194,9 @@ export default function AsyncJobWorkspace() {
     try { localStorage.setItem(`reqai.nextAiSettings:${actorScope}`, JSON.stringify({ model, temperature: Number(temperature), reasoning })); } catch { /* settings still apply to this tab */ }
   }, [actorScope, identityReady, model, temperature, reasoning]);
 
-  const options = useMemo(() => ({ mode: 'DECOMPOSITION', model, temperature: Number(temperature), reasoning }), [model, reasoning, temperature]);
-
   async function submit() {
     if (editorDirtyRef.current) { setPendingNavigation({ submit: true }); return; }
+    if (!inputCapabilities.integrationAvailable) { setError('Запуск декомпозиции недоступен на этом сервере. Обратитесь к администратору.'); return; }
     const input = file || new Blob([requirements], { type: 'text/plain; charset=utf-8' });
     if (!file && !requirements.trim()) return;
     setContextFormOpen(false);
@@ -2255,9 +2216,7 @@ export default function AsyncJobWorkspace() {
       const artifact = await uploadMaterial(input);
       const extra = await Promise.allSettled([baselineFile, ...referenceFiles].filter(Boolean).map(uploadMaterial));
       if (extra.some((item) => item.status === 'rejected')) throw new Error('Не все материалы загружены. Успешные вложения сохранены; повторите запуск, чтобы загрузить оставшиеся.');
-      const accepted = inputCapabilities.integrationAvailable
-        ? await enterpriseApi.decomposeRequirements({ inputArtifactId: artifact.artifactId, ...(baselineFile ? { baselineArtifactId: uploadedMaterialsRef.current.get(baselineFile).artifactId } : {}), ...(referenceFiles.length ? { referenceArtifactIds: referenceFiles.map((value) => uploadedMaterialsRef.current.get(value).artifactId) } : {}), model, temperature: Number(temperature), reasoning })
-        : await enterpriseApi.createJob({ type: 'DECOMPOSITION', inputArtifactId: artifact.artifactId, options });
+      const accepted = await enterpriseApi.decomposeRequirements({ inputArtifactId: artifact.artifactId, ...(baselineFile ? { baselineArtifactId: uploadedMaterialsRef.current.get(baselineFile).artifactId } : {}), ...(referenceFiles.length ? { referenceArtifactIds: referenceFiles.map((value) => uploadedMaterialsRef.current.get(value).artifactId) } : {}), model, temperature: Number(temperature), reasoning });
       unsentContextRef.current = { text: '', file: null, baseline: null, references: [] }; setHasContextDraft(false);
       saveContextDraft(actorScope, unsentContextRef.current); setContextDraftNotice('');
       navigate(accepted.jobId);
@@ -2433,7 +2392,7 @@ export default function AsyncJobWorkspace() {
   const commonInput = <ContextInput text={requirements} onText={(value) => changeContext('text', value, setRequirements)} file={file} onFile={(value) => changeContext('file', value, setFile)} baseline={baselineFile} onBaseline={(value) => changeContext('baseline', value, setBaselineFile)} references={referenceFiles} onReferences={(value) => changeContext('references', value, setReferenceFiles)} uploads={materialUploads} busy={decompositionInProgress} {...inputCapabilities} />;
 
   const submitButton = (
-    <button disabled={!canSubmit || busy || submissionBlocked} onClick={submit} className="w-full sm:w-auto text-white py-3 px-6 rounded-lg font-semibold disabled:bg-slate-300 disabled:cursor-not-allowed flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2">
+    <button disabled={!canSubmit || busy || submissionBlocked} onClick={submit} className="w-full sm:w-auto text-white py-3 px-6 rounded-lg font-semibold disabled:bg-slate-300 disabled:cursor-not-allowed flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2">
       {busy ? <><Loader2 className="w-5 h-5 animate-spin" />Загрузка {Math.round(upload * 100)}%</> : submissionBlocked ? <><Loader2 className="w-5 h-5 animate-spin" />{activeJob ? job.type === 'DECOMPOSITION' ? 'Декомпозиция выполняется…' : 'Исследование выполняется…' : 'Другая задача выполняется…'}</> : <><Sparkles className="w-4 h-4" />Декомпозировать требования</>}
     </button>
   );
@@ -2456,16 +2415,16 @@ export default function AsyncJobWorkspace() {
       {finalReviewPrompt && <ReviewDialog label="Открытые вопросы перед финализацией" onClose={() => { finalReviewPrompt.resolve(false); setFinalReviewPrompt(null); }}><h2 className="font-bold text-lg">В документе остаются вопросы</h2><p className="text-sm my-3">Сохранение финальной версии не означает, что все требования согласованы. Подтвердите, что сохраняете перечисленные вопросы открытыми. Они войдут в экспорт.</p><ul className="space-y-2">{finalReviewPrompt.issues.map((issue) => <li key={issue.id} className="rounded-lg border border-amber-200 p-3 text-sm">{issue.id}: {issue.text}</li>)}</ul><div className="flex gap-2 mt-4 flex-wrap"><button onClick={() => { finalReviewPrompt.resolve(false); setFinalReviewPrompt(null); }} className="p-3 rounded-lg border">Вернуться к проверке</button><button onClick={() => { finalReviewPrompt.resolve(true); setFinalReviewPrompt(null); }} className="p-3 rounded-lg bg-indigo-600 text-white">Сохранить с открытыми вопросами</button></div></ReviewDialog>}
       {pendingNavigation && !finalReviewPrompt && <UnsavedNavigationDialog busy={versionBusy} onSave={() => resolveNavigation(true)} onDiscard={() => resolveNavigation(false)} onStay={() => setPendingNavigation(null)} />}
       {rebasePreview && <ReviewDialog label="Сравнение версий" onClose={() => setRebasePreview(null)}><ReviewConflict preview={rebasePreview} onClose={() => setRebasePreview(null)} onApply={applyRemoteReview} /></ReviewDialog>}
-      <nav className="bg-white/95 backdrop-blur border-b border-[var(--reqai-line)] sticky top-0 z-50">
+      <nav className="bg-white/95 backdrop-blur-sm border-b border-[var(--reqai-line)] sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4">
           <div className="flex items-center min-h-16 gap-3 sm:gap-6">
             <span className="text-base font-extrabold tracking-tight mr-auto sm:mr-3"><span className="text-slate-900">Req</span><span className="text-indigo-600">AI</span></span>
-            <button onClick={() => startNewTask()} aria-current="page" className="h-16 px-1 text-sm font-semibold border-b-2 border-indigo-600 text-indigo-600 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">Подготовка требований</button>
-            {job && TERMINAL.has(job.status) && <button aria-label="Новая задача" onClick={startNewTask} className="p-2 sm:px-3 sm:py-2 rounded-lg text-sm font-semibold text-indigo-600 hover:bg-indigo-50 flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"><Plus className="w-4 h-4" /><span className="hidden sm:inline">Новая задача</span></button>}
+            <button onClick={() => startNewTask()} aria-current="page" className="h-16 px-1 text-sm font-semibold border-b-2 border-indigo-600 text-indigo-600 transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-indigo-500">Подготовка требований</button>
+            {job && TERMINAL.has(job.status) && <button aria-label="Новая задача" onClick={startNewTask} className="p-2 sm:px-3 sm:py-2 rounded-lg text-sm font-semibold text-indigo-600 hover:bg-indigo-50 flex items-center gap-2 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-indigo-500"><Plus className="w-4 h-4" /><span className="hidden sm:inline">Новая задача</span></button>}
             {backgroundActive && <BackgroundJobIndicator job={backgroundJob} onOpen={() => load(backgroundJob.jobId)} />}
-            <button aria-label="История" onClick={() => setHistoryOpen(true)} className="p-2 sm:px-3 sm:py-2 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-100 flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"><History className="w-4 h-4" /><span className="hidden sm:inline">История</span></button>
+            <button aria-label="История" onClick={() => setHistoryOpen(true)} className="p-2 sm:px-3 sm:py-2 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-100 flex items-center gap-2 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-indigo-500"><History className="w-4 h-4" /><span className="hidden sm:inline">История</span></button>
             <AiSettingsDisclosure model={model}><ModelControls capabilities={modelSettings} models={models} model={model} setModel={(value) => { setModel(value); setReasoning(effectiveReasoning(value, reasoning, modelSettings)); }} temperature={temperature} setTemperature={setTemperature} reasoning={reasoning} setReasoning={setReasoning} /></AiSettingsDisclosure>
-            <button ref={debugTriggerRef} aria-label="Debug" title={job ? 'Debug' : 'Debug станет доступен после запуска задачи'} disabled={!job} onClick={() => setDebugOpen(true)} className="ml-auto p-2 rounded-lg text-slate-600 hover:text-slate-600 hover:bg-slate-100 disabled:text-slate-300 disabled:hover:bg-transparent disabled:cursor-not-allowed flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"><Bug className="w-4 h-4" /></button>
+            <button ref={debugTriggerRef} aria-label="Debug" title={job ? 'Debug' : 'Debug станет доступен после запуска задачи'} disabled={!job} onClick={() => setDebugOpen(true)} className="ml-auto p-2 rounded-lg text-slate-600 hover:text-slate-600 hover:bg-slate-100 disabled:text-slate-300 disabled:hover:bg-transparent disabled:cursor-not-allowed flex items-center justify-center focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-slate-400"><Bug className="w-4 h-4" /></button>
           </div>
         </div>
       </nav>
@@ -2539,7 +2498,6 @@ export {
   babokRecordDetails,
   makeLegacyRecord,
   displayEnhancementsForInsight,
-  inferTargetTypeFromInsightCategory,
   displayBabokEnhancementsForInsight,
   babokRegistryIds,
   addBabokResearchRecord,
@@ -2555,7 +2513,6 @@ export {
   RequirementsLayoutToggle,
   BabokRegistryResult,
   DecompositionResult,
-  ApplicabilityBars,
   InsightEnhancementDecisionRow,
   SourceRequirementsSnapshot,
   SourceBusinessContextSnapshot,

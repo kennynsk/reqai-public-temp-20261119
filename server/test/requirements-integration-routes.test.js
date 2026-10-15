@@ -15,7 +15,7 @@ async function withServer(run, serviceOverrides = {}) {
   const jobService = { create: async (input) => { accepted.push(input); return { job: { id: UUID, status: 'ACCEPTED' }, replayed: false }; } };
   const requirementsIntegrationService = createRequirementsIntegrationService({
     config,
-    artifactRepository: { metadata: async () => ({ id: UUID, sha256: 'a'.repeat(64) }) },
+    artifactRepository: { validateMaterial: async () => ({ id: UUID, sha256: 'a'.repeat(64) }) },
     requirementsVersionService: { resolveResearchSource: async ({ versionId }) => ({ versionId, inputArtifactId: versionId, parentJobId: UUID, inputSha256: 'b'.repeat(64) }) },
     jobService,
     uuid: () => UUID,
@@ -79,14 +79,13 @@ test('capability discovery advertises only supported creation paths', () => with
   assert.equal(value.capabilities.researchKinds, undefined);
 }));
 
-test('generic job creation rejects retired modes before persistence', () => withServer(async (base, accepted) => {
+test('generic job creation is unavailable before persistence', () => withServer(async (base, accepted) => {
   const response = await post(base, '/api/v1/jobs', {
     type: 'RESEARCH',
     inputArtifactId: UUID,
     options: { mode: 'AGENT_RESEARCH' },
   });
-  assert.equal(response.status, 400);
-  assert.equal((await response.json()).error.code, 'UNSUPPORTED_JOB_MODE');
+  assert.equal(response.status, 404);
   assert.equal(accepted.length, 0);
 }));
 
@@ -148,7 +147,7 @@ test('mock-provider domain flow accepts, completes and exposes canonical status 
   };
   const operations = createRequirementsIntegrationService({
     config, jobService, uuid: nextUuid,
-    artifactRepository: { metadata: async () => ({ id: UUID, sha256: 'a'.repeat(64) }) },
+    artifactRepository: { validateMaterial: async () => ({ id: UUID, sha256: 'a'.repeat(64) }) },
     requirementsVersionService: { resolveResearchSource: async ({ versionId }) => ({ inputArtifactId: versionId, parentJobId: UUID, inputSha256: 'b'.repeat(64) }) },
   });
   const jobQueryService = {

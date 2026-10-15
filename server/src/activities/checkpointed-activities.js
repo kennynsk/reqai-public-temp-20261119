@@ -3,7 +3,11 @@ import { createHash } from 'node:crypto';
 import { ApplicationFailure, heartbeat } from '@temporalio/activity';
 
 import { evaluateOutcome } from '../domain/outcome.js';
-import { logEvent } from '../middleware/safe-logging.js';
+import { logEvent, redactDiagnosticMetadata } from '../middleware/safe-logging.js';
+
+function lifecycleReference(input, status, outcome = null, reasonCode = null) {
+  return { jobId: input.jobId, status, outcome, resultArtifactId: input.resultArtifactId || null, reasonCode };
+}
 
 function hashInput(value) { return createHash('sha256').update(JSON.stringify(value)).digest('hex'); }
 
@@ -30,7 +34,8 @@ const NON_RETRYABLE_FAILURE_TYPES = new Set([
 ]);
 
 export function failureReason(error) {
-  return error?.reasonCode || error?.type || error?.code || error?.name || 'ACTIVITY_FAILED';
+  const value = error?.reasonCode || error?.type || error?.code || error?.name;
+  return typeof value === 'string' && /^[A-Z][A-Z0-9_]{0,99}$/.test(value) ? value : 'ACTIVITY_FAILED';
 }
 
 function safeFailureDetails(error) {
@@ -38,18 +43,17 @@ function safeFailureDetails(error) {
   if (!details || typeof details !== 'object' || Array.isArray(details)) return null;
   if (error.type === 'BABOK_SEMANTIC_INVALID' && Array.isArray(details.issues)) return {
     policy: details.policy === 'babok-semantic.v2' ? details.policy : 'babok-semantic.v1',
-    issues: details.issues.slice(0, 30).map((issue) => ({ key: String(issue.key || '$').slice(0, 100), code: String(issue.code || 'SEMANTIC_REVIEW_FINDING').slice(0, 100), reason: String(issue.reason || '').slice(0, 512) })),
+    issues: details.issues.slice(0, 30).map((issue) => ({ key: String(issue.key || '$').slice(0, 100), code: String(issue.code || 'SEMANTIC_REVIEW_FINDING').slice(0, 100), reason: '[REDACTED]' })),
   };
   const path = typeof details.path === 'string' ? details.path.slice(0, 256) : null;
-  const reason = typeof details.reason === 'string' ? details.reason.slice(0, 512) : null;
+  const reason = typeof details.reason === 'string' ? '[REDACTED]' : null;
   return path || reason ? { ...(path ? { path } : {}), ...(reason ? { reason } : {}) } : null;
 }
 
 export function toNonRetryableActivityFailure(error) {
-  if (error?.nonRetryable === true) return error;
   const reasonCode = failureReason(error);
-  if (!NON_RETRYABLE_FAILURE_TYPES.has(reasonCode)) return error;
-  return ApplicationFailure.nonRetryable(error?.message || reasonCode, reasonCode, safeFailureDetails(error));
+  const safeCode = /^[A-Z][A-Z0-9_]{0,99}$/.test(reasonCode) ? reasonCode : 'ACTIVITY_FAILED';
+  return ApplicationFailure.create({ message: safeCode, type: safeCode, nonRetryable: error?.nonRetryable === true || NON_RETRYABLE_FAILURE_TYPES.has(reasonCode), details: [redactDiagnosticMetadata(safeFailureDetails(error))] });
 }
 
 export function createCheckpointedActivities({ jobRepository, jobTraceRepository, diagnosticCapture, handlers, siteId, heartbeatFn = heartbeat }) {
@@ -85,7 +89,7 @@ export function createCheckpointedActivities({ jobRepository, jobTraceRepository
       return result;
     } catch (error) {
       const reasonCode = failureReason(error);
-      const details = safeFailureDetails(error);
+      const details = redactDiagnosticMetadata(safeFailureDetails(error));
       await jobRepository.saveCheckpoint({ tenantId: input.tenantId, jobId: input.jobId, stepId, stepType: name, inputHash, status: 'FAILED', summary: { reasonCode, ...(details ? { details } : {}) } });
       await trace(input, { category: 'ERROR', name, status: 'FAILED', stepId, completedAt: new Date(), metadata: { reasonCode, ...(details ? { details } : {}) } });
       await diagnosticCapture?.capture({ tenantId: input.tenantId, ownerUserId: input.ownerUserId, jobId: input.jobId, stepId, category: 'ERROR', name: `${name} error detail captured`, kind: 'ERROR_STACK', visibility: 'SYSTEM_ADMIN', content: { errorType: error?.name || 'Error', reasonCode, ...(details ? { details } : {}), stack: error?.stack } });
@@ -95,14 +99,14 @@ export function createCheckpointedActivities({ jobRepository, jobTraceRepository
     }
   }
   return {
-    async markRunning(input) { const value = await jobRepository.transition({ tenantId: input.tenantId, jobId: input.jobId, toStatus: 'RUNNING', patch: { executionSite: siteId, progress: 2, currentStep: 'starting', message: 'Запускаем обработку' } }); await trace(input, { category: 'WORKFLOW', name: 'Workflow initialized', status: 'RUNNING', startedAt: new Date(), metadata: { executionSite: siteId } }); return value; },
+    async markRunning(input) { await jobRepository.transition({ tenantId: input.tenantId, jobId: input.jobId, toStatus: 'RUNNING', patch: { executionSite: siteId, progress: 2, currentStep: 'starting', message: 'Запускаем обработку' } }); await trace(input, { category: 'WORKFLOW', name: 'Workflow initialized', status: 'RUNNING', startedAt: new Date(), metadata: { executionSite: siteId } }); return lifecycleReference(input, 'RUNNING'); },
     validateInput: (input) => checkpointed('validate', input, null, handlers.validateInput),
     planChunks: (input) => checkpointed('plan-chunks', input, null, handlers.planChunks),
     decomposeChunk: (input) => checkpointed('decompose-chunk', input, input.chunk.chunkId, handlers.decomposeChunk),
     mergeDecomposition: (input) => checkpointed('merge-decomposition', input, null, handlers.mergeDecomposition),
     generateRequirementsInsights: (input) => checkpointed('requirements-insights', input, null, handlers.generateRequirementsInsights),
-    async finalizeSucceeded(input) { const outcome = evaluateOutcome(input); const value = await jobRepository.transition({ tenantId: input.tenantId, jobId: input.jobId, toStatus: outcome.status, outcome: outcome.outcome, patch: { progress: 100, resultArtifactId: input.resultArtifactId, reasonCode: outcome.reasonCode, completedSite: siteId } }); await trace(input, { category: 'RESULT', name: 'Task completed', status: 'COMPLETED', completedAt: new Date(), outputArtifactId: input.resultArtifactId, metadata: { outcome: outcome.outcome, reasonCode: outcome.reasonCode } }); return value; },
-    async finalizeFailed(input) { const value = await jobRepository.transition({ tenantId: input.tenantId, jobId: input.jobId, toStatus: 'FAILED', patch: { reasonCode: input.reasonCode, completedSite: siteId } }); await trace(input, { category: 'ERROR', name: 'Task failed', status: 'FAILED', completedAt: new Date(), metadata: { reasonCode: input.reasonCode } }); return value; },
-    async finalizeCancelled(input) { const value = await jobRepository.transition({ tenantId: input.tenantId, jobId: input.jobId, toStatus: 'CANCELLED', patch: { reasonCode: input.reasonCode, completedSite: siteId } }); await trace(input, { category: 'LIFECYCLE', name: 'Task cancelled', status: 'COMPLETED', completedAt: new Date(), metadata: { reasonCode: input.reasonCode } }); return value; },
+    async finalizeSucceeded(input) { const outcome = evaluateOutcome(input); await jobRepository.transition({ tenantId: input.tenantId, jobId: input.jobId, toStatus: outcome.status, outcome: outcome.outcome, patch: { progress: 100, resultArtifactId: input.resultArtifactId, reasonCode: outcome.reasonCode, completedSite: siteId } }); await trace(input, { category: 'RESULT', name: 'Task completed', status: 'COMPLETED', completedAt: new Date(), outputArtifactId: input.resultArtifactId, metadata: { outcome: outcome.outcome, reasonCode: outcome.reasonCode } }); return lifecycleReference(input, outcome.status, outcome.outcome, outcome.reasonCode); },
+    async finalizeFailed(input) { await jobRepository.transition({ tenantId: input.tenantId, jobId: input.jobId, toStatus: 'FAILED', patch: { reasonCode: input.reasonCode, completedSite: siteId } }); await trace(input, { category: 'ERROR', name: 'Task failed', status: 'FAILED', completedAt: new Date(), metadata: { reasonCode: input.reasonCode } }); return lifecycleReference(input, 'FAILED', null, failureReason({ reasonCode: input.reasonCode })); },
+    async finalizeCancelled(input) { await jobRepository.transition({ tenantId: input.tenantId, jobId: input.jobId, toStatus: 'CANCELLED', patch: { reasonCode: input.reasonCode, completedSite: siteId } }); await trace(input, { category: 'LIFECYCLE', name: 'Task cancelled', status: 'COMPLETED', completedAt: new Date(), metadata: { reasonCode: input.reasonCode } }); return lifecycleReference(input, 'CANCELLED', null, failureReason({ reasonCode: input.reasonCode })); },
   };
 }

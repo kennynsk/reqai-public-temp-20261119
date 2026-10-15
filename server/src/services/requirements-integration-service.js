@@ -90,7 +90,7 @@ export function createRequirementsIntegrationService({ config, artifactRepositor
       };
     }
     if (!UUID.test(artifactId || '')) invalid('inputArtifactId must be a UUID');
-    const metadata = await artifactRepository.metadata({ tenantId: auth.tenantId, ownerUserId: ownerScope(auth), artifactId });
+    const metadata = await artifactRepository.validateMaterial({ tenantId: auth.tenantId, ownerUserId: ownerScope(auth), artifactId });
     if (!metadata) throw new ApiError({ status: 404, code: 'ARTIFACT_NOT_FOUND', message: 'Input artifact not found' });
     return {
       inputArtifactId: artifactId,
@@ -115,7 +115,7 @@ export function createRequirementsIntegrationService({ config, artifactRepositor
     const requested = [baselineArtifactId, ...referenceArtifactIds].filter(Boolean);
     if (new Set([input.inputArtifactId, ...requested]).size !== requested.length + 1) invalid('Primary, baseline and reference artifacts must be distinct');
     const descriptors = await Promise.all(requested.map(async (artifactId) => {
-      const metadata = await artifactRepository.metadata({ tenantId: auth.tenantId, ownerUserId: ownerScope(auth), artifactId });
+      const metadata = await artifactRepository.validateMaterial({ tenantId: auth.tenantId, ownerUserId: ownerScope(auth), artifactId });
       if (!metadata) throw new ApiError({ status: 404, code: 'ARTIFACT_NOT_FOUND', message: `Material artifact ${artifactId} not found` });
       const role = artifactId === baselineArtifactId ? 'baseline' : 'reference';
       return { artifactId, role, name: metadata.name || metadata.filename || `${role} artifact`, sha256: metadata.sha256, status: 'AVAILABLE' };

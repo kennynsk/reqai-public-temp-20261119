@@ -1,12 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { json } from './requirements-e2e-helpers.mjs';
 
 const baseUrl = (process.env.REQAI_BASE_URL || 'http://localhost:8080').replace(/\/$/, '');
-
-async function json(response) {
-  const body = await response.json();
-  if (!response.ok) throw new Error(`${response.status} ${JSON.stringify(body)}`);
-  return body;
-}
 
 async function firstSseEvent(jobId, label) {
   const controller = new AbortController();
@@ -48,13 +43,11 @@ const artifact = await json(await fetch(`${baseUrl}/api/v1/artifacts`, {
   },
   body: requirements,
 }));
-const accepted = await json(await fetch(`${baseUrl}/api/v1/jobs`, {
+const accepted = await json(await fetch(`${baseUrl}/api/v1/decompositions`, {
   method: 'POST',
   headers: { 'content-type': 'application/json', 'idempotency-key': `permalink-debug-${randomUUID()}` },
   body: JSON.stringify({
-    type: 'DECOMPOSITION',
     inputArtifactId: artifact.artifactId,
-    options: { mode: 'DECOMPOSITION_WITH_INSIGHTS' },
   }),
 }));
 const jobId = accepted.jobId;
@@ -71,7 +64,7 @@ const [clientAEvent, clientBEvent] = await Promise.all([
   firstSseEvent(jobId, 'client-b'),
 ]);
 if (clientAEvent.id !== clientBEvent.id || clientAEvent.data.jobId !== jobId || clientBEvent.data.jobId !== jobId) {
-  throw new Error(`Clients did not observe the same ordered job event: ${JSON.stringify({ clientAEvent, clientBEvent })}`);
+  throw new Error('Clients did not observe the same ordered job event');
 }
 
 const [clientAState, clientBState] = await Promise.all([

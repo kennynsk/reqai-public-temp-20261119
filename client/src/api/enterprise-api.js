@@ -35,7 +35,6 @@ export const enterpriseApi = {
     if (!response.ok) throw new EnterpriseApiError(`HTTP ${response.status}`, { status: response.status });
     return response.text();
   },
-  createJob: (body, idempotencyKey = crypto.randomUUID()) => request('/api/v1/jobs', { method: 'POST', headers: { 'content-type': 'application/json', 'Idempotency-Key': idempotencyKey }, body: JSON.stringify(body) }),
   decomposeRequirements: (body, idempotencyKey = crypto.randomUUID()) => request('/api/v1/decompositions', { method: 'POST', headers: { 'content-type': 'application/json', 'Idempotency-Key': idempotencyKey }, body: JSON.stringify(body) }),
   researchRequirements: (versionId, body = {}, idempotencyKey = crypto.randomUUID()) => request(`/api/v1/requirements/versions/${versionId}/research`, { method: 'POST', headers: { 'content-type': 'application/json', 'Idempotency-Key': idempotencyKey }, body: JSON.stringify(body) }),
   saveRequirementsVersion: (body) => request('/api/v1/requirements/versions', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }),
@@ -59,7 +58,7 @@ export const enterpriseApi = {
       const xhr = new XMLHttpRequest(); xhr.open('POST', '/api/v1/artifacts');
       if (token()) xhr.setRequestHeader('Authorization', `Bearer ${token()}`);
       digestFile(file).then((hash) => {
-        xhr.setRequestHeader('X-Content-SHA256', hash); xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+        xhr.setRequestHeader('X-Content-SHA256', hash); xhr.setRequestHeader('Content-Type', file.type || (/\.json$/i.test(file.name || '') ? 'application/json' : 'text/plain; charset=utf-8'));
         xhr.upload.onprogress = (event) => onProgress?.(event.lengthComputable ? event.loaded / event.total : 0);
         xhr.onerror = () => reject(new EnterpriseApiError('Upload network failure', { retryable: true }));
         xhr.onload = () => {

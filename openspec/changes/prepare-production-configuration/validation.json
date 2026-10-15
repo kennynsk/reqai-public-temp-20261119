@@ -1,0 +1,86 @@
+{
+  "date": "2026-10-15",
+  "checkedState": {
+    "branch": "main",
+    "head": "397418004e40e782cf91362b71172e552dedfa08",
+    "scope": "uncommitted working directory; no staged changes"
+  },
+  "artifacts": {
+    "base": "deploy/k8s/base/",
+    "default": "deploy/k8s/production/",
+    "mcpEnabled": "deploy/k8s/production-mcp/"
+  },
+  "checks": [
+    {
+      "method": "node --test scripts/qualification/*.test.mjs",
+      "passed": 48,
+      "failed": 0,
+      "syntheticOnly": true
+    },
+    {
+      "method": "npm -w server test",
+      "passed": 376,
+      "skipped": 2,
+      "failed": 0,
+      "limitation": "PostgreSQL opt-in tests not enabled; HTTP mock tests rerun with loopback access after sandbox EPERM"
+    },
+    {
+      "method": "npm -w mcp-gateway test",
+      "passed": 30,
+      "failed": 0,
+      "limitation": "isolated mocks; no live target gateway"
+    },
+    {
+      "method": "kubectl kustomize (production and production-mcp)",
+      "result": "rendered",
+      "reproducibility": "both profiles matched repeated fixture renders"
+    },
+    {
+      "method": "official Kubernetes v1.36.1 OpenAPI v2 + local Ajv8 checker",
+      "documents": 49,
+      "failed": 0,
+      "schemaSource": "https://raw.githubusercontent.com/kubernetes/kubernetes/v1.36.1/api/openapi-spec/swagger.json",
+      "schemaSha256": "dcede2063da1d7ad62ecb5af8adb6d7fabd0b52385a7fa0048afb491dac90450",
+      "normalization": "Kubernetes IntOrString admits string/integer; undefined object fields rejected; formats not evaluated",
+      "limitation": "not Kubernetes admission, semantic validation or target compatibility"
+    },
+    {
+      "method": "npm run qualify:kubernetes -- production (unfilled repo template)",
+      "result": "expected exit 1; unresolved inputs/digests and owner values rejected"
+    },
+    {
+      "method": "npm run qualify:legacy-surface",
+      "result": "passed"
+    },
+    {
+      "method": "openspec validate prepare-production-configuration --strict",
+      "result": "passed"
+    },
+    {
+      "method": "git diff --check",
+      "result": "passed"
+    },
+    {
+      "method": "docker ps (reqai project, read-only metadata)",
+      "result": "same 10 container IDs; health-capable containers healthy; no container create/restart/remove"
+    }
+  ],
+  "targetRuntimeVerified": false,
+  "notPerformed": [
+    "kubectl apply, server dry-run or cluster access",
+    "production DB SQL/preflight/migrations/grants",
+    "Kafka/Temporal provisioning or migration/import",
+    "real IAM login/refresh/logout/tenant canaries",
+    "exact production image startup and GLM product workflow",
+    "target backup/restore/rollback",
+    "commit, push, deploy or new containers"
+  ],
+  "remainingInputs": [
+    "real image digests and registry access",
+    "approved endpoints/namespace/site and ingress/CNI policy",
+    "external Secrets and CA/certificates",
+    "corporate browser auth host/edge integration",
+    "provider quotas, retention, RPO/RTO and operational ownership"
+  ],
+  "filesChangedByTests": "none in source tree; temporary fixtures/logs outside repository. Source/manifests/docs edits are intentional implementation changes."
+}

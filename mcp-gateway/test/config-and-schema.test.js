@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { loadConfig } from '../src/config.js';
-import { uploadArtifactInput, TOOL_DEFINITIONS, decomposeRequirementsInput, researchRequirementsInput, taskResultContentInput, taskResultContentOutput, taskStatusOutput, taskResultOutput } from '../src/schemas.js';
+import { TOOL_DEFINITIONS, decomposeRequirementsInput, researchRequirementsInput, taskStatusOutput, taskResultOutput } from '../src/schemas.js';
 
 const UUID = '123e4567-e89b-42d3-a456-426614174000';
 
@@ -16,9 +16,16 @@ test('configuration is disabled by default and production fails closed', () => {
   assert.throws(() => loadConfig({ MCP_IAM_AUDIENCE_MODE: 'exchange' }), /forward-same-audience/);
 });
 
-test('exactly seven versioned tools are exposed and no prompt/resource capability exists', () => {
-  assert.deepEqual(Object.keys(TOOL_DEFINITIONS), ['decompose_requirements', 'research_requirements', 'get_task_status', 'get_task_result', 'upload_artifact', 'cancel_task', 'get_task_result_content']);
-  assert.equal(loadConfig({}).schemaVersion, '2.2.0');
+test('exactly four versioned tools are exposed and no prompt/resource capability exists', () => {
+  assert.deepEqual(Object.keys(TOOL_DEFINITIONS), ['decompose_requirements', 'research_requirements', 'get_task_status', 'get_task_result']);
+  assert.equal(loadConfig({}).schemaVersion, '3.0.0');
+});
+
+test('stale schema overrides fail before the gateway can advertise a false contract', () => {
+  for (const version of ['1.0.0', '2.1.0', '4.0.0']) {
+    assert.throws(() => loadConfig({ MCP_TOOL_SCHEMA_VERSION: version }), /MCP_TOOL_SCHEMA_VERSION must be 3\.0\.0/);
+  }
+  assert.equal(loadConfig({ MCP_TOOL_SCHEMA_VERSION: '3.0.0' }).schemaVersion, '3.0.0');
 });
 
 test('tool input schemas reject unknown and technical identity or lineage fields', () => {
@@ -44,20 +51,4 @@ test('canonical status and complete/partial result DTOs remain representable', (
 test('result metadata accepts canonical non-UUID workflow step identifiers', () => {
   const result = { jobId: UUID, parentJobId: null, inputArtifactId: UUID, type: 'DECOMPOSITION', status: 'SUCCEEDED', outcome: 'COMPLETE', mode: 'DECOMPOSITION', summary: 'done', resultArtifactId: UUID, resultContentUrl: `/api/v1/jobs/${UUID}/result/content`, failedSteps: [{ stepId: 'validate:chunk-1', stepType: 'VALIDATION', summary: null }], modelAttempts: [{ stepId: 'decompose-chunk:chunk-1', requestedModel: 'glm-5.3', model: 'glm-5.3', attempt: 1, result: 'SUCCEEDED', reasonCode: null, tokenUsage: { input: 10, output: 20 }, durationMs: 1000 }] };
   assert.equal(taskResultOutput.safeParse(result).success, true);
-});
-
-test('result content input defaults to markdown and output carries bounded text', () => {
-  const input = taskResultContentInput.parse({ jobId: UUID });
-  assert.deepEqual(input, { jobId: UUID, format: 'markdown' });
-  assert.equal(taskResultContentInput.safeParse({ jobId: UUID, format: 'html' }).success, false);
-  assert.equal(taskResultContentOutput.safeParse({ jobId: UUID, format: 'markdown', contentType: 'text/markdown', content: '# Requirements' }).success, true);
-  assert.equal(taskResultContentOutput.safeParse({ jobId: UUID, format: 'markdown', contentType: 'text/markdown', content: 'x'.repeat(1_000_001) }).success, false);
-});
-
-
-test('upload enforces UTF-8 byte limit and rejects paths, identities and unsupported content types', () => {
-  assert.equal(uploadArtifactInput.safeParse({ content: 'я'.repeat(131072) }).success, true);
-  for (const input of [{ content: 'я'.repeat(131073) }, { content: '' }, { path: '/tmp/private' }, { content: 'x', tenantId: UUID }, { content: 'x', contentType: 'application/pdf' }]) {
-    assert.equal(uploadArtifactInput.safeParse(input).success, false);
-  }
 });

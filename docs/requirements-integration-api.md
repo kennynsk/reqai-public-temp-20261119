@@ -7,7 +7,7 @@ Requirements Integration API — асинхронный фасад над кан
 - `POST /api/v1/decompositions` принимает `businessContext` или `inputArtifactId` и создаёт job режима `DECOMPOSITION`.
 - `POST /api/v1/requirements/versions/{versionId}/research` получает вход и lineage из immutable requirements version и создаёт job режима `REQUIREMENTS_INSIGHTS`.
 
-Generic `POST /api/v1/jobs` допускает только декомпозицию. Исследование требований запускается исключительно через resource-scoped маршрут версии. Каждый вызов создания требует `Idempotency-Key` из 16–128 безопасных символов и возвращает `202 Accepted` с каноническим `jobId`.
+Generic `POST /api/v1/jobs` удалён и возвращает 404. Создавайте декомпозицию через `POST /api/v1/decompositions`. Исследование требований запускается исключительно через resource-scoped маршрут версии. Каждый вызов создания требует `Idempotency-Key` из 16–128 безопасных символов и возвращает `202 Accepted` с каноническим `jobId`.
 
 ```bash
 curl -X POST http://localhost:5178/api/v1/decompositions \
@@ -165,3 +165,5 @@ curl --fail-with-body -sS "${AUTH[@]}" -X POST "$API_URL/api/v1/jobs/$JOB_ID/dis
 не меняются. Для живого статуса попытки можно открыть SSE
 `GET /api/v1/jobs/{jobId}/discussions/{anchorId}/events`; после разрыва передайте
 последний `Last-Event-ID`, а для полной сверки используйте чтение истории диалога.
+
+Материалы всех ролей (исходный контекст, baseline, references) принимаются только как непустой текст UTF-8: TXT, Markdown или JSON. Бинарные PDF/DOCX и неподдерживаемый MIME возвращают 415; повреждённый UTF-8, бинарное содержимое под текстовым MIME и пустые материалы — 400. Проверка повторяется при запуске по artifactId, включая ранее загруженные материалы.

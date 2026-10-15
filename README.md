@@ -45,15 +45,14 @@ MCP gateway выключен по умолчанию и запускается �
 docker compose --profile mcp up --build
 ```
 
-Endpoint `http://localhost:5180/mcp` предоставляет пять инструментов: декомпозицию, исследование сохранённой версии, чтение статуса, metadata результата и полного содержимого результата. См. [MCP gateway](docs/mcp-requirements-adapter.md).
+Endpoint `http://localhost:5180/mcp` предоставляет четыре инструмента: декомпозицию, исследование сохранённой версии, чтение статуса и metadata результата. См. [MCP gateway](docs/mcp-requirements-adapter.md).
 
 ## Production
 
-```bash
-npm run build:prod
-npm run start:prod
-```
+`npm run build:prod` только собирает frontend; `npm run start:prod` запускает только API и не раздаёт `client/dist`. Frontend обслуживает отдельный Nginx; также необходимы PostgreSQL, Kafka, Temporal и workers.
 
-Production использует `.env.prod`; сервер может раздавать собранный frontend из `client/dist`. Machine-readable REST-контракт находится в [OpenAPI v1](docs/api/openapi.v1.json).
+`compose.yaml` — полный **локальный** стек: в нём отключены авторизация и TLS, заданы development-пароли. Даже с `--env-file .env.prod` эти жёстко заданные значения не превращают Compose в production-конфигурацию. Для целевой среды подготовлены [Kubernetes production-конфиги](deploy/k8s/production/README.md): Kustomize overlay, HTTPS/Secret references, приостановленный migration Job и optional MCP. Заполните параметры целевой среды и image digests, выполните `npm run qualify:kubernetes -- production`, затем окруженческие gates по [runbook](docs/runbooks/enterprise-operations.md). Первый запуск использует отдельные пустые хранилища без переноса dev-данных. Offline pass не подтверждает готовность к deploy; автоматического применения к кластеру нет.
+
+Machine-readable REST-контракт находится в [OpenAPI v1](docs/api/openapi.v1.json).
 
 Исполнение оригинального BABOK-скилла, формат отчёта и реальная GLM-проверка описаны в [документации](docs/babok-skill-execution.md).

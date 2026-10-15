@@ -204,7 +204,7 @@ export function loadConfig(env = process.env, { loadFiles = env === process.env 
     prompts: {
       maxRenderedBytes: integer(env, 'PROMPT_MAX_RENDERED_BYTES', 2_097_152, { min: 1024, max: 10_485_760 }),
       policy: {
-        'requirements-decomposition': promptRelease(env, 'PROMPT_DECOMPOSITION', '2.15.0', ['1.0.0', '2.0.0', '2.1.0', '2.2.0', '2.3.0', '2.4.0', '2.5.0', '2.6.0', '2.7.0', '2.8.0', '2.9.0', '2.10.0', '2.11.0', '2.12.0', '2.13.0', '2.14.0', '2.15.0']),
+        'requirements-decomposition': promptRelease(env, 'PROMPT_DECOMPOSITION', '2.17.0', ['1.0.0', '2.0.0', '2.1.0', '2.2.0', '2.3.0', '2.4.0', '2.5.0', '2.6.0', '2.7.0', '2.8.0', '2.9.0', '2.10.0', '2.11.0', '2.12.0', '2.13.0', '2.14.0', '2.15.0', '2.16.0', '2.17.0']),
         'requirements-insights': promptRelease(env, 'PROMPT_REQUIREMENTS_INSIGHTS', '2.15.0', ['1.0.0', '2.0.0', '2.1.0', '2.2.0', '2.3.0', '2.4.0', '2.5.0', '2.6.0', '2.7.0', '2.8.0', '2.9.0', '2.10.0', '2.11.0', '2.12.0', '2.13.0', '2.14.0', '2.15.0']),
       },
     },
@@ -269,6 +269,7 @@ export function loadConfig(env = process.env, { loadFiles = env === process.env 
         enabled: bool(env, 'TEMPORAL_TLS_ENABLED', production),
         certPath: optionalString(env, 'TEMPORAL_TLS_CERT_PATH'),
         keyPath: optionalString(env, 'TEMPORAL_TLS_KEY_PATH'),
+        caCertPath: optionalString(env, 'TEMPORAL_TLS_CA_CERT_PATH'),
         serverName: optionalString(env, 'TEMPORAL_TLS_SERVER_NAME'),
       },
     },

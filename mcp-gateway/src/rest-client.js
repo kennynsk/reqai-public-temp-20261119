@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 
 const SAFE_DETAIL_KEYS = new Set(['field', 'fields', 'retryAfterSeconds', 'limit', 'mode']);
 
@@ -81,7 +81,7 @@ export function parseBearer(header) {
 }
 
 export function createReqAiClient({ config, fetchImpl = globalThis.fetch }) {
-  async function request({ method, path, token, body, rawBody, contentType, idempotencyKey, timeoutMs = config.backendTimeoutMs }) {
+  async function request({ method, path, token, body, idempotencyKey, timeoutMs = config.backendTimeoutMs }) {
     const requestId = randomUUID();
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -93,10 +93,10 @@ export function createReqAiClient({ config, fetchImpl = globalThis.fetch }) {
           ...(token ? { authorization: `Bearer ${token}` } : {}),
           accept: 'application/json',
           'x-request-id': requestId,
-          ...(rawBody === undefined ? (body === undefined ? {} : { 'content-type': 'application/json' }) : { 'content-type': `${contentType}; charset=utf-8`, 'x-content-sha256': createHash('sha256').update(rawBody).digest('hex') }),
+          ...(body === undefined ? {} : { 'content-type': 'application/json' }),
           ...(idempotencyKey ? { 'idempotency-key': idempotencyKey } : {}),
         },
-        ...(rawBody === undefined ? (body === undefined ? {} : { body: JSON.stringify(body) }) : { body: rawBody }),
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       });
       const text = await readLimitedText(response, { limitBytes: config.responseLimitBytes, requestId });
       let payload = null;
@@ -107,37 +107,6 @@ export function createReqAiClient({ config, fetchImpl = globalThis.fetch }) {
       const size = Buffer.byteLength(JSON.stringify(payload ?? null));
       if (size > config.responseLimitBytes) throw responseTooLarge(requestId, config.responseLimitBytes);
       return payload;
-    } catch (error) {
-      if (error instanceof GatewayError) throw error;
-      if (error?.name === 'AbortError') throw new GatewayError({ status: 504, code: 'MCP_BACKEND_TIMEOUT', message: 'ReqAI API request timed out', retryable: true, requestId });
-      throw new GatewayError({ status: 503, code: 'MCP_BACKEND_UNAVAILABLE', message: 'ReqAI API is unavailable', retryable: true, requestId });
-    } finally { clearTimeout(timeout); }
-  }
-
-  async function requestText({ method, path, token, timeoutMs = config.backendTimeoutMs }) {
-    const requestId = randomUUID();
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), timeoutMs);
-    try {
-      const response = await fetchImpl(`${config.backendUrl}${path}`, {
-        method,
-        signal: controller.signal,
-        headers: {
-          ...(token ? { authorization: `Bearer ${token}` } : {}),
-          accept: 'text/markdown, text/plain, application/json',
-          'x-request-id': requestId,
-        },
-      });
-      const text = await readLimitedText(response, { limitBytes: config.responseLimitBytes, requestId });
-      if (!response.ok) {
-        let payload = null;
-        try { payload = text ? JSON.parse(text) : null; } catch { payload = null; }
-        throw backendError(response, payload, requestId);
-      }
-      return {
-        content: text,
-        contentType: response.headers?.get?.('content-type') || 'text/plain; charset=utf-8',
-      };
     } catch (error) {
       if (error instanceof GatewayError) throw error;
       if (error?.name === 'AbortError') throw new GatewayError({ status: 504, code: 'MCP_BACKEND_TIMEOUT', message: 'ReqAI API request timed out', retryable: true, requestId });
@@ -157,12 +126,9 @@ export function createReqAiClient({ config, fetchImpl = globalThis.fetch }) {
   return Object.freeze({
     health: () => request({ method: 'GET', path: '/health/ready', token: null, timeoutMs: config.authTimeoutMs }),
     authenticate,
-    uploadArtifact: (token, { content, contentType = 'text/plain' }) => request({ method: 'POST', path: '/api/v1/artifacts', token, rawBody: content, contentType }),
-    cancelTask: (token, { jobId }) => request({ method: 'POST', path: `/api/v1/jobs/${encodeURIComponent(jobId)}/cancel`, token }),
     decompose: (token, input) => { const { idempotencyKey, ...body } = input; return request({ method: 'POST', path: '/api/v1/decompositions', token, body, idempotencyKey }); },
     researchRequirements: (token, input) => { const { idempotencyKey, versionId, ...body } = input; return request({ method: 'POST', path: `/api/v1/requirements/versions/${encodeURIComponent(versionId)}/research`, token, body, idempotencyKey }); },
     getStatus: (token, { jobId }) => request({ method: 'GET', path: `/api/v1/jobs/${encodeURIComponent(jobId)}`, token }),
     getResult: (token, { jobId }) => request({ method: 'GET', path: `/api/v1/jobs/${encodeURIComponent(jobId)}/result`, token }),
-    getResultContent: (token, { jobId, format = 'markdown' }) => requestText({ method: 'GET', path: `/api/v1/jobs/${encodeURIComponent(jobId)}/result/content?format=${encodeURIComponent(format)}`, token }).then((result) => ({ jobId, format, ...result })),
   });
 }

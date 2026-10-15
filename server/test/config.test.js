@@ -3,6 +3,15 @@ import test from 'node:test';
 
 import { loadConfig, redactedConfig } from '../src/config/env.js';
 
+test('runtime configuration validates process role and port at the actual entry boundary', () => {
+  const config = loadConfig({ APP_ROLE: 'api', PORT: '8080', DEPLOYMENT_SITE_ID: 'dc-a' }, { loadFiles: false });
+  assert.equal(config.process.role, 'api');
+  assert.equal(config.process.port, 8080);
+  assert.equal(config.process.siteId, 'dc-a');
+  assert.throws(() => loadConfig({ APP_ROLE: 'unknown' }, { loadFiles: false }), /APP_ROLE/);
+  assert.throws(() => loadConfig({ PORT: '99999' }, { loadFiles: false }), /PORT/);
+});
+
 test('enterprise config parses documented defaults when async processing is disabled', () => {
   const config = loadConfig({}, { loadFiles: false });
   assert.equal(config.asyncEnabled, false);
@@ -16,8 +25,8 @@ test('enterprise config parses documented defaults when async processing is disa
   assert.equal(config.jobs.inputMaxBytes, 104857600);
   assert.equal(config.jobMetadataBackfill.batchSize, 100);
   assert.equal(config.jobMetadataBackfill.intervalMs, 300000);
-  assert.equal(config.prompts.policy['requirements-decomposition'].active, '2.15.0');
-  assert.deepEqual(config.prompts.policy['requirements-decomposition'].released, ['1.0.0', '2.0.0', '2.1.0', '2.2.0', '2.3.0', '2.4.0', '2.5.0', '2.6.0', '2.7.0', '2.8.0', '2.9.0', '2.10.0', '2.11.0', '2.12.0', '2.13.0', '2.14.0', '2.15.0']);
+  assert.equal(config.prompts.policy['requirements-decomposition'].active, '2.17.0');
+  assert.deepEqual(config.prompts.policy['requirements-decomposition'].released, ['1.0.0', '2.0.0', '2.1.0', '2.2.0', '2.3.0', '2.4.0', '2.5.0', '2.6.0', '2.7.0', '2.8.0', '2.9.0', '2.10.0', '2.11.0', '2.12.0', '2.13.0', '2.14.0', '2.15.0', '2.16.0', '2.17.0']);
   assert.equal(config.prompts.policy['requirements-insights'].active, '2.15.0');
   assert.equal(config.diagnostics.captureProtected, false);
   assert.equal(config.diagnostics.maxPageSize, 100);

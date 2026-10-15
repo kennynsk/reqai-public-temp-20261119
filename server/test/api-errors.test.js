@@ -3,13 +3,6 @@ import test from 'node:test';
 
 import { ApiError } from '../src/errors/api-error.js';
 import { apiErrorHandler } from '../src/middleware/api-error-handler.js';
-import { rejectClientTenant, requireEnum, requireNonEmptyString } from '../src/middleware/validation.js';
-
-test('central validators return typed validation errors', () => {
-  assert.throws(() => requireNonEmptyString(' ', 'name'), (error) => error instanceof ApiError && error.code === 'VALIDATION_ERROR');
-  assert.throws(() => requireEnum('bad', 'type', ['good']), /must be one of/);
-  assert.throws(() => rejectClientTenant({ tenantId: 'forged' }), (error) => error.code === 'TENANT_CONTEXT_FORBIDDEN');
-});
 
 test('v1 error handler emits the normalized envelope and request id', () => {
   let statusCode;

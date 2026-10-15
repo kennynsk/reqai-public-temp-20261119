@@ -26,7 +26,7 @@ export default function ClarificationShell({ title, onClose, children }) {
   }, []);
   return createPortal(<div className="fixed inset-0 z-[95]" role="dialog" aria-modal="true" aria-label={title}>
     <button type="button" tabIndex={-1} aria-label="Закрыть вопрос" onClick={onClose} className="absolute inset-0 bg-slate-950/30" />
-    <aside ref={ref} tabIndex={-1} className="absolute right-0 top-0 flex h-full w-full max-w-xl flex-col bg-white shadow-2xl outline-none">
+    <aside ref={ref} tabIndex={-1} className="absolute right-0 top-0 flex h-full w-full max-w-xl flex-col bg-white shadow-2xl outline-hidden">
       <header className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4"><h2 className="min-w-0 break-words text-lg font-bold text-slate-900">{title}</h2><button type="button" aria-label="Закрыть вопрос" onClick={onClose} className="shrink-0 rounded-lg p-2 text-slate-500 hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-600"><X className="h-5 w-5" /></button></header>
       {children}
     </aside>

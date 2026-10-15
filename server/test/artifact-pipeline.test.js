@@ -4,7 +4,6 @@ import { Readable, Writable } from 'node:stream';
 import test from 'node:test';
 
 import { ArtifactRepository } from '../src/repositories/artifact-repository.js';
-import { estimateTokens, hierarchicalSynthesis, planChunks } from '../src/domain/chunking.js';
 import { assertReferenceOnlyPayload } from '../src/events/reference-payload.js';
 
 function pool() {
@@ -14,22 +13,16 @@ function pool() {
 }
 
 test('100 MiB upload is chunked with bounded 1 MiB writes and checksum integrity', async () => {
-  const db = pool(); const chunk = Buffer.alloc(1024 * 1024, 7); const hash = createHash('sha256'); for (let i = 0; i < 100; i += 1) hash.update(chunk);
+  const db = pool(); const chunk = Buffer.alloc(1024 * 1024, 'a'); const hash = createHash('sha256'); for (let i = 0; i < 100; i += 1) hash.update(chunk);
   const readable = Readable.from((async function* () { for (let i = 0; i < 100; i += 1) yield chunk; })());
-  const row = await new ArtifactRepository(db).upload({ tenantId: 't', ownerUserId: 'u', readable, expectedSha256: hash.digest('hex'), contentType: 'application/octet-stream', maxBytes: 100 * 1024 * 1024, expiresAt: new Date() });
+  const row = await new ArtifactRepository(db).upload({ tenantId: 't', ownerUserId: 'u', readable, expectedSha256: hash.digest('hex'), contentType: 'text/plain', maxBytes: 100 * 1024 * 1024, expiresAt: new Date() });
   assert.equal(Number(row.size_bytes), 100 * 1024 * 1024); assert.equal(db.chunks, 100); assert.ok(db.calls.includes('COMMIT'));
 });
 
 test('oversize or interrupted upload rolls back and never exposes an artifact', async () => {
   for (const readable of [Readable.from([Buffer.alloc(11)]), Readable.from((async function*(){ yield Buffer.from('x'); throw new Error('disconnect'); })())]) {
-    const db = pool(); await assert.rejects(() => new ArtifactRepository(db).upload({ tenantId: 't', ownerUserId: 'u', readable, expectedSha256: '0'.repeat(64), contentType: 'x', maxBytes: 10, expiresAt: new Date() })); assert.ok(db.calls.includes('ROLLBACK')); assert.equal(db.calls.includes('COMMIT'), false);
+    const db = pool(); await assert.rejects(() => new ArtifactRepository(db).upload({ tenantId: 't', ownerUserId: 'u', readable, expectedSha256: '0'.repeat(64), contentType: 'text/plain', maxBytes: 10, expiresAt: new Date() })); assert.ok(db.calls.includes('ROLLBACK')); assert.equal(db.calls.includes('COMMIT'), false);
   }
-});
-
-test('chunk planning and hierarchical synthesis preserve traceability and failures', () => {
-  const chunks = planChunks('A'.repeat(1000), { targetTokens: 100, overlapTokens: 10 }); assert.ok(chunks.length > 2); assert.ok(estimateTokens(chunks[0].content) <= 100);
-  const result = hierarchicalSynthesis([{ chunkId: 'c1', status: 'SUCCEEDED', summary: 'one' }, { chunkId: 'c2', status: 'FAILED', reasonCode: 'TIMEOUT' }, { chunkId: 'c3', status: 'SUCCEEDED', summary: 'three' }], { fanIn: 2 });
-  assert.deepEqual(result.traceability, ['c1', 'c3']); assert.deepEqual(result.failedChunks, [{ chunkId: 'c2', reasonCode: 'TIMEOUT' }]);
 });
 
 test('control plane accepts artifact references and rejects content or oversized payloads', () => {

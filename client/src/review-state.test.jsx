@@ -78,15 +78,15 @@ test('assessment-only drafts and content updates preserve closed questions and a
   const staged = reviewReducer(state, { type: 'field', key: 'BR:BR-001', value: draft });
   expect(staged.decisions.review.gaps['GAP-001']).toEqual(decisions.review.gaps['GAP-001']);
   expect(staged.decisions.review.gapRequirements).toEqual(decisions.review.gapRequirements);
-  expect(staged.decisions.review.acknowledgment.stale).toBe(true);
+  expect(assembleReview(staged).decisions.review.acknowledgment).toEqual(decisions.review.acknowledgment);
   const next = structuredClone(content);
   next.groups.BR[0].quality = 'Требует уточнения';
   const applied = reviewReducer(staged, { type: 'content', value: next });
   expect(applied.decisions.review.gaps['GAP-001'].state).toBe('closed');
   expect(applied.decisions.review.gapRequirements['GAP-001']['BR-001'].state).toBe('no-change');
   const wording = reviewReducer(state, { type: 'field', key: 'BR:BR-001', value: { ...draft, text: 'Другая цель' } });
-  expect(wording.decisions.review.gaps['GAP-001'].state).toBe('answered');
-  expect(wording.decisions.review.gapRequirements['GAP-001']['BR-001'].state).toBe('pending');
+  expect(assembleReview(wording).decisions.review.gaps['GAP-001'].state).toBe('answered');
+  expect(assembleReview(wording).decisions.review.gapRequirements['GAP-001']['BR-001'].state).toBe('pending');
 });
 
 test('rebase merges independent GAP answers and omission entries without carrying approval', () => {
@@ -133,8 +133,8 @@ test('editing one requirement invalidates only its GAP confirmation basis', () =
     key: 'BR:BR-001',
     value: { group: 'BR', id: 'BR-001', text: 'Новая цель', initialText: content.groups.BR[0].text },
   });
-  expect(next.decisions.review.gapRequirements['GAP-001']['BR-001']).toMatchObject({ state: 'pending', stale: true });
-  expect(next.decisions.review.gapRequirements['GAP-001']['FR-001']).toEqual({ state: 'incorporated' });
+  expect(assembleReview(next).decisions.review.gapRequirements['GAP-001']['BR-001']).toMatchObject({ state: 'pending', stale: true });
+  expect(assembleReview(next).decisions.review.gapRequirements['GAP-001']['FR-001']).toMatchObject({ state: 'incorporated' });
 });
 
 test('assembles every pending field, including a composer, without mutating source', () => {
@@ -309,4 +309,36 @@ test('a different base preserves the answer for comparison instead of silently o
   expect(view.result.current.recovery).toEqual(saved);
   expect(readReviewDraft(key)).toEqual(saved);
   view.unmount(); sessionStorage.removeItem(key);
+});
+
+test('cancelling an existing field restores saved evidence and preserves unrelated decisions', () => {
+  const content = roomBookingRegistry();
+  const decisions = { review: { schemaVersion: 1, gaps: { 'GAP-001': { state: 'answered', answer: 'Согласовано' } }, gapRequirements: { 'GAP-001': { 'BR-001': { state: 'incorporated' } } } } };
+  const initial = { content, decisions, drafts: {} };
+  const editing = reviewReducer(initial, { type: 'field', key: 'BR:BR-001', value: { group: 'BR', id: 'BR-001', initialText: content.groups.BR[0].text, text: 'Другая цель' } });
+  expect(assembleReview(editing).decisions.review.gapRequirements['GAP-001']['BR-001']).toMatchObject({ state: 'pending', stale: true });
+  const unrelated = reviewReducer(editing, { type: 'decisions', value: { ...decisions, skippedResearch: true } });
+  const cancelled = reviewReducer(unrelated, { type: 'clear', key: 'BR:BR-001' });
+  expect(cancelled).toEqual({ ...initial, decisions: { ...decisions, skippedResearch: true } });
+  expect(assembleReview(cancelled).decisions.review.gapRequirements).toEqual(decisions.review.gapRequirements);
+});
+
+test('a fresh GAP decision uses the edited draft and a later edit requires a new check', () => {
+  const content = roomBookingRegistry();
+  let state = { content, decisions: { review: { gaps: {} } }, drafts: {} };
+  const field = { group: 'BR', id: 'BR-001', initialText: content.groups.BR[0].text, text: 'Уточнённая цель' };
+  state = reviewReducer(state, { type: 'field', key: 'BR:BR-001', value: field });
+  state = reviewReducer(state, { type: 'decisions', value: { review: { gaps: { 'GAP-001': { state: 'closed', closureKind: 'dismissed', reason: 'Проверено после правки' } } } } });
+  expect(assembleReview(state).decisions.review.gaps['GAP-001'].state).toBe('closed');
+  state = reviewReducer(state, { type: 'field', key: 'BR:BR-001', value: { ...field, text: 'Ещё одна цель' } });
+  expect(assembleReview(state).decisions.review.gaps['GAP-001']).toMatchObject({ state: 'open', stale: true });
+});
+
+test('a pending new composer does not crash a simultaneous review decision', () => {
+  const content = roomBookingRegistry();
+  const state = { content, decisions: {}, drafts: { 'FR:new': { group: 'FR', id: 'new', isNew: true, text: 'Новая функция', initialText: '' } } };
+  const next = reviewReducer(state, { type: 'decisions', value: { review: { completeness: { check: true } } } });
+  const assembled = assembleReview(next, (type, text) => ({ id: 'FR-003', text }));
+  expect(assembled.content.groups.FR.at(-1).text).toBe('Новая функция');
+  expect(assembled.decisions.review.completeness).toMatchObject({ check: false, stale: true });
 });

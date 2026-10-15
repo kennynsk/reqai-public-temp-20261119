@@ -40,7 +40,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.listJobs.mockResolvedValue({ items: [], nextCursor: null });
   mocks.listRequirementsVersions.mockResolvedValue({ items: [] });
-  mocks.getCapabilities.mockResolvedValue({ capabilities: { models: ['GC-Max', 'GC-M', 'GC-Lite'] } });
+  mocks.getCapabilities.mockResolvedValue({ capabilities: { models: ['GC-Max', 'GC-M', 'GC-Lite'], domainOperations: ['decomposition', 'requirements-research'] } });
   mocks.getJobTrace.mockResolvedValue({ jobId: 'job', status: 'RUNNING', createdAt: new Date().toISOString(), durationMs: null, timeline: [], nextCursor: null });
   mocks.subscribe.mockResolvedValue();
 });
@@ -405,15 +405,16 @@ test('shows the guided workflow and hides expert settings by default', async () 
 
 test('allows choosing a reasoning level and sends it with a new task', async () => {
   mocks.uploadArtifact.mockResolvedValue({ artifactId: 'artifact-1' });
-  mocks.createJob.mockResolvedValue({ jobId: 'job-1' });
+  mocks.decomposeRequirements.mockResolvedValue({ jobId: 'job-1' });
   render(<AsyncJobWorkspace />);
+  await screen.findByLabelText('Предыдущая версия требований');
   fireEvent.click(screen.getByText('Настройки AI').closest('summary'));
   const reasoning = screen.getByRole('combobox', { name: 'Reasoning' });
-  expect(reasoning).toHaveValue('low');
+  expect(reasoning).toHaveValue('disabled');
   fireEvent.change(reasoning, { target: { value: 'high' } });
   fireEvent.change(screen.getByRole('textbox', { name: 'Бизнес-контекст' }), { target: { value: 'Сократить время обработки' } });
   fireEvent.click(screen.getByRole('button', { name: 'Декомпозировать требования' }));
-  await waitFor(() => expect(mocks.createJob).toHaveBeenCalledWith(expect.objectContaining({ options: expect.objectContaining({ reasoning: 'high' }) })));
+  await waitFor(() => expect(mocks.decomposeRequirements).toHaveBeenCalledWith(expect.objectContaining({ reasoning: 'high' })));
 });
 
 test('restores abandoned active session with clear activity feedback', async () => {
@@ -1159,9 +1160,10 @@ test('opens retained legacy results as read-only archives without retry controls
 
 test('collapses the business context form when decomposition starts and allows reopening it', async () => {
   mocks.uploadArtifact.mockResolvedValue({ artifactId: 'context-artifact' });
-  mocks.createJob.mockResolvedValue({ jobId: 'running-decomposition' });
+  mocks.decomposeRequirements.mockResolvedValue({ jobId: 'running-decomposition' });
   mocks.getJob.mockResolvedValue({ jobId: 'running-decomposition', type: 'DECOMPOSITION', mode: 'DECOMPOSITION', status: 'RUNNING', progress: 10 });
   render(<AsyncJobWorkspace />);
+  await screen.findByLabelText('Предыдущая версия требований');
 
   fireEvent.change(screen.getByRole('textbox', { name: 'Бизнес-контекст' }), { target: { value: 'Сократить время обработки' } });
   fireEvent.click(screen.getByRole('button', { name: 'Декомпозировать требования' }));

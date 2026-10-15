@@ -82,7 +82,7 @@ export class JobRepository {
       const children = await client.query(`UPDATE ${this.schema}.jobs SET sequence=sequence+1, version=version+1
         WHERE tenant_id = $1 AND parent_job_id=$2 AND ($3::text IS NULL OR owner_user_id=$3) RETURNING *`, [tenantId, rootId, ownerUserId]);
       for (const row of [root, ...children.rows]) await client.query(`INSERT INTO ${this.schema}.outbox_events(event_id,tenant_id,aggregate_type,aggregate_id,sequence,event_type,schema_version,payload)
-        VALUES($1,$2,'job',$3,$4,'job.metadata-updated','1.0',$5::jsonb)`, [randomUUID(), tenantId, row.id, row.sequence, JSON.stringify({ jobId: row.id, metadataJobId: rootId, title, metadataRevision: root.metadata_revision, actorUserId: actorId })]);
+        VALUES($1,$2,'job',$3,$4,'job.metadata-updated','1.0',$5::jsonb)`, [randomUUID(), tenantId, row.id, row.sequence, JSON.stringify({ jobId: row.id, metadataJobId: rootId, metadataRevision: root.metadata_revision, actorUserId: actorId })]);
       return root;
     });
   }

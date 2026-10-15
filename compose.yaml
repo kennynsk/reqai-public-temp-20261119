@@ -217,7 +217,7 @@ services:
       MCP_BACKEND_API_URL: http://api:5178
       MCP_IAM_AUDIENCE_MODE: forward-same-audience
       MCP_READINESS_BEARER_TOKEN: local-readiness-token
-      MCP_TOOL_SCHEMA_VERSION: 2.2.0
+      MCP_TOOL_SCHEMA_VERSION: 3.0.0
       MCP_BUILD_VERSION: 1.0.0
     depends_on:
       api:

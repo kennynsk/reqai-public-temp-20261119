@@ -89,7 +89,7 @@ export function reviewReducer(state, action) {
       const content = typeof action.value === 'function' ? action.value(state.content) : action.value;
       const sameContent = JSON.stringify(content) === JSON.stringify(state.content);
       const evidenceChanges = reviewEvidenceChanges(state.content, content);
-      return { ...state, content, decisions: sameContent ? state.decisions : invalidateReviewEvidence(state.decisions, evidenceChanges), reservedIds: [...new Set([...(state.reservedIds || []), ...recordIds(state.content), ...recordIds(content)])] };
+      return { ...state, evidenceContent: content, content, decisions: sameContent ? state.decisions : invalidateReviewEvidence(state.decisions, evidenceChanges), reservedIds: [...new Set([...(state.reservedIds || []), ...recordIds(state.content), ...recordIds(content)])] };
     }
     case 'proposal': {
       const content = typeof action.value === 'function' ? action.value(state.content) : action.value;
@@ -105,18 +105,22 @@ export function reviewReducer(state, action) {
         const group = String(id).split('-', 1)[0];
         delete drafts[`${group}:${id}`];
       }
-      return { ...state, content, decisions: nextDecisions, drafts, reservedIds: [...new Set([...(state.reservedIds || []), ...recordIds(state.content), ...recordIds(content)])] };
+      return { ...state, evidenceContent: content, content, decisions: nextDecisions, drafts, reservedIds: [...new Set([...(state.reservedIds || []), ...recordIds(state.content), ...recordIds(content)])] };
     }
     case 'field': {
-      const fields = Object.keys(action.value.fields || {});
-      const meaningChanged = action.value.text !== action.value.initialText || fields.some((field) => field !== 'quality');
-      const assessmentChanged = fields.includes('quality');
-      const decisions = action.value.isNew ? state.decisions : meaningChanged ? invalidateReviewEvidence(state.decisions, { changedRecordIds: action.value.id ? [action.value.id] : null })
-        : assessmentChanged ? invalidateReviewEvidence(state.decisions, { changedRecordIds: [], changedGapIds: [] }) : state.decisions;
-      return { ...state, decisions, drafts: { ...state.drafts, [action.key]: action.value } };
+      // Input stays provisional. Only applied or assembled changes invalidate evidence.
+      return { ...state, drafts: { ...state.drafts, [action.key]: action.value } };
     }
     case 'clear': { const drafts = { ...state.drafts }; delete drafts[action.key]; return { ...state, drafts }; }
-    case 'decisions': return { ...state, decisions: action.value };
+    case 'decisions': {
+      if (JSON.stringify(state.decisions.review) === JSON.stringify(action.value.review)) return { ...state, decisions: action.value };
+      const assembled = assembleReview({ ...state, drafts: Object.fromEntries(Object.entries(state.drafts).filter(([, draft]) => !draft.isNew)) });
+      if (assembled.error) return { ...state, decisions: action.value };
+      // Apply automatic invalidation before the user's new decision. A fresh
+      // confirmation describes the current draft, not the original version.
+      const decisions = mergeDecisionChanges(state.decisions, action.value, assembled.decisions, []);
+      return { ...state, decisions, evidenceContent: assembled.content };
+    }
     case 'restore': return action.value;
     default: return state;
   }
@@ -135,7 +139,9 @@ export function assembleReview(state, createRecord, normalize = (value) => value
   const error = validateReviewContent(content);
   if (error) return { error };
   const normalized = normalize(content);
-  return { content: normalized, decisions: reconcileDiscussionReceipts(Object.values(state.drafts).some((draft) => draft.isNew && draft.text.trim()) ? invalidateReviewEvidence(state.decisions, { changedRecordIds: [] }) : state.decisions, normalized) };
+  const changes = reviewEvidenceChanges(state.evidenceContent || state.content, normalized);
+  const decisions = JSON.stringify(state.evidenceContent || state.content) !== JSON.stringify(normalized) ? invalidateReviewEvidence(state.decisions, changes) : state.decisions;
+  return { content: normalized, decisions: reconcileDiscussionReceipts(decisions, normalized) };
 }
 
 export function rebaseReview(state, base, remote, baseDecisions = {}, remoteDecisions = {}) {
@@ -206,7 +212,7 @@ export function rebaseReview(state, base, remote, baseDecisions = {}, remoteDeci
     decisions.review.gaps[gapId] = copy(remoteDecisions.review.gaps[gapId]);
     if (remoteDecisions.review.gapRequirements?.[gapId]) decisions.review.gapRequirements = { ...decisions.review.gapRequirements, [gapId]: copy(remoteDecisions.review.gapRequirements[gapId]) };
   }
-  return { state: { ...state, content, drafts, decisions, reservedIds: [...new Set([...(state.reservedIds || []), ...recordIds(base), ...recordIds(content)])] }, changes, transferredProposalCount: transferredProposals.length };
+  return { state: { ...state, evidenceContent: content, content, drafts, decisions, reservedIds: [...new Set([...(state.reservedIds || []), ...recordIds(base), ...recordIds(content)])] }, changes, transferredProposalCount: transferredProposals.length };
 }
 
 export function useReviewState(initialContent, initialDecisions = {}, { readOnly = false, editor = 'requirements' } = {}) {

@@ -1,14 +1,17 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { api, evidence, integer, required, sleep, tokens } from './lib.mjs';
+import { evidence, integer, required, sleep, submitWorkloadJob, tokens } from './lib.mjs';
 
-const startedAt = new Date().toISOString(); const [token] = await tokens(1); const bytes = 100 * 1024 * 1024; const chunk = Buffer.alloc(1024 * 1024); const hash = createHash('sha256');
+const startedAt = new Date().toISOString(); const [token] = await tokens(1); const versionId = required('QUAL_REQUIREMENTS_VERSION_ID');
+if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(versionId)) throw new Error('QUAL_REQUIREMENTS_VERSION_ID must identify an immutable version owned by the test identity');
+const bytes = 100 * 1024 * 1024; const chunk = Buffer.alloc(1024 * 1024, 'a'); const hash = createHash('sha256');
 for (let offset = 0; offset < bytes; offset += chunk.length) hash.update(chunk); const checksum = hash.digest('hex'); let sent = 0;
 const body = new ReadableStream({ pull(controller) { if (sent >= bytes) return controller.close(); controller.enqueue(chunk); sent += chunk.length; } });
-const uploadStarted = performance.now(); const uploadResponse = await fetch(`${required('QUAL_API_BASE_URL').replace(/\/$/, '')}/api/v1/artifacts`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/octet-stream', 'X-Content-SHA256': checksum }, body, duplex: 'half' });
+const uploadStarted = performance.now(); const uploadResponse = await fetch(`${required('QUAL_API_BASE_URL').replace(/\/$/, '')}/api/v1/artifacts`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'text/plain; charset=utf-8', 'X-Content-SHA256': checksum }, body, duplex: 'half' });
 const artifact = await uploadResponse.json(); const uploadMs = performance.now() - uploadStarted; const hours = integer('QUAL_SOAK_HOURS', 24); const intervalMinutes = integer('QUAL_SOAK_JOB_INTERVAL_MINUTES', 5); const deadline = Date.now() + hours * 3_600_000; const jobs = [];
+if (uploadResponse.status !== 201 || !artifact.artifactId) throw new Error(`Qualification text upload failed: HTTP ${uploadResponse.status}`);
 while (Date.now() < deadline) {
-  const created = await api('/api/v1/jobs', token, { method: 'POST', headers: { 'content-type': 'application/json', 'Idempotency-Key': `soak-${randomUUID()}` }, body: JSON.stringify({ type: jobs.length % 2 ? 'RESEARCH' : 'DECOMPOSITION', inputArtifactId: artifact.artifactId }) });
+  const created = await submitWorkloadJob(jobs.length % 2 ? 'RESEARCH' : 'DECOMPOSITION', token, { inputArtifactId: artifact.artifactId, versionId }, `soak-${randomUUID()}`);
   jobs.push({ status: created.status, jobId: created.body?.jobId || null }); await sleep(intervalMinutes * 60_000);
 }
 const dbCommand = JSON.parse(required('QUAL_DB_VERIFY_COMMAND_JSON')); if (!Array.isArray(dbCommand) || dbCommand.length < 2) throw new Error('QUAL_DB_VERIFY_COMMAND_JSON must be an argv array');

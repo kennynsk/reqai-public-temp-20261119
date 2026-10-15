@@ -56,7 +56,7 @@ test('validates file sizes and renders upload, error, progress, and ready states
   expect(onBaseline).toHaveBeenCalledWith(baseline);
   fireEvent.change(screen.getByLabelText('Файл требований'), { target: { files: [new File([], 'empty.txt'), primary] } });
   expect(onFile).toHaveBeenCalledWith(primary);
-  expect(screen.getByRole('alert')).toHaveTextContent('Пустые файлы');
+  expect(screen.getByRole('alert')).toHaveTextContent('непустой файл TXT, Markdown или JSON');
 
   fireEvent.click(screen.getByRole('button', { name: 'Убрать waiting.txt' }));
   expect(onReferences).toHaveBeenCalledWith([reference]);

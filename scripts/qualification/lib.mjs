@@ -26,6 +26,22 @@ export async function api(path, token, options = {}) {
   try { body = text ? JSON.parse(text) : null; } catch { body = { raw: text.slice(0, 500) }; }
   return { status: response.status, body, durationMs: performance.now() - started, headers: Object.fromEntries(response.headers) };
 }
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export async function workloadFixtures(count) {
+  const parsed = JSON.parse(await readFile(required('QUAL_WORKLOAD_FIXTURES_FILE'), 'utf8'));
+  if (!Array.isArray(parsed) || parsed.length !== count || parsed.some((item) => !item || !UUID.test(item.inputArtifactId) || !UUID.test(item.versionId))) {
+    throw new Error('QUAL_WORKLOAD_FIXTURES_FILE must contain one inputArtifactId/versionId pair per test identity');
+  }
+  return parsed;
+}
+export async function submitWorkloadJob(type, token, fixture, idempotencyKey) {
+  if (!['DECOMPOSITION', 'RESEARCH'].includes(type)) throw new Error('Unsupported qualification job type');
+  const id = type === 'DECOMPOSITION' ? fixture.inputArtifactId : fixture.versionId;
+  if (!UUID.test(id)) throw new Error('Qualification job requires a valid artifact or immutable version reference');
+  const path = type === 'DECOMPOSITION' ? '/api/v1/decompositions' : `/api/v1/requirements/versions/${id}/research`;
+  const body = type === 'DECOMPOSITION' ? { inputArtifactId: id } : {};
+  return api(path, token, { method: 'POST', headers: { 'content-type': 'application/json', 'Idempotency-Key': idempotencyKey }, body: JSON.stringify(body) });
+}
 export function percentile(values, p) { if (!values.length) return null; const sorted = [...values].sort((a, b) => a - b); return sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * p) - 1)]; }
 export async function evidence(kind, startedAt, checks, measurements, metadata = {}) {
   const result = { schemaVersion: '1.0', evidenceId: randomUUID(), kind, startedAt, completedAt: new Date().toISOString(), environment: required('QUAL_ENVIRONMENT'), executionHost: hostname(), gitCommit: process.env.QUAL_GIT_COMMIT || 'TBD-unavailable', checks, measurements, metadata, passed: checks.every((check) => check.passed === true) };

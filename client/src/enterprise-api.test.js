@@ -128,7 +128,6 @@ test('builds authenticated requests for all job and requirements operations', as
   await enterpriseApi.getResult('job-1');
   await enterpriseApi.getJobTrace('job-1', { cursor: 'page-2', limit: 2 });
   await enterpriseApi.getJobTraceDetail('job-1', 'entry-1');
-  await enterpriseApi.createJob({ type: 'DECOMPOSITION' }, 'create-key');
   await enterpriseApi.decomposeRequirements({ inputArtifactId: 'artifact-1' }, 'decompose-key');
   await enterpriseApi.researchRequirements('version-1', { model: 'model-1' }, 'research-key');
   await enterpriseApi.saveRequirementsVersion({ versionId: 'version-1' });
@@ -145,7 +144,6 @@ test('builds authenticated requests for all job and requirements operations', as
     '/api/v1/jobs/job-1/result',
     '/api/v1/jobs/job-1/trace?cursor=page-2&limit=2',
     '/api/v1/jobs/job-1/trace/entry-1',
-    '/api/v1/jobs',
     '/api/v1/decompositions',
     '/api/v1/requirements/versions/version-1/research',
     '/api/v1/requirements/versions',
@@ -162,10 +160,10 @@ test('builds authenticated requests for all job and requirements operations', as
   });
   expect(fetchMock.mock.calls[7][1]).toMatchObject({
     method: 'POST',
-    headers: { Authorization: 'Bearer api-token', 'content-type': 'application/json', 'Idempotency-Key': 'create-key' },
-    body: JSON.stringify({ type: 'DECOMPOSITION' }),
+    headers: { Authorization: 'Bearer api-token', 'content-type': 'application/json', 'Idempotency-Key': 'decompose-key' },
+    body: JSON.stringify({ inputArtifactId: 'artifact-1' }),
   });
-  expect(fetchMock.mock.calls[14][1].headers).toEqual({ Authorization: 'Bearer api-token', 'Idempotency-Key': 'retry-key' });
+  expect(fetchMock.mock.calls[13][1].headers).toEqual({ Authorization: 'Bearer api-token', 'Idempotency-Key': 'retry-key' });
 });
 
 test('turns structured and malformed HTTP errors into EnterpriseApiError', async () => {
@@ -285,7 +283,7 @@ test('uploads a file without a MIME type and reports zero for unknown progress',
   await expect(enterpriseApi.uploadArtifact(new File(['hello'], 'no-callback.txt'))).resolves.toEqual({ artifactId: 'no-type-artifact' });
 
   expect(progress).toHaveBeenCalledWith(0);
-  expect(instances[0].headers).toMatchObject({ 'Content-Type': 'application/octet-stream' });
+  expect(instances[0].headers).toMatchObject({ 'Content-Type': 'text/plain; charset=utf-8' });
   expect(instances[0].headers.Authorization).toBeUndefined();
 });
 

@@ -13,7 +13,6 @@ vi.mock('./api/enterprise-api.js', () => ({
 import {
   ActiveJobPanel,
   AddRequirementForm,
-  ApplicabilityBars,
   ArchivedLegacyResult,
   AiSettingsDisclosure,
   BackgroundJobIndicator,
@@ -524,11 +523,9 @@ describe('AsyncJobWorkspace presentational branches', () => {
     expect(onStartResearch).toHaveBeenCalledWith({ requirementsVersionId: 'legacy-v1' });
   });
 
-  test('covers applicability, decision states and source snapshot empty states', () => {
+  test('covers decision states and source snapshot empty states', () => {
     const onDecision = vi.fn();
-    render(<div><ApplicabilityBars value={null} /><ApplicabilityBars value={-10} /><ApplicabilityBars value={150} /><ApplicabilityBars value={50} /><InsightEnhancementDecisionRow enhancement={{ targetType: 'functional', text: 'Улучшение' }} decision="accepted" onDecision={onDecision} /><InsightEnhancementDecisionRow enhancement={{ targetType: 'unknown', text: 'Отклонённое' }} decision="rejected" onDecision={onDecision} /></div>);
-    expect(screen.getByText('Оценка не указана')).toBeInTheDocument();
-    expect(screen.getAllByRole('meter')).toHaveLength(3);
+    render(<div><InsightEnhancementDecisionRow enhancement={{ targetType: 'functional', text: 'Улучшение' }} decision="accepted" onDecision={onDecision} /><InsightEnhancementDecisionRow enhancement={{ targetType: 'unknown', text: 'Отклонённое' }} decision="rejected" onDecision={onDecision} /></div>);
     fireEvent.click(screen.getByRole('button', { name: 'Принять улучшение: Улучшение' }));
     fireEvent.click(screen.getByRole('button', { name: 'Принять улучшение: Отклонённое' }));
     expect(onDecision).toHaveBeenCalledWith('accepted');

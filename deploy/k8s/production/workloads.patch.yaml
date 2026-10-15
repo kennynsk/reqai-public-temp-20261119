@@ -1,0 +1,392 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reqai-frontend
+spec:
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    spec:
+      automountServiceAccountToken: false
+      serviceAccountName: reqai
+      terminationGracePeriodSeconds: 45
+      containers:
+        - name: frontend
+          command:
+            - nginx
+          args:
+            - '-g'
+            - daemon off;
+          volumeMounts:
+            - name: nginx-config
+              mountPath: /etc/nginx/conf.d
+              readOnly: true
+      volumes:
+        - name: nginx-config
+          configMap:
+            name: reqai-nginx
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reqai-api
+spec:
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    spec:
+      automountServiceAccountToken: false
+      serviceAccountName: reqai
+      terminationGracePeriodSeconds: 45
+      volumes:
+        - name: trust
+          secret:
+            secretName: reqai-trust
+            items:
+              - key: postgres-ca.crt
+                path: postgres-ca.crt
+              - key: node-ca.pem
+                path: node-ca.pem
+              - key: temporal-ca.crt
+                path: temporal-ca.crt
+        - name: temporal-tls
+          secret:
+            secretName: reqai-temporal-client
+            items:
+              - key: tls.crt
+                path: tls.crt
+              - key: tls.key
+                path: tls.key
+      containers:
+        - name: api
+          envFrom:
+            - configMapRef:
+                name: reqai-production-config
+          env:
+            - name: APP_ROLE
+              value: api
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: reqai-runtime-database
+                  key: url
+            - name: ZAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: reqai-zai
+                  key: api-key
+          volumeMounts:
+            - name: trust
+              mountPath: /etc/reqai/trust
+              readOnly: true
+            - name: temporal-tls
+              mountPath: /var/run/secrets/temporal
+              readOnly: true
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reqai-decomposition-worker
+spec:
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    spec:
+      automountServiceAccountToken: false
+      serviceAccountName: reqai
+      terminationGracePeriodSeconds: 660
+      volumes:
+        - name: trust
+          secret:
+            secretName: reqai-trust
+            items:
+              - key: postgres-ca.crt
+                path: postgres-ca.crt
+              - key: node-ca.pem
+                path: node-ca.pem
+              - key: temporal-ca.crt
+                path: temporal-ca.crt
+        - name: temporal-tls
+          secret:
+            secretName: reqai-temporal-client
+            items:
+              - key: tls.crt
+                path: tls.crt
+              - key: tls.key
+                path: tls.key
+        - name: tmp
+          emptyDir:
+            sizeLimit: 256Mi
+      containers:
+        - name: worker
+          envFrom:
+            - configMapRef:
+                name: reqai-production-config
+          env:
+            - name: APP_ROLE
+              value: workflow-worker
+            - name: TEMPORAL_WORKER_TASK_QUEUE
+              value: requirements-decomposition
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: reqai-runtime-database
+                  key: url
+            - name: ZAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: reqai-zai
+                  key: api-key
+          volumeMounts:
+            - name: trust
+              mountPath: /etc/reqai/trust
+              readOnly: true
+            - name: temporal-tls
+              mountPath: /var/run/secrets/temporal
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reqai-research-worker
+spec:
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    spec:
+      automountServiceAccountToken: false
+      serviceAccountName: reqai
+      terminationGracePeriodSeconds: 660
+      volumes:
+        - name: trust
+          secret:
+            secretName: reqai-trust
+            items:
+              - key: postgres-ca.crt
+                path: postgres-ca.crt
+              - key: node-ca.pem
+                path: node-ca.pem
+              - key: temporal-ca.crt
+                path: temporal-ca.crt
+        - name: temporal-tls
+          secret:
+            secretName: reqai-temporal-client
+            items:
+              - key: tls.crt
+                path: tls.crt
+              - key: tls.key
+                path: tls.key
+        - name: tmp
+          emptyDir:
+            sizeLimit: 256Mi
+      containers:
+        - name: worker
+          envFrom:
+            - configMapRef:
+                name: reqai-production-config
+          env:
+            - name: APP_ROLE
+              value: workflow-worker
+            - name: TEMPORAL_WORKER_TASK_QUEUE
+              value: requirements-research
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: reqai-runtime-database
+                  key: url
+            - name: ZAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: reqai-zai
+                  key: api-key
+          volumeMounts:
+            - name: trust
+              mountPath: /etc/reqai/trust
+              readOnly: true
+            - name: temporal-tls
+              mountPath: /var/run/secrets/temporal
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reqai-event-worker
+spec:
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    spec:
+      automountServiceAccountToken: false
+      serviceAccountName: reqai
+      terminationGracePeriodSeconds: 660
+      volumes:
+        - name: trust
+          secret:
+            secretName: reqai-trust
+            items:
+              - key: postgres-ca.crt
+                path: postgres-ca.crt
+              - key: node-ca.pem
+                path: node-ca.pem
+              - key: temporal-ca.crt
+                path: temporal-ca.crt
+        - name: temporal-tls
+          secret:
+            secretName: reqai-temporal-client
+            items:
+              - key: tls.crt
+                path: tls.crt
+              - key: tls.key
+                path: tls.key
+      containers:
+        - name: worker
+          envFrom:
+            - configMapRef:
+                name: reqai-production-config
+          env:
+            - name: APP_ROLE
+              value: event-worker
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: reqai-runtime-database
+                  key: url
+            - name: KAFKA_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: reqai-kafka
+                  key: username
+            - name: KAFKA_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: reqai-kafka
+                  key: password
+          volumeMounts:
+            - name: trust
+              mountPath: /etc/reqai/trust
+              readOnly: true
+            - name: temporal-tls
+              mountPath: /var/run/secrets/temporal
+              readOnly: true
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reqai-maintenance-worker
+spec:
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    spec:
+      automountServiceAccountToken: false
+      serviceAccountName: reqai
+      terminationGracePeriodSeconds: 660
+      volumes:
+        - name: trust
+          secret:
+            secretName: reqai-trust
+            items:
+              - key: postgres-ca.crt
+                path: postgres-ca.crt
+              - key: node-ca.pem
+                path: node-ca.pem
+              - key: temporal-ca.crt
+                path: temporal-ca.crt
+      containers:
+        - name: worker
+          envFrom:
+            - configMapRef:
+                name: reqai-production-config
+          env:
+            - name: APP_ROLE
+              value: maintenance-worker
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: reqai-runtime-database
+                  key: url
+          volumeMounts:
+            - name: trust
+              mountPath: /etc/reqai/trust
+              readOnly: true
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reqai-mcp-gateway
+spec:
+  replicas: 0
+  template:
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10002
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: gateway
+          envFrom:
+            - configMapRef: {name: reqai-production-mcp}
+          env:
+            - name: MCP_BUILD_VERSION
+              value: replace-release-id
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: reqai-mcp-gateway
+automountServiceAccountToken: false
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: reqai-mcp-gateway
+spec:
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: replace-ingress-namespace
+      ports:
+        - protocol: TCP
+          port: 5180
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: reqai
+              role: api
+      ports:
+        - protocol: TCP
+          port: 5178
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53

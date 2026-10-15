@@ -7,12 +7,14 @@ import { assertWorkflowEngine, workflowIdForJob } from './workflow-engine.js';
 
 export async function temporalTlsOptions(config) {
   if (!config.temporal.tls.enabled) return undefined;
-  const [crt, key] = await Promise.all([
+  const [crt, key, ca] = await Promise.all([
     readFile(config.temporal.tls.certPath),
     readFile(config.temporal.tls.keyPath),
+    config.temporal.tls.caCertPath ? readFile(config.temporal.tls.caCertPath) : undefined,
   ]);
   return {
     clientCertPair: { crt, key },
+    ...(ca ? { serverRootCACertificate: ca } : {}),
     ...(config.temporal.tls.serverName ? { serverNameOverride: config.temporal.tls.serverName } : {}),
   };
 }

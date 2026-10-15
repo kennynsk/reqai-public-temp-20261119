@@ -42,7 +42,7 @@ export function buildLogRecord(level, event, fields = {}) {
     timestamp: new Date().toISOString(),
     level,
     event,
-    ...redactSensitive(fields),
+    ...redactDiagnosticMetadata(fields),
   };
 }
 
@@ -50,4 +50,23 @@ export function logEvent(level, event, fields = {}) {
   const method = level === 'error' ? 'error' : level === 'warn' ? 'warn' : 'log';
   // eslint-disable-next-line no-console
   console[method](JSON.stringify(buildLogRecord(level, event, fields)));
+}
+
+// Ordinary diagnostics may contain model-produced errors, including historical
+// rows. Keep their structure, but never expose free-form explanations or text.
+const DIAGNOSTIC_TEXT_KEYS = new Set(['reason', 'message', 'quote', 'text', 'rationale', 'stack', 'title', 'description']);
+export function redactDiagnosticMetadata(value) {
+  const clean = redactSensitive(value);
+  function visit(node) {
+    if (Array.isArray(node)) return node.map(visit);
+    if (!node || typeof node !== 'object') return node;
+    return Object.fromEntries(Object.entries(node).map(([key, child]) => {
+      if (DIAGNOSTIC_TEXT_KEYS.has(key.toLowerCase())) return [key, '[REDACTED]'];
+      if (key === 'key' && typeof child === 'string' && !/^(?:\$(?:quality|source|narrative)?|(?:BR|SR|FR|NFR|TR|CON|CTX|GAP|HYP|TERM|SOURCE|INS|INSIGHT)-\d+(?::\d+)?)$/.test(child)) return [key, '[REDACTED]'];
+      if (['code', 'reasonCode'].includes(key) && typeof child === 'string' && !/^[A-Za-z0-9_$.:\[\]-]{1,100}$/.test(child)) return [key, '[REDACTED]'];
+      if (key === 'path' && typeof child === 'string' && !/^\$(?:\.[A-Za-z_]\w*|\[\d+\])*$/.test(child)) return [key, '[REDACTED]'];
+      return [key, visit(child)];
+    }));
+  }
+  return visit(clean);
 }

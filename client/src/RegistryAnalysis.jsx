@@ -9,7 +9,7 @@ export function RecordLinks({ ids = [], onNavigate, previewRequirementsOnly = fa
   const preview = useContext(RequirementPreviewContext);
   return <span className="inline-flex flex-wrap gap-2">{ids.map((id) => preview && (!previewRequirementsOnly || /^(BR|SR|FR|NFR|TR|CON)-/.test(id))
     ? <RequirementPreviewLink key={id} id={id} className="reqai-preview-link" />
-    : <a key={id} href={`#record-${id}`} onClick={(event) => { if (onNavigate) { event.preventDefault(); onNavigate(id); } }} className="inline-block rounded bg-indigo-50 px-2 py-1 text-xs font-semibold text-indigo-700 underline underline-offset-2">{id}</a>)} </span>;
+    : <a key={id} href={`#record-${id}`} onClick={(event) => { if (onNavigate) { event.preventDefault(); onNavigate(id); } }} className="inline-block rounded-sm bg-indigo-50 px-2 py-1 text-xs font-semibold text-indigo-700 underline underline-offset-2">{id}</a>)} </span>;
 }
 
 function TraceabilityNode({ node, registry, onNavigate }) {
@@ -21,7 +21,7 @@ function TraceabilityNode({ node, registry, onNavigate }) {
       <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
         <RecordLinks ids={[record.id]} onNavigate={onNavigate} />
         {incoming && <span className="text-xs text-slate-500">{incoming.relation}</span>}
-        {incoming && incoming.status !== 'Подтверждено источником' && <span className="rounded bg-amber-50 px-2 py-1 text-xs text-amber-900">{incoming.status}</span>}
+        {incoming && incoming.status !== 'Подтверждено источником' && <span className="rounded-sm bg-amber-50 px-2 py-1 text-xs text-amber-900">{incoming.status}</span>}
         {gaps.length > 0 && <span className="text-xs text-amber-900">{ /^(BR|SR)-/.test(record.id) ? 'Покрытие требует уточнения' : 'Есть пробелы' }</span>}
       </div>
       <p className="mt-1 break-words text-sm leading-6 text-slate-700">{record.text}</p>
@@ -45,7 +45,7 @@ function TraceabilityLinks({ registry, onNavigate }) {
         <RecordLinks ids={[link.from]} onNavigate={onNavigate} />
         <span className="text-sm text-slate-600">{link.relation}</span>
         <RecordLinks ids={[link.to]} onNavigate={onNavigate} />
-        <span className={`rounded px-2 py-1 text-xs ${link.status === 'Предполагается' ? 'bg-amber-50 text-amber-900' : 'bg-slate-100 text-slate-600'}`}>{link.status}</span>
+        <span className={`rounded-sm px-2 py-1 text-xs ${link.status === 'Предполагается' ? 'bg-amber-50 text-amber-900' : 'bg-slate-100 text-slate-600'}`}>{link.status}</span>
       </li>)}</ul>
     </section>}
   </section>;

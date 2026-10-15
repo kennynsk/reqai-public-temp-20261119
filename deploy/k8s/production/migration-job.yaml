@@ -1,0 +1,65 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: reqai-schema-migration
+  labels:
+    reqai.phase: bootstrap
+spec:
+  suspend: true
+  backoffLimit: 0
+  activeDeadlineSeconds: 900
+  template:
+    metadata:
+      labels:
+        app: reqai
+        role: schema-migration
+    spec:
+      restartPolicy: Never
+      serviceAccountName: reqai
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: migrate
+          image: reqai/backend:TBD
+          command:
+            - node
+            - server/scripts/migrate.mjs
+          envFrom:
+            - configMapRef:
+                name: reqai-production-config
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: reqai-migration-database
+                  key: url
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: '1'
+              memory: 512Mi
+          volumeMounts:
+            - name: trust
+              mountPath: /etc/reqai/trust
+              readOnly: true
+      volumes:
+        - name: trust
+          secret:
+            secretName: reqai-trust
+            items:
+              - key: postgres-ca.crt
+                path: postgres-ca.crt
+              - key: node-ca.pem
+                path: node-ca.pem

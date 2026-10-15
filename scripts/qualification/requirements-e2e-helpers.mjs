@@ -1,6 +1,6 @@
 export async function json(response) {
   const body = await response.json();
-  if (!response.ok) throw new Error(`${response.status} ${JSON.stringify(body)}`);
+  if (!response.ok) throw new Error(`HTTP ${response.status}: ${/^[A-Z][A-Z0-9_]{1,127}$/.test(body?.error?.code) ? body.error.code : 'REQUEST_FAILED'}`);
   return body;
 }
 
@@ -15,7 +15,7 @@ export async function waitForJob(baseUrl, jobId, readStatus) {
     if (['SUCCEEDED', 'FAILED', 'CANCELLED'].includes(status.status)) break;
     await new Promise((resolve) => setTimeout(resolve, 2_000));
   }
-  if (status?.status !== 'SUCCEEDED') throw new Error(`Job ${jobId} did not succeed within ${timeoutMs} ms: ${JSON.stringify(status)}`);
+  if (status?.status !== 'SUCCEEDED') throw new Error(`Job ${jobId} did not succeed within ${timeoutMs} ms; status=${status?.status || 'UNKNOWN'}`);
   return status;
 }
 
@@ -36,7 +36,7 @@ export function verifyModel(result, expectedModel) {
     || attempt.requestedModel !== expectedModel
     || attempt.model !== expectedModel);
   if (unexpected.length) {
-    throw new Error(`Job ${result.jobId} was not error-free exclusively on ${expectedModel}: ${JSON.stringify(unexpected)}`);
+    throw new Error(`Job ${result.jobId} has ${unexpected.length} unsuccessful or unexpected model attempts`);
   }
 }
 
@@ -69,8 +69,8 @@ export function summarizeJob(status, result) {
     jobId: status.jobId,
     status: status.status,
     outcome: result.metadata.outcome,
-    failedSteps: result.metadata.failedSteps,
-    modelAttempts: result.metadata.modelAttempts,
+    failedSteps: (result.metadata.failedSteps || []).map(({ stepId, stepType }) => ({ stepId, stepType })),
+    modelAttempts: (result.metadata.modelAttempts || []).map(({ stepId, requestedModel, model, attempt, result, reasonCode, tokenUsage, durationMs }) => ({ stepId, requestedModel, model, attempt, result, reasonCode, tokenUsage, durationMs })),
     resultKind: typeof result.content === 'object' ? result.content?.kind || 'json' : 'text',
   };
 }

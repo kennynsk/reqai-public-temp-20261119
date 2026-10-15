@@ -1,0 +1,25 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: reqai-mcp-gateway
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: 1100k
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+spec:
+  ingressClassName: replace-ingress-class
+  tls:
+    - hosts:
+        - replace-mcp-host.invalid
+      secretName: reqai-mcp-tls
+  rules:
+    - host: replace-mcp-host.invalid
+      http:
+        paths:
+          - path: /mcp
+            pathType: Exact
+            backend:
+              service:
+                name: reqai-mcp-gateway
+                port:
+                  name: http

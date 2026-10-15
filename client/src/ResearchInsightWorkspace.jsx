@@ -19,7 +19,7 @@ function FilterButton({ option, active, onClick }) {
     aria-pressed={active}
     aria-label={`${option.label} · ${option.count}`}
     onClick={onClick}
-    className={`inline-flex min-h-9 items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${active ? option.active : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'}`}
+    className={`inline-flex min-h-9 items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-indigo-500 ${active ? option.active : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'}`}
   >
     {option.icon && <option.icon aria-hidden="true" className="h-3.5 w-3.5" />}
     <span>{option.label} · {option.count}</span>
@@ -109,7 +109,7 @@ export default function ResearchInsightWorkspace({
                 aria-controls="selected-research-detail"
                 aria-label={`${insight.title}. ${insight.categoryLabel}. ${applicabilityLabel(insight.applicability)}`}
                 onClick={() => selectInsight(insight.id)}
-                className={`w-full min-w-0 rounded-xl border px-3 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${selectedRow ? 'border-indigo-300 bg-indigo-50/70 shadow-sm' : 'border-transparent hover:border-slate-200 hover:bg-slate-50'}`}
+                className={`w-full min-w-0 rounded-xl border px-3 py-3 text-left transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-indigo-500 ${selectedRow ? 'border-indigo-300 bg-indigo-50/70 shadow-xs' : 'border-transparent hover:border-slate-200 hover:bg-slate-50'}`}
               >
                 <div className="flex items-start gap-2">
                   <span className={`mt-0.5 rounded-lg p-1.5 ${insight.categoryMeta.color}`}><CategoryIcon meta={insight.categoryMeta} category={insight.category} testId={`insight-category-icon-${insight.category}`} /></span>
@@ -136,7 +136,7 @@ export default function ResearchInsightWorkspace({
               {applicabilityLabel(selected.applicability)} · оценка применимости
             </span>
           </div>
-          <h2 className="reqai-research-copy mt-5 text-xl font-bold leading-tight text-slate-950 sm:text-2xl">{selected.title}</h2>
+          <h2 className="reqai-research-copy mt-5 text-xl font-bold leading-tight text-slate-950 sm:text-2xl sm:leading-8">{selected.title}</h2>
           {selected.summary && <p className="reqai-research-copy mt-3 text-base leading-7 text-slate-600">{selected.summary}</p>}
           {selected.detail && <div className="reqai-research-copy mt-5 whitespace-pre-wrap text-sm leading-6 text-slate-700"><p className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-600">Подробности</p><p className="mt-2">{selected.detail}</p></div>}
 
@@ -151,7 +151,7 @@ export default function ResearchInsightWorkspace({
           </div>}
 
           {renderEvidence && <details className="mt-5 rounded-xl border border-slate-200 bg-slate-50/60 group/evidence">
-            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-semibold text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-semibold text-slate-700 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-indigo-500">
               <span>Доказательства и ограничения</span><span aria-hidden="true" className="text-slate-600 group-open/evidence:rotate-180">⌄</span>
             </summary>
             <div className="border-t border-slate-200 px-4 pb-4">{renderEvidence(selected)}</div>

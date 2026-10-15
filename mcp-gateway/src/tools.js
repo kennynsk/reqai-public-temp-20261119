@@ -4,13 +4,10 @@ import { TOOL_DEFINITIONS } from './schemas.js';
 import { safeLog } from './redaction.js';
 
 const OPERATIONS = Object.freeze({
-  upload_artifact: 'uploadArtifact',
-  cancel_task: 'cancelTask',
   decompose_requirements: 'decompose',
   research_requirements: 'researchRequirements',
   get_task_status: 'getStatus',
   get_task_result: 'getResult',
-  get_task_result_content: 'getResultContent',
 });
 
 function gatewayError(error) {
@@ -25,7 +22,7 @@ function resultContent(value, isError = false) {
 export function createRequirementsMcpServer({ client, token, config, metrics, clock = () => Date.now() }) {
   const server = new McpServer({ name: 'reqai-requirements', version: config.buildVersion }, {
     capabilities: { tools: {} },
-    instructions: `ReqAI requirements tools; schema ${config.schemaVersion}. Start operations are asynchronous and return canonical job references. After a job succeeds, call get_task_result_content with format=markdown to read the full human-readable requirements report.`,
+    instructions: `ReqAI requirements tools; schema ${config.schemaVersion}. Start operations are asynchronous and return canonical job references. Results contain metadata only; artifact content and cancellation use the authorized REST API.`,
   });
 
   for (const [name, definition] of Object.entries(TOOL_DEFINITIONS)) {
@@ -36,16 +33,25 @@ export function createRequirementsMcpServer({ client, token, config, metrics, cl
       outputSchema: definition.outputSchema,
       annotations: {
         readOnlyHint: name.startsWith('get_'),
-        destructiveHint: name === 'cancel_task',
+        destructiveHint: false,
         idempotentHint: name.startsWith('get_'),
         openWorldHint: false,
       },
-      _meta: { 'reqai/toolSchemaVersion': config.schemaVersion, 'reqai/asynchronous': ['decompose_requirements', 'research_requirements', 'cancel_task'].includes(name) },
+      _meta: { 'reqai/toolSchemaVersion': config.schemaVersion, 'reqai/asynchronous': ['decompose_requirements', 'research_requirements'].includes(name) },
     }, async (input) => {
       const started = clock();
       try {
         const payload = await client[OPERATIONS[name]](token, input);
-        const validated = definition.successSchema.safeParse(payload);
+        // REST may add user-visible fields (title/search settings) without
+        // expanding the metadata-only MCP contract. Project before validating.
+        const metadata = payload && typeof payload === 'object'
+          ? Object.fromEntries(Object.keys(definition.successSchema.shape).filter((key) => Object.hasOwn(payload, key)).map((key) => [key, payload[key]])) : payload;
+        if (metadata && name === 'get_task_status') metadata.message = null;
+        if (metadata && name === 'get_task_result') {
+          metadata.summary = null;
+          if (Array.isArray(metadata.failedSteps)) metadata.failedSteps = metadata.failedSteps.map(({ stepId, stepType }) => ({ stepId, stepType, summary: null }));
+        }
+        const validated = definition.successSchema.safeParse(metadata);
         if (!validated.success) throw new GatewayError({ code: 'MCP_BACKEND_CONTRACT_MISMATCH', message: 'ReqAI API returned an incompatible response', retryable: false, status: 502 });
         metrics.increment('reqai_mcp_tool_calls_total', { tool: name, outcome: 'success' });
         safeLog('info', 'mcp.tool.completed', { tool: name, outcome: 'success', durationMs: clock() - started });

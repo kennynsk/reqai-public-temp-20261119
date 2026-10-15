@@ -23,9 +23,9 @@
       "post": {
         "operationId": "startDecomposition",
         "summary": "Start asynchronous requirements decomposition",
-        "description": "Inline businessContext is limited to the JSON request limit. Upload larger inputs through POST /api/v1/artifacts and provide inputArtifactId (mutually exclusive with businessContext). Optional baselineArtifactId and referenceArtifactIds attach comparison and reference materials. Set promptVersion to 2.3.0 for original BABOK skill execution; when omitted, the configured active version is used. Discover available models and prompt releases through GET /api/v1.",
+        "description": "Materials must be nonempty UTF-8 TXT, Markdown or JSON; unsupported MIME returns 415 and malformed, binary or empty content returns 400. Inline businessContext is limited to the JSON request limit. Upload larger inputs through POST /api/v1/artifacts and provide inputArtifactId (mutually exclusive with businessContext). Optional baselineArtifactId and referenceArtifactIds attach comparison and reference materials. Set promptVersion to 2.17.0 for current source coverage rules; when omitted, the configured active version is used. Discover available models and prompt releases through GET /api/v1.",
         "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }],
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DecompositionRequest" }, "example": { "businessContext": "Сотрудник создаёт заявку. Руководитель согласует её или возвращает на доработку.", "model": "glm-5.3-flash", "temperature": 0.2, "promptVersion": "2.3.0" } } } },
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DecompositionRequest" }, "example": { "businessContext": "Сотрудник создаёт заявку. Руководитель согласует её или возвращает на доработку.", "model": "glm-5.3-flash", "temperature": 0.2, "promptVersion": "2.17.0" } } } },
         "responses": {
           "202": { "description": "Canonical job accepted", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JobAccepted" } } } },
           "400": { "$ref": "#/components/responses/BadRequest" },
@@ -34,6 +34,7 @@
           "404": { "$ref": "#/components/responses/NotFound" },
           "409": { "$ref": "#/components/responses/Conflict" },
           "413": { "$ref": "#/components/responses/PayloadTooLarge" },
+          "415": { "description": "Referenced material has an unsupported MIME type" },
           "429": { "$ref": "#/components/responses/Overloaded" },
           "503": { "$ref": "#/components/responses/Unavailable" }
         }
@@ -59,31 +60,6 @@
       }
     },
     "/api/v1/jobs": {
-      "post": {
-        "operationId": "createJob",
-        "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": { "schema": { "$ref": "#/components/schemas/CreateJobRequest" } }
-          }
-        },
-        "responses": {
-          "202": {
-            "description": "Job accepted",
-            "headers": {
-              "Location": { "schema": { "type": "string" } },
-              "Retry-After": { "schema": { "type": "integer", "minimum": 1 } }
-            },
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JobAccepted" } } }
-          },
-          "400": { "$ref": "#/components/responses/BadRequest" },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "409": { "$ref": "#/components/responses/Conflict" },
-          "429": { "$ref": "#/components/responses/Overloaded" },
-          "503": { "$ref": "#/components/responses/Unavailable" }
-        }
-      },
       "get": {
         "operationId": "listJobs",
         "parameters": [
@@ -384,6 +360,7 @@
           "201": { "description": "Artifact stored", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Artifact" } } } },
           "400": { "$ref": "#/components/responses/BadRequest" },
           "401": { "$ref": "#/components/responses/Unauthorized" },
+          "415": { "description": "Unsupported material MIME type; only UTF-8 text materials are accepted" },
           "413": { "$ref": "#/components/responses/PayloadTooLarge" }
         }
       }
@@ -574,17 +551,6 @@
           "temperature": { "type": "number", "minimum": 0, "maximum": 2 },
           "reasoning": { "$ref": "#/components/schemas/ReasoningLevel" },
           "promptVersion": { "type": "string", "pattern": "^[1-9][0-9]*\\.[0-9]+\\.[0-9]+$" }
-        },
-        "additionalProperties": false
-      },
-      "CreateJobRequest": {
-        "type": "object",
-        "required": ["type", "inputArtifactId"],
-        "properties": {
-          "type": { "type": "string", "const": "DECOMPOSITION" },
-          "inputArtifactId": { "type": "string", "format": "uuid" },
-          "parentJobId": { "type": "string", "format": "uuid" },
-          "options": { "$ref": "#/components/schemas/JobOptions" }
         },
         "additionalProperties": false
       },

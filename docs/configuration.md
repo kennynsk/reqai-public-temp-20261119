@@ -62,6 +62,7 @@ Kafka messages are metadata-only and must not exceed the platform message limit.
 | `TEMPORAL_TLS_ENABLED` | `true` in production | boolean | ConfigMap |
 | `TEMPORAL_TLS_CERT_PATH` | none | readable client certificate when mTLS is used | Secret volume |
 | `TEMPORAL_TLS_KEY_PATH` | none | readable client private key when mTLS is used | Secret volume |
+| `TEMPORAL_TLS_CA_CERT_PATH` | system trust when unset | readable CA PEM passed as `serverRootCACertificate` to both Temporal SDK clients | Secret/CA volume |
 | `TEMPORAL_TLS_SERVER_NAME` | none | non-empty TLS server name when required | ConfigMap |
 | `WORKER_MAX_CONCURRENT_ACTIVITIES` | `10` | 1–1,000 | ConfigMap |
 | `WORKER_ACTIVITY_HEARTBEAT_MS` | `30000` | 1,000–300,000 | ConfigMap |
@@ -233,7 +234,7 @@ MCP uses a separate runtime and does not read backend prompt/provider/database s
 | `MCP_ALLOWED_HOSTS` | localhost only | comma-separated; required in enabled production | ConfigMap |
 | `MCP_BACKEND_API_URL` | `http://127.0.0.1:5178` | fixed absolute HTTP(S) URL without credentials/query/fragment | ConfigMap |
 | `MCP_IAM_AUDIENCE_MODE` | `forward-same-audience` | only supported first-release policy | ConfigMap |
-| `MCP_TOOL_SCHEMA_VERSION` | `2.1.0` | published schema version | ConfigMap |
+| `MCP_TOOL_SCHEMA_VERSION` | `3.0.0` | exact supported schema; other overrides fail startup | ConfigMap |
 | `MCP_BUILD_VERSION` | `1.0.0` | immutable image/build identifier | ConfigMap |
 | `MCP_BACKEND_TIMEOUT_MS` | `10000` | 100–120,000 | ConfigMap |
 | `MCP_AUTH_TIMEOUT_MS` | `5000` | 100–30,000 | ConfigMap |
@@ -244,3 +245,7 @@ MCP uses a separate runtime and does not read backend prompt/provider/database s
 | `MCP_STDIO_BEARER_TOKEN` | none | required only for explicit local/test stdio | local secret/env |
 
 See [MCP gateway contract and security](mcp-requirements-adapter.md).
+
+## Kubernetes production inputs
+
+The deployable Kustomize entry points are `deploy/k8s/production/` (MCP off) and `deploy/k8s/production-mcp/` (opt-in). See [the input/Secret contract, offline commands and controlled fresh bootstrap](../deploy/k8s/production/README.md). Base templates live under `deploy/k8s/base/` and must not be applied directly. Production non-secret inputs are explicit in `runtime.env`; `.env.dev` and shell service credentials are not inherited. API/workflow receive only explicit provider Secret keys; event gets Kafka keys; migration credentials stay in the suspended Job. Real IAM browser login integration, storage isolation, secret availability, verified TLS and runtime acceptance are separate target gates.

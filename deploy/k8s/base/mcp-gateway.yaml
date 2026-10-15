@@ -1,0 +1,119 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: reqai-mcp-gateway
+data:
+  MCP_ENABLED: "false"
+  MCP_TRANSPORT: streamable-http
+  MCP_HOST: 0.0.0.0
+  MCP_PORT: "5180"
+  MCP_PUBLIC_ENDPOINT: https://mcp.reqai.example/mcp
+  MCP_ALLOWED_HOSTS: mcp.reqai.example
+  MCP_BACKEND_API_URL: http://reqai-api:5178
+  MCP_IAM_AUDIENCE_MODE: forward-same-audience
+  MCP_TOOL_SCHEMA_VERSION: 3.0.0
+  MCP_BACKEND_TIMEOUT_MS: "10000"
+  MCP_AUTH_TIMEOUT_MS: "5000"
+  MCP_BODY_LIMIT_BYTES: "1100000"
+  MCP_RESPONSE_LIMIT_BYTES: "262144"
+  MCP_MAX_CONCURRENCY: "32"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reqai-mcp-gateway
+spec:
+  replicas: 0
+  selector:
+    matchLabels: { app: reqai-mcp-gateway }
+  template:
+    metadata:
+      labels: { app: reqai-mcp-gateway }
+    spec:
+      serviceAccountName: reqai-mcp-gateway
+      automountServiceAccountToken: false
+      containers:
+        - name: gateway
+          image: registry.example/reqai-mcp-gateway:1.0.0
+          envFrom:
+            - configMapRef: { name: reqai-mcp-gateway }
+          env:
+            - name: MCP_BUILD_VERSION
+              value: "1.0.0"
+            - name: MCP_READINESS_BEARER_TOKEN
+              valueFrom:
+                secretKeyRef: { name: reqai-mcp-readiness, key: bearer-token }
+          ports:
+            - { name: http, containerPort: 5180 }
+          readinessProbe: { httpGet: { path: /health/ready, port: http }, periodSeconds: 10 }
+          livenessProbe: { httpGet: { path: /health/live, port: http }, periodSeconds: 10 }
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits: { cpu: "1", memory: 512Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities: { drop: ["ALL"] }
+      terminationGracePeriodSeconds: 30
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: reqai-mcp-gateway
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: reqai-mcp-gateway
+spec:
+  selector: { app: reqai-mcp-gateway }
+  ports:
+    - { name: http, port: 5180, targetPort: http }
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: reqai-mcp-gateway
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: 1100k
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [mcp.reqai.example]
+      secretName: reqai-mcp-tls
+  rules:
+    - host: mcp.reqai.example
+      http:
+        paths:
+          - path: /mcp
+            pathType: Exact
+            backend:
+              service: { name: reqai-mcp-gateway, port: { name: http } }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: reqai-mcp-gateway
+spec:
+  podSelector:
+    matchLabels: { app: reqai-mcp-gateway }
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: ingress-nginx }
+      ports:
+        - { protocol: TCP, port: 5180 }
+  egress:
+    - to:
+        - podSelector:
+            matchLabels: { app: reqai, role: api }
+      ports:
+        - { protocol: TCP, port: 5178 }
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }

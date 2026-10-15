@@ -1,3 +1,4 @@
+import { redactDiagnosticMetadata } from '../middleware/safe-logging.js';
 import { randomUUID } from 'node:crypto';
 
 import { withTenantTransaction } from '../db/transaction.js';
@@ -24,7 +25,7 @@ export class JobTraceRepository {
            FROM ${this.schema}.job_trace_entries WHERE tenant_id=$2 AND job_id=$3
          RETURNING *`,
         [randomUUID(), tenantId, jobId, category, name, status, stepId, startedAt, completedAt, durationMs,
-          JSON.stringify(metadata), inputArtifactId, outputArtifactId, detailArtifactId, detailKind, detailVisibility, expiresAt],
+          JSON.stringify(redactDiagnosticMetadata(metadata)), inputArtifactId, outputArtifactId, detailArtifactId, detailKind, detailVisibility, expiresAt],
       );
       return result.rows[0];
     });

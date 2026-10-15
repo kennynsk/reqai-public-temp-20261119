@@ -54,6 +54,8 @@ test('workflow metadata: scoped search, old pages, orphan children, concurrent r
     assert.equal((await repository.listWorkflows(wrongTenant)).rows.length, 0);
     await withTenantTransaction(pool, tenantId, async (client) => {
       const events = await client.query("SELECT aggregate_id,payload FROM reqai.outbox_events WHERE tenant_id=$1 AND event_type='job.metadata-updated'", [tenantId]);
+      assert.equal(JSON.stringify(events.rows).includes('Комнаты после ремонта'), false);
+      for (const event of events.rows) assert.equal(Object.hasOwn(event.payload, 'title'), false);
       assert.equal(events.rows.length, 4);
       assert.deepEqual(new Set(events.rows.map((row) => row.aggregate_id)), new Set([root, child]));
       assert.ok(events.rows.every((row) => row.payload.actorUserId === 'alice'));

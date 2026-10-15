@@ -19,6 +19,7 @@
     "test:mcp": "npm -w mcp-gateway run test",
     "fix:links": "node scripts/fix-workspace-links.mjs",
     "postinstall": "node scripts/fix-workspace-links.mjs",
+    "qualify:kubernetes": "node scripts/qualification/kubernetes.mjs",
     "qualify:load": "node scripts/qualification/load.mjs",
     "qualify:security": "node scripts/qualification/security.mjs",
     "qualify:drill": "node scripts/qualification/drill.mjs",

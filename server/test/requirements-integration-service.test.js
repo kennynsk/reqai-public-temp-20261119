@@ -13,7 +13,7 @@ function harness(overrides = {}) {
     config,
     uuid: () => `00000000-0000-4000-8000-${String(++sequence).padStart(12, '0')}`,
     clock: () => new Date('2026-01-01T00:00:00Z'),
-    artifactRepository: { metadata: async ({ artifactId }) => artifactId.endsWith('1') ? { id: artifactId, sha256: 'a'.repeat(64) } : null },
+    artifactRepository: { validateMaterial: async ({ artifactId }) => artifactId.endsWith('1') ? { id: artifactId, sha256: 'a'.repeat(64) } : null },
     requirementsVersionService: { resolveResearchSource: async ({ versionId }) => ({ versionId, inputArtifactId: versionId, parentJobId: '00000000-0000-4000-8000-000000000099', inputSha256: 'b'.repeat(64) }) },
     jobService: { create: async (value) => { calls.push(value); return { job: { id: 'job-1', status: 'ACCEPTED' }, replayed: calls.length > 1 }; } },
     ...overrides,
