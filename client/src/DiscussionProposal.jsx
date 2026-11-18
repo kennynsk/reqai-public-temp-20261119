@@ -11,13 +11,14 @@ export default function DiscussionProposal({ proposal, applied, saved = false, c
   const additions = proposal.additions || [];
   const hasRequirementChanges = changes.length > 0 || additions.length > 0;
   const actionLabel = clarification ? clarification.canResolve ? 'Применить уточнение и закрыть вопрос' : hasRequirementChanges ? 'Применить уточнение' : 'Зафиксировать ответ' : 'Применить к черновику';
-  const nextStep = clarification && !clarification.canResolve ? clarification.remainingQuestions?.length ? ' Затем ответьте на оставшиеся вопросы в этом чате и подготовите уточнение снова.' : ' Затем закройте вопрос кнопкой в панели уточнения вопроса.' : '';
+  const nextStep = clarification && !clarification.canResolve ? clarification.remainingQuestions?.length ? ' Ответьте на оставшиеся вопросы и снова нажмите «Подготовить правки».' : ' Вернитесь к вопросу, чтобы завершить проверку.' : '';
   const assessment = proposal.qualityAssessment?.schemaVersion === QUALITY_POLICY && proposal.qualityAssessment.semanticReview?.pass === true ? proposal.qualityAssessment : null;
   const changedAssessments = assessment?.assessments.filter((item) => item.before !== item.quality) || [];
   return <section className="mt-4 space-y-4 rounded-xl border border-indigo-200 bg-indigo-50/40 p-4" aria-label="Предложение изменений">
     <div>
       <h3 className="font-semibold text-slate-900">{clarification ? 'Проверьте уточнение' : `Предложение изменений · ${changes.length + additions.length}`}</h3>
       <p className="mt-2 text-sm text-slate-700">{hasRequirementChanges ? [additions.length > 0 && `Новые требования: ${additions.length}.`, changes.length > 0 && `Изменения существующих требований: ${changes.length}.`].filter(Boolean).join(' ') : 'Формулировки существующих требований не изменяются.'}</p>
+      {clarification?.canResolve && !applied && !rejected && !stale && <p className="mt-1 text-sm text-slate-700">После применения вопрос закроется в черновике.</p>}
       <details className="mt-1 break-words text-sm text-slate-700 [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"><summary className="cursor-pointer font-semibold">Пояснение к предложению</summary><Suspense fallback={<p className="my-2 text-sm text-slate-500">Форматируем ответ…</p>}><SafeMarkdown chat>{proposal.explanation}</SafeMarkdown></Suspense></details>
     </div>
     {clarification && <div className="rounded-lg bg-white p-3">
@@ -48,14 +49,14 @@ export default function DiscussionProposal({ proposal, applied, saved = false, c
       </div>)}
       {change.rationale && <p className="text-xs text-slate-600">{change.rationale}</p>}
     </div>)}
-    {clarification && <div className="space-y-2">
-      <h4 className="text-sm font-semibold text-slate-900">Как ответ учтён в требованиях</h4>
+    {clarification?.checks?.length > 0 && <details className="space-y-2">
+      <summary className="cursor-pointer text-sm font-semibold text-slate-700">Как ответ учтён в требованиях · {clarification.checks.length}</summary>
       {clarification.checks.map((check) => <div key={check.requirementId} className="text-sm">
         <p className="font-semibold text-slate-700">{check.requirementId} · {check.state === 'incorporated' ? additions.some((item) => item.record.id === check.requirementId) ? applied ? 'Добавлено' : 'Будет добавлено' : applied ? 'Уточнено' : 'Будет уточнено' : 'Изменение не требуется'}</p>
         <p className="mt-0.5 text-slate-600">{check.reason}</p>
       </div>)}
 
-    </div>}
+    </details>}
     {stale && <p role="status" className="text-sm text-amber-900">Предложение устарело. Попросите AI подготовить новый вариант с учётом текущих правок.</p>}
     {assessment && <section aria-label="Оценка требований" className="space-y-2 border-t border-indigo-100 pt-3">
       <h4 className="text-sm font-semibold text-slate-900">Оценка требований</h4>
@@ -67,10 +68,13 @@ export default function DiscussionProposal({ proposal, applied, saved = false, c
       <button type="button" disabled={disabled || stale || applied || rejected} onClick={onApply} className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">{applied ? saved ? 'Принято и сохранено' : 'Принято в черновик' : stale ? 'Предложение устарело' : actionLabel}</button>
       <button type="button" disabled={disabled || applied || rejected} onClick={onReject} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 disabled:opacity-50">{rejected ? 'Предложение отклонено' : 'Отклонить предложение'}</button>
     </div>
-    <p role={applied ? 'status' : undefined} className="text-sm text-slate-600">{rejected ? 'Предложение отклонено. Требования и ответ не изменены этим пакетом.' : clarification
-      ? applied ? saved ? `${gapState === 'closed' ? 'Вопрос закрыт' : 'Ответ сохранён; вопрос открыт'}. Решение сохранено в версии требований.${nextStep}` : `${clarification.canResolve ? 'Вопрос закрыт' : 'Ответ учтён, вопрос ещё открыт'} в черновике. ${canSaveHere ? 'Нажмите «Сохранить требования» внизу этой панели.' : 'Сохраните изменения на основном экране.'}${nextStep}`
-        : `${clarification.canResolve ? 'При принятии подтвердятся ответ и его учёт во всех связанных требованиях; вопрос закроется' : hasRequirementChanges ? 'При принятии сохранятся ответ и показанные изменения требований; вопрос останется открытым' : 'При принятии зафиксируется ответ и обновятся показанные оценки; вопрос останется открытым'} в черновике. ${canSaveHere ? 'Затем нажмите «Сохранить требования» внизу этой панели.' : 'Версия сохранится общей кнопкой сохранения.'}${nextStep}`
-      : 'После применения сохраните требования. Связанные вопросы проверяются отдельно.'}</p>
+    {(rejected || applied || nextStep || !clarification) && <p role={applied ? 'status' : undefined} className="text-sm text-slate-600">
+      {rejected ? 'Предложение отклонено. Требования и ответ не изменены этим пакетом.' : clarification
+        ? applied ? saved ? `Решение сохранено. ${gapState === 'closed' ? 'Вопрос закрыт.' : 'Вопрос открыт.'}${nextStep}`
+          : `${clarification.canResolve ? 'Вопрос закрыт в черновике.' : 'Ответ записан в черновик. Вопрос открыт.'}${canSaveHere ? '' : ' Сохраните изменения на основном экране.'}${nextStep}`
+          : nextStep.trim()
+        : 'После применения сохраните требования. Связанные вопросы проверяются отдельно.'}
+    </p>}
     {assessment && <details className="border-t border-indigo-100 pt-3 text-sm"><summary className="cursor-pointer font-semibold text-indigo-700">Почему выставлены эти оценки · {assessment.assessments.length}</summary><ul className="mt-3 space-y-3">{assessment.assessments.map((item) => <li key={item.id}><p className="font-semibold">{item.id} · {item.quality}</p><p className="mt-1 break-words text-slate-600">{item.reason}</p></li>)}</ul></details>}
   </section>;
 }

@@ -62,14 +62,14 @@ test('a complete no-change package can still close an already covered question',
 test('partial packages name the next step in the chat and in the question panel', () => {
   const onApply = vi.fn(() => true);
   const view = render(<DiscussionProposal proposal={proposal()} canSaveHere onApply={onApply} />);
-  expect(screen.getByText(/Затем ответьте на оставшиеся вопросы в этом чате и подготовите уточнение снова/)).toBeVisible();
+  expect(screen.getByText(/Ответьте на оставшиеся вопросы и снова нажмите «Подготовить правки»/)).toBeVisible();
   fireEvent.click(screen.getByRole('button', { name: 'Зафиксировать ответ' }));
   expect(onApply).toHaveBeenCalledOnce();
   view.rerender(<DiscussionProposal proposal={proposal()} applied canSaveHere onApply={onApply} />);
-  expect(screen.getByRole('status')).toHaveTextContent('Затем ответьте на оставшиеся вопросы в этом чате');
+  expect(screen.getByRole('status')).toHaveTextContent('Ответьте на оставшиеся вопросы');
   const exhausted = proposal(); exhausted.clarification.remainingQuestions = [];
   view.rerender(<DiscussionProposal proposal={exhausted} applied canSaveHere onApply={onApply} />);
-  expect(screen.getByRole('status')).toHaveTextContent('Затем закройте вопрос кнопкой в панели уточнения вопроса');
+  expect(screen.getByRole('status')).toHaveTextContent('Вернитесь к вопросу, чтобы завершить проверку');
 });
 
 

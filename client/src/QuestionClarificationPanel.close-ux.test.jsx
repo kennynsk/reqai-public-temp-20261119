@@ -71,17 +71,17 @@ test('closing without an AI objection records the attested checklist', () => {
   expect(screen.getByText(/Причина решения:/)).toHaveTextContent('Проверены все связанные требования');
 });
 
-test('the AI chat view keeps the question status and close action visible', () => {
+test('the AI chat view leaves manual closure controls out of the way while awaiting an answer', () => {
   setup({ jobId: 'shared' }); open();
-  fireEvent.click(screen.getByRole('button', { name: 'Помочь уточнить с AI' }));
-  expect(screen.getByRole('status', { name: 'Статус проверки GAP-001' })).toHaveTextContent('Нужно добавить ответ');
-  expect(screen.getByRole('button', { name: 'Закрыть как решённый' })).toBeDisabled();
+  fireEvent.click(screen.getByRole('button', { name: 'Разобрать с AI' }));
+  expect(screen.getByText('Ожидает ответа')).toBeVisible();
+  expect(screen.queryByRole('button', { name: 'Закрыть как решённый' })).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Снять с рассмотрения…' })).not.toBeInTheDocument();
 });
 
 test('the AI chat view offers the human override when only the AI objection blocks closing', () => {
   setup({ jobId: 'shared', decisions: answeredDecisions() }); open();
-  fireEvent.click(screen.getByRole('button', { name: 'Помочь уточнить с AI' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Разобрать с AI' }));
   expect(screen.getByRole('status', { name: 'Статус проверки GAP-001' })).toHaveTextContent('Осталось выяснить');
   expect(screen.getByRole('button', { name: 'Не согласен — вопрос выяснен, закрыть' })).toBeVisible();
 });
@@ -107,6 +107,7 @@ test('a draft edit that reopens saved questions warns on the main screen before 
     gapRequirements: { 'GAP-001': Object.fromEntries(checkedIds.map((id) => [id, { state: 'incorporated', reason: '' }])) },
   } };
   setup({ decisions }); open();
+  fireEvent.click(screen.getByRole('button', { name: /^Связанные требования ·/ }));
   fireEvent.click(screen.getByRole('button', { name: 'Редактировать FR-004' }));
   fireEvent.change(screen.getByLabelText('Текст требования FR-004'), { target: { value: 'Обновлённая формулировка требования.' } });
   fireEvent.click(screen.getByRole('button', { name: 'Применить к черновику' }));

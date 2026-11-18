@@ -266,7 +266,7 @@ test('a fully checked gap still requires an answer before closure', () => {
   const decisions = { review: { gapRequirements: { 'GAP-001': { 'BR-001': { state: 'incorporated', reason: '' } } } } };
   render(<BabokRegistryResult value={registry} latestVersion={{ versionId: 'v1', registry, decisions }} onSave={vi.fn()} />);
   fireEvent.click(screen.getAllByRole('button', { name: 'Разобрать вопрос' })[0]);
-  expect(screen.getByRole('button', { name: 'Закрыть как решённый' })).toBeDisabled();
+  expect(screen.queryByRole('button', { name: 'Закрыть как решённый' })).not.toBeInTheDocument();
   expect(screen.getByRole('textbox', { name: 'Ответ на GAP-001' })).toBeVisible();
 });
 
@@ -294,7 +294,7 @@ test('guided clarification runs from question to proposal, explicit acceptance a
   render(<BabokRegistryResult value={registry} latestVersion={{ versionId: 'v1', registry, decisions: {} }} jobId="rooms" initialRecordId="GAP-007" onSave={save} />);
   expect(screen.getByLabelText('Ответ на GAP-007')).toBeVisible();
   expect(turns).toBe(0);
-  fireEvent.click(screen.getByRole('button', { name: 'Помочь уточнить с AI' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Разобрать с AI' }));
   fireEvent.click(await screen.findByRole('button', { name: 'Начать уточнение' }));
   await screen.findByText('Как измерить результат?');
   fireEvent.change(screen.getByRole('textbox', { name: 'Сообщение для GAP-007' }), { target: { value: '0 конфликтов за месяц' } });
@@ -303,6 +303,7 @@ test('guided clarification runs from question to proposal, explicit acceptance a
   expect(save).not.toHaveBeenCalled();
   fireEvent.click(accept);
   expect(screen.getByRole('button', { name: 'Принято в черновик' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Сохранить версию' })).toBeEnabled();
   fireEvent.click(screen.getByRole('button', { name: '← К вопросу GAP-007' }));
   expect(screen.getByText('Закрыт · ответ учтён')).toBeVisible();
   expect(screen.getByRole('textbox', { name: 'Ответ на GAP-007' })).toHaveValue('0 конфликтов за месяц');

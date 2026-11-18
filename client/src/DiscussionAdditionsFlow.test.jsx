@@ -55,7 +55,7 @@ function setup({ collision = false, partial = false, priorValidity = null } = {}
   flow.proposal = proposal;
   const save = vi.fn();
   render(<ReviewSessionProvider scope="additions" jobId="shared" baseVersionId="v1"><BabokRegistryResult value={registry} latestVersion={{ versionId: 'v1', registry, decisions }} onSave={save} jobId="shared" initialRecordId="GAP-001" /></ReviewSessionProvider>);
-  fireEvent.click(screen.getByRole('button', { name: 'Помочь уточнить с AI' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Разобрать с AI' }));
   return { registry, proposal, save };
 }
 const accept = () => fireEvent.click(screen.getByRole('button', { name: 'Принять тестовое предложение' }));
@@ -109,6 +109,7 @@ test('editing a newly accepted requirement reopens its question and saves a supe
   accept();
   expect(flow.accepted).toBe(true);
   fireEvent.click(screen.getByRole('button', { name: '← К вопросу GAP-001' }));
+  fireEvent.click(screen.getByRole('button', { name: /^Связанные требования ·/ }));
   fireEvent.click(screen.getByRole('button', { name: 'Редактировать SR-002' }));
   fireEvent.change(screen.getByRole('textbox', { name: 'Текст требования SR-002' }), { target: { value: 'Клиенту нужна возможность возобновить сервис после подтверждения с сохранёнными настройками.' } });
   fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Применить к черновику' }));

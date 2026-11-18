@@ -1,6 +1,7 @@
 import { RequirementsReviewContext } from './requirements-review-context.js';
 import { gapStateLabel } from './question-presentation.js';
 import { useContext, useEffect, useState } from 'react';
+import { ChevronDown } from 'lucide-react';
 import { DraftContext } from './review-context.js';
 import { gapChecklist, gapChecklistComplete, gapClarificationObjection, gapHasPendingClarification, gapReviewHint, updateReviewMetadata } from './review-metadata.js';
 import { SourceEvidence } from './SourceEvidence.jsx';
@@ -19,6 +20,7 @@ export default function QuestionClarificationPanel({ gapId, onClose, onEdit, ren
     return () => cancelAnimationFrame(frame);
   }, [subview]);
   const [action, setAction] = useState(null);
+  const [showRequirements, setShowRequirements] = useState(null);
   const gap = review.content.analysis.GAP.find((item) => item.id === gapId);
   const metadata = review.state.decisions.review || {};
   const state = metadata.gaps?.[gapId] || { state: 'open', answer: '' };
@@ -27,6 +29,7 @@ export default function QuestionClarificationPanel({ gapId, onClose, onEdit, ren
   const closed = state.state === 'closed';
   const complete = gap && gapChecklistComplete(review.content, gap, metadata);
   const answerReady = Boolean(state.answer?.trim());
+  const requirementsExpanded = showRequirements ?? (answerReady && !closed);
   const pendingObjection = gapHasPendingClarification(metadata, gapId) ? gapClarificationObjection(metadata, gapId) : '';
   function change(patch) {
     const next = { ...state, ...patch }; delete next.actorUserId; delete next.recordedAt;
@@ -55,28 +58,35 @@ export default function QuestionClarificationPanel({ gapId, onClose, onEdit, ren
   return <ClarificationShell title={`Уточнение ${gapId}`} onClose={onClose}>
     <fieldset disabled={busy} className="flex min-h-0 min-w-0 flex-1 flex-col">
     {!gap ? <div className="p-5 text-sm text-slate-600" role="status">Вопрос не найден. Закройте панель и выберите доступный вопрос; черновик сохранён.</div> : <>
-      <div className="max-h-40 shrink-0 overflow-y-auto border-b border-slate-200 px-5 py-3"><p className="text-xs font-semibold text-amber-800">{gapStateLabel(state)}</p><p className="mt-1 break-words text-sm text-slate-700">{gap.text}</p>{subview && <button type="button" data-question-back className={`${button} mt-3`} onClick={() => setSubview(null)}>← К вопросу {gapId}</button>}</div>
+      <div className="max-h-40 shrink-0 overflow-y-auto border-b border-slate-200 px-5 py-3"><p className="text-xs font-semibold text-amber-800">{gapStateLabel(state)}</p>{subview && <><p className="mt-1 break-words text-sm text-slate-700">{questions[0]?.text || gap.text}</p><button type="button" data-question-back className={`${button} mt-3`} onClick={() => setSubview(null)}>← К вопросу {gapId}</button></>}</div>
       {workflow.saveError && <p role="alert" className="px-5 py-3 text-sm text-red-700">{workflow.saveError}</p>}
       {workflow.conflict && <div role="status" className="border-b border-amber-200 bg-amber-50 px-5 py-3 text-sm text-amber-900"><p>Доступна новая сохранённая версия. Ваши правки сохранены в черновике.</p><button type="button" onClick={() => { onClose(); requestAnimationFrame(() => workflow.onCompareVersions?.()); }} className="mt-2 font-semibold text-indigo-700 underline">Сравнить версии</button></div>}
       {error && <p role="alert" className="px-5 py-3 text-sm text-red-700">{error.id}: {error.message}</p>}
       <div className={subview === 'ai' ? "min-h-0 flex-1 flex flex-col" : "hidden"}>{renderDiscussion?.({ embedded: true, onClose: () => setSubview(null), active: subview === 'ai' })}</div>
-      {subview === 'ai' && gap && <div className="shrink-0 space-y-3 border-t border-slate-200 bg-slate-50 px-5 py-4 text-sm">{closeControls}{action?.override && decisionForm}</div>}
+      {subview === 'ai' && !closed && answerReady && complete && <div className="max-h-56 shrink-0 space-y-3 overflow-y-auto border-t border-slate-200 bg-slate-50 px-5 py-4 text-sm">{closeControls}{action?.override && decisionForm}</div>}
       {entry ? <div className="flex-1 overflow-y-auto px-5 py-4"><h3 className="mb-3 font-semibold">Редактировать {entry.requirement.id}</h3><RequirementContentEditor key={entry.requirement.id} namespace="question" type={entry.type} requirement={entry.requirement} onApply={(text, fields) => { onEdit(entry.type, entry.requirement.id, text, fields); setSubview(null); }} onCancel={() => setSubview(null)} /></div> : subview !== 'ai' && <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4 text-sm text-slate-700">
-        {questions.map((question) => <div key={question.id} className="rounded-lg bg-amber-50 p-3"><p className="text-xs text-amber-900">{({ P0: 'Критический', P1: 'Высокий', P2: 'Обычный' })[question.priority] || 'Приоритет не указан'}{question.addressee && ` · ${question.addressee}`}</p><p className="mt-1 break-words">{question.text}</p></div>)}
-        <label className="block font-semibold">Ответ на {gapId}<textarea data-question-answer aria-label={`Ответ на ${gapId}`} disabled={closed} maxLength={20000} rows={4} value={state.answer || ''} onChange={(event) => change({ answer: event.target.value, state: event.target.value.trim() ? 'answered' : 'open' })} className="mt-1 block w-full rounded-lg border p-3 font-normal" /></label>
-        {!closed && <p className="text-sm text-slate-600">Сохранение ответа не меняет формулировки требований. Отредактируйте их{renderDiscussion ? ' или подготовьте правки с AI' : ''}. Затем подтвердите учёт ответа в каждом требовании.</p>}
-        {renderDiscussion && <button type="button" className={button} onClick={() => setSubview('ai')}>Помочь уточнить с AI</button>}
-        <section aria-label="Учёт ответа в требованиях" className="space-y-3"><h3 className="font-semibold">Проверка требований · {checklist.filter((item) => !item.unresolved && item.state !== 'pending').length} из {checklist.length}</h3>{checklist.map((item) => { const record = Object.values(review.content.groups).flat().find((record) => record.id === item.requirementId); return <div key={item.requirementId} className="space-y-2 rounded-lg border border-slate-200 p-3"><div className="flex flex-wrap items-center justify-between gap-2"><span className="font-semibold">{item.requirementId}</span>{!item.unresolved && <button type="button" className="font-semibold text-indigo-700 underline underline-offset-2" onClick={() => setSubview(item.requirementId)}>Редактировать {item.requirementId}</button>}</div>{record && <p className="whitespace-pre-wrap break-words">{record.text}</p>}
+        {questions.length ? questions.map((question) => <div key={question.id} className="rounded-lg bg-amber-50 p-3"><p className="text-xs text-amber-900">{({ P0: 'Критический', P1: 'Высокий', P2: 'Обычный' })[question.priority] || 'Приоритет не указан'}{question.addressee && ` · ${question.addressee}`}</p><p className="mt-1 break-words font-medium text-slate-900">{question.text}</p></div>) : <p className="break-words font-medium text-slate-900">{gap.text}</p>}
+        <label className="block font-semibold">Ваш ответ<textarea data-question-answer aria-label={`Ответ на ${gapId}`} disabled={closed} maxLength={20000} rows={3} value={state.answer || ''} onChange={(event) => change({ answer: event.target.value, state: event.target.value.trim() ? 'answered' : 'open' })} className="mt-1 block w-full rounded-lg border p-3 font-normal" /></label>
+        {renderDiscussion && <button type="button" className={`${button} bg-indigo-50`} onClick={() => setSubview('ai')}>Разобрать с AI</button>}
+        {checklist.length > 0 && <section aria-label="Учёт ответа в требованиях">
+          <button type="button" aria-expanded={requirementsExpanded} onClick={() => setShowRequirements(!requirementsExpanded)} className="flex w-full items-center justify-between gap-2 rounded-lg bg-slate-50 p-3 text-left font-semibold text-slate-700 focus-visible:outline-indigo-500">
+            Связанные требования · {checklist.length}<ChevronDown aria-hidden="true" className={`h-4 w-4 shrink-0 ${requirementsExpanded ? 'rotate-180' : ''}`} />
+          </button>
+          {requirementsExpanded && <div className="mt-3 space-y-3">
+          {answerReady && !closed && <h3 className="font-semibold">Проверка требований · {checklist.filter((item) => !item.unresolved && item.state !== 'pending').length} из {checklist.length}</h3>}
+          {checklist.map((item) => { const record = Object.values(review.content.groups).flat().find((record) => record.id === item.requirementId); return <div key={item.requirementId} className="space-y-2 rounded-lg border border-slate-200 p-3"><div className="flex flex-wrap items-center justify-between gap-2"><span className="font-semibold">{item.requirementId}</span>{!item.unresolved && <button type="button" className="font-semibold text-indigo-700 underline underline-offset-2" onClick={() => setSubview(item.requirementId)}>Редактировать {item.requirementId}</button>}</div>{record && <p className="whitespace-pre-wrap break-words">{record.text}</p>}
           {item.unresolved ? <p className="text-red-700">Связь не найдена</p> : <><p className="text-xs text-slate-600">{item.state === 'incorporated' ? 'Ответ учтён' : item.state === 'no-change' ? 'Изменение не требуется' : 'Нужно проверить'}{item.stale && item.state !== 'pending' ? ' · требуется повторное подтверждение' : ''}</p>{item.reason && <p className="break-words text-xs text-slate-500">{item.reason}</p>}{!closed && <div className="flex flex-wrap gap-2">{item.state === 'pending' ? <><button type="button" disabled={!state.answer?.trim()} onClick={() => check(item.requirementId, { state: 'incorporated', reason: '' })} className={`${button} disabled:opacity-50`}>Подтвердить учёт ответа</button><button type="button" onClick={() => setAction({ requirementId: item.requirementId, reason: '' })} className={button}>Изменение не требуется</button></> : <button type="button" onClick={() => check(item.requirementId, { state: 'pending' })} className="text-xs text-slate-500 underline">Сбросить</button>}</div>}</>}
           {action?.requirementId === item.requirementId && decisionForm}
-        </div>; })}</section>
-        {closeControls}
+        </div>; })}
+          </div>}
+        </section>}
+        {(answerReady || closed) && closeControls}
         {!action?.requirementId && decisionForm}
-        <button type="button" onClick={() => setAction({ reason: '' })} className={`${button} block`}>{closed ? 'Открыть вопрос снова' : 'Снять с рассмотрения…'}</button>
+        <button type="button" onClick={() => setAction({ reason: '' })} className="block min-h-9 text-sm text-slate-600 underline underline-offset-2 hover:text-indigo-700 focus-visible:outline-indigo-500">{closed ? 'Открыть вопрос снова' : 'Снять с рассмотрения…'}</button>
         {state.reason && <p className="break-words text-xs text-slate-500">Причина решения: {state.reason}</p>}
-        <details className="rounded-lg bg-slate-50 p-3"><summary className="cursor-pointer font-semibold text-slate-600">Источник и связи</summary><div className="mt-3 space-y-2"><SourceEvidence source={gap.source} materials={review.content.materials} /><p className="break-words text-xs text-slate-500">Связанные записи: {(gap.affectedIds || []).join(', ') || '—'}</p>{(gap.affectedIds || []).filter((id) => !checklist.some((item) => item.requirementId === id)).map((id) => { const record = [...(review.content.context || []), ...Object.values(review.content.analysis).filter(Array.isArray).flat()].find((record) => record.id === id); return record && <p key={id} className="break-words text-xs text-slate-600">{id}: {record.text}</p>; })}</div></details>
+        <details className="rounded-lg bg-slate-50 p-3"><summary className="cursor-pointer font-semibold text-slate-600">Источник и связи</summary><div className="mt-3 space-y-2">{questions.length > 0 && <p className="break-words">{gap.text}</p>}<SourceEvidence source={gap.source} materials={review.content.materials} /><p className="break-words text-xs text-slate-500">Связанные записи: {(gap.affectedIds || []).join(', ') || '—'}</p>{(gap.affectedIds || []).filter((id) => !checklist.some((item) => item.requirementId === id)).map((id) => { const record = [...(review.content.context || []), ...Object.values(review.content.analysis).filter(Array.isArray).flat()].find((record) => record.id === id); return record && <p key={id} className="break-words text-xs text-slate-600">{id}: {record.text}</p>; })}</div></details>
       </div>}
-      {subview !== 'ai' && <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-5 py-4"><p role="status" className="text-xs text-slate-500">{busy ? 'Сохраняем изменения…' : review.dirty ? 'Есть несохранённые изменения' : review.session?.baseVersionId ? 'Все изменения сохранены в версии требований' : 'Версия требований ещё не сохранена'}</p><button type="button" disabled={busy || (!review.dirty && Boolean(review.session?.baseVersionId))} onClick={onSave} className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">{busy ? 'Сохраняем…' : 'Сохранить требования'}</button></footer>}
+      {subview !== 'ai' && <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-5 py-4"><p role="status" className="text-xs text-slate-500">{busy ? 'Сохраняем изменения…' : review.dirty ? 'Есть несохранённые изменения' : review.session?.baseVersionId ? 'Все изменения сохранены в версии требований' : 'Версия требований ещё не сохранена'}</p>{(busy || review.dirty || !review.session?.baseVersionId) && <button type="button" disabled={busy} onClick={onSave} className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">{busy ? 'Сохраняем…' : 'Сохранить требования'}</button>}</footer>}
     </>}
     </fieldset>
   </ClarificationShell>;

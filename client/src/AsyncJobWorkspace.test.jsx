@@ -338,6 +338,7 @@ test('question queue and embedded editing preserve the original unfinished draft
   fireEvent.click(screen.getByRole('button', { name: /^Вопросы(?: |$)/ }));
   expect(screen.getByRole('heading', { name: /Вопросы · открытых:/ })).toBeInTheDocument();
   fireEvent.click(within(document.getElementById('record-GAP-001')).getByRole('button', { name: 'Разобрать вопрос' }));
+  fireEvent.click(screen.getByRole('button', { name: /^Связанные требования ·/ }));
   fireEvent.click(screen.getByRole('button', { name: 'Редактировать BR-001' }));
   expect(within(screen.getByRole('dialog')).getByRole('textbox', { name: 'Текст требования BR-001' })).toHaveValue('Сохранить мой черновик.');
   fireEvent.click(screen.getAllByRole('button', { name: 'Закрыть вопрос' }).at(-1));

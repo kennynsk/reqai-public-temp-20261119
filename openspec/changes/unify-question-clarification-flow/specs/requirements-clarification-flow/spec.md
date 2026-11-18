@@ -78,16 +78,27 @@ One GAP SHALL require a current explicit disposition for each linked requirement
 - **THEN** the decision is recorded as a dismissal and the UI does not claim that its answer was incorporated
 
 ### Requirement: AI clarification has one explicit context
-The question panel SHALL offer «Помочь уточнить с AI» for its selected GAP and use that GAP's existing discussion history and current draft context. Opening or switching the question panel MUST NOT start generation. The first generated turn SHALL require an explicit starting or send action. General requirement discussion SHALL remain available as «Обсудить требование с AI», distinct from resolving a particular GAP. Question clarification SHALL preserve existing validated proposals, before/after review, stale-context rejection and explicit acceptance. A complete guided resolution package SHALL display that acceptance includes its answer, edits, confirmations and selected GAP closure; partial or ordinary packages SHALL retain their existing non-closing behavior.
+The question panel SHALL offer «Разобрать с AI» for its selected GAP and use that GAP's existing discussion history and current draft context. Opening or switching the question panel MUST NOT start generation. The first generated turn SHALL require an explicit starting or send action. General requirement discussion SHALL remain available as «Обсудить требование с AI», distinct from resolving a particular GAP. Question clarification SHALL preserve existing validated proposals, before/after review, stale-context rejection and explicit acceptance. A complete guided resolution package SHALL display that acceptance includes its answer, edits, confirmations and selected GAP closure; partial or ordinary packages SHALL retain their existing non-closing behavior.
 
 #### Scenario: Open a question without generating
 - **WHEN** the user opens GAP-006 and selects its AI clarification subview
 - **THEN** GAP-006 and its history are identified and no new generation starts until the user explicitly starts or sends a turn
 
+#### Scenario: A user chooses a quick command with unsent text
+
+- **WHEN** the user types a draft in the composer and sends a quick command
+- **THEN** the command is sent separately and the draft stays in the composer, including after recovery from a persisted failed turn
+
+#### Scenario: User opens a question without an answer
+
+- **WHEN** the selected GAP has no answer draft
+- **THEN** the panel shows the question and reply controls before a collapsed list of related requirements
+- **AND** the list can be opened on demand and opens by default once the user enters an answer
+
 #### Scenario: Complete guided package is accepted
 - **WHEN** a current guided package covers every linked requirement with no remaining question and the user accepts its displayed resolution action
 - **THEN** its answer, edits and confirmations enter the shared draft atomically and only the selected GAP closes
-- **AND** the interface still indicates that a version must be saved
+- **AND** the chat highlights «Сохранить версию» after the draft changes
 
 #### Scenario: Proposal is stale or incomplete
 - **WHEN** context changes before acceptance or a package leaves unresolved questions or linked requirements

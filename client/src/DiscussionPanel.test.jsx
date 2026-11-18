@@ -81,6 +81,23 @@ test('guided starter sends one explicit request and retains its idempotency key 
   await waitFor(() => expect(screen.getByRole('textbox', { name: 'Сообщение для GAP-002' })).toHaveFocus());
 });
 
+test.each([false, true])('a quick command preserves the unsent answer (recover from history: %s)', async (recover) => {
+  const discussion = { discussionId: 'd1', messages: [{ messageId: 'm1', role: 'assistant', status: 'completed', text: 'Какой канал нужен?' }] };
+  mocks.get.mockResolvedValue(discussion);
+  if (recover) mocks.send.mockRejectedValueOnce({ code: 'DISCUSSION_GENERATION_FAILED', details: { attemptId: 'a1' } });
+  else mocks.send.mockResolvedValueOnce(discussion);
+  render(<DiscussionPanel jobId="job-1" anchorId="GAP-002" baseVersionId="v1" />);
+  const prepare = await screen.findByRole('button', { name: 'Подготовить правки' });
+  const composer = screen.getByRole('textbox', { name: 'Сообщение для GAP-002' });
+  fireEvent.change(composer, { target: { value: 'Только мобильное приложение.' } });
+  fireEvent.click(prepare);
+  expect(mocks.send).toHaveBeenCalledWith('job-1', 'GAP-002', expect.objectContaining({ message: expect.stringMatching(/^Подготовь уточнения/) }), expect.any(String));
+  await waitFor(() => expect(composer).toBeEnabled());
+  expect(composer).toHaveValue('Только мобильное приложение.');
+  fireEvent.click(screen.getByRole('button', { name: 'Отправить' }));
+  await waitFor(() => expect(composer).toHaveValue(''));
+});
+
 test('assistant messages render markdown formatting instead of raw asterisks', async () => {
   mocks.get.mockResolvedValue({ discussionId: 'd1', messages: [{ messageId: 'm2', role: 'assistant', status: 'completed', text: 'План:\n\n1. **Канал** — приложение\n2. *Срок* — три дня' }] });
   render(<DiscussionPanel jobId="job-1" anchorId="GAP-002" baseVersionId="v1" onClose={vi.fn()} />);
@@ -107,7 +124,7 @@ test('distinguishes a discussion answer from a rejected proposal and exposes nei
   mocks.get.mockResolvedValue({ ...data, attempt: { ...data.attempt, errorCode: 'DISCUSSION_PROPOSAL_INVALID' } });
   render(<DiscussionPanel jobId="job-1" anchorId="GAP-002" baseVersionId="v1" onClose={vi.fn()} />);
   expect(await screen.findByRole('status', { name: 'Результат ответа AI' })).toHaveTextContent('Предложение отклонено при проверке');
-  expect(screen.getByRole('button', { name: 'Подготовить уточнение' })).toBeEnabled();
+  expect(screen.getByRole('button', { name: 'Подготовить правки' })).toBeEnabled();
 });
 
 test('proposal explanation renders markdown formatting', async () => {
@@ -176,7 +193,7 @@ test('a loaded completed attempt never renders as an active generation', async (
   mocks.subscribe.mockReturnValue(new Promise(() => {}));
   render(<DiscussionPanel jobId="job-1" anchorId="GAP-002" baseVersionId="v1" onClose={vi.fn()} />);
   await screen.findByText('Ответ');
-  await screen.findByRole('button', { name: 'Подготовить уточнение' });
+  await screen.findByRole('button', { name: 'Подготовить правки' });
   await waitFor(() => expect(mocks.subscribe).toHaveBeenCalled());
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
   expect(screen.queryByRole('button', { name: 'Отменить генерацию' })).not.toBeInTheDocument();
@@ -191,7 +208,9 @@ test.each([true, false])('shows the exact outcome before accepting a guided pack
   const { rerender } = render(<DiscussionPanel jobId="job-1" anchorId="GAP-002" baseVersionId="v1" proposalDecisions={{}} onApplyProposal={apply} />);
   const label = complete ? 'Применить уточнение и закрыть вопрос' : 'Зафиксировать ответ';
   const accept = await screen.findByRole('button', { name: label, exact: true });
-  expect(screen.getByText('Канал уже отражён в требовании')).toBeInTheDocument();
+  const checks = screen.getByText('Как ответ учтён в требованиях · 1').closest('details');
+  expect(checks).not.toHaveAttribute('open');
+  expect(checks).toHaveTextContent('Канал уже отражён в требовании');
   if (!complete) expect(screen.getByText('Вопрос останется открытым.')).toBeInTheDocument();
   fireEvent.click(accept);
   expect(apply).toHaveBeenCalledWith(proposal);
@@ -229,7 +248,7 @@ test('a stale guided package reports rejection without presenting it as accepted
 test('offers saving inside the clarification panel and opens the discussion when the saved version arrives', async () => {
   const save = vi.fn();
   const { rerender } = render(<DiscussionPanel jobId="job-1" anchorId="GAP-002" baseVersionId={null} contextReady={false} contextError="Сначала сохраните требования, чтобы открыть AI-обсуждение." onSaveContext={save} onSave={save} hasUnsavedChanges embedded onClose={vi.fn()} />);
-  expect(screen.queryByRole('button', { name: 'Сохранить требования' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Сохранить версию' })).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Начать уточнение' })).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Закрыть обсуждение' })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Сохранить и начать уточнение' }));
@@ -248,20 +267,20 @@ test('shows the recorded answer and saves the draft without leaving discussion',
   await screen.findByRole('button', { name: 'Начать уточнение' });
   expect(screen.getByText('Совмещение разрешено')).toBeInTheDocument();
   expect(screen.getByText('Ваш ответ · в черновике')).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: 'Сохранить требования' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Сохранить версию' }));
   await waitFor(() => expect(onSave).toHaveBeenCalledOnce());
   expect(mocks.send).not.toHaveBeenCalled();
   view.rerender(<DiscussionPanel {...props} savedGapStates={props.gapStates} hasUnsavedChanges={false} />);
   expect(screen.getByText('Ваш ответ · сохранён в версии')).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'Сохранить требования' })).toBeDisabled();
+  expect(screen.queryByRole('button', { name: 'Сохранить версию' })).not.toBeInTheDocument();
 });
 
 test('a failed save keeps the answer visible and offers retry in the same panel', async () => {
   const onSave = vi.fn().mockRejectedValue(new Error('Не удалось сохранить версию'));
   render(<DiscussionPanel jobId="job-1" anchorId="GAP-002" baseVersionId="v1" onSave={onSave} hasUnsavedChanges gapStates={{ 'GAP-002': { answer: 'Мой ответ' } }} />);
   await screen.findByRole('button', { name: 'Начать уточнение' });
-  fireEvent.click(screen.getByRole('button', { name: 'Сохранить требования' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Сохранить версию' }));
   expect(await screen.findByRole('alert')).toHaveTextContent('Не удалось сохранить версию');
   expect(screen.getByText('Мой ответ')).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'Сохранить требования' })).toBeEnabled();
+  expect(screen.getByRole('button', { name: 'Сохранить версию' })).toBeEnabled();
 });

@@ -16,6 +16,7 @@ function setup({ registry = sharedQuestionFixture(), decisions = {}, workflow = 
   return { registry, save };
 }
 const open = () => fireEvent.click(screen.getByRole('button', { name: 'Разобрать вопрос' }));
+const expandRequirements = () => fireEvent.click(screen.getByRole('button', { name: /^Связанные требования ·/ }));
 const close = () => fireEvent.click(screen.getAllByRole('button', { name: 'Закрыть вопрос' }).at(-1));
 
 test('one shared GAP has two questions and ten unique requirement checks, with context evidence outside checks', async () => {
@@ -24,10 +25,12 @@ test('one shared GAP has two questions and ten unique requirement checks, with c
   expect(screen.getAllByRole('dialog')).toHaveLength(1);
   expect(screen.getByText('Как обрабатывать недоступный канал?')).toBeVisible();
   expect(screen.getAllByRole('textbox', { name: 'Ответ на GAP-001' })).toHaveLength(1);
+  expect(screen.getByRole('button', { name: 'Связанные требования · 10' })).toHaveAttribute('aria-expanded', 'false');
+  expect(screen.queryByRole('button', { name: 'Редактировать FR-004' })).not.toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText('Ответ на GAP-001'), { target: { value: 'Электронная почта, повтор через час.' } });
   expect(screen.getByRole('heading', { name: 'Проверка требований · 0 из 10' })).toBeVisible();
   expect(screen.getAllByRole('button', { name: /^Редактировать (BR|SR|FR)-/ })).toHaveLength(10);
   expect(screen.queryByRole('button', { name: 'Редактировать TERM-001' })).not.toBeInTheDocument();
-  fireEvent.change(screen.getByLabelText('Ответ на GAP-001'), { target: { value: 'Электронная почта, повтор через час.' } });
   close();
   await new Promise(raf);
   fireEvent.click(screen.getByRole('button', { name: /^Вопросы(?: |$)/ }));
@@ -40,6 +43,7 @@ test('one shared GAP has two questions and ten unique requirement checks, with c
 
 test('embedded FR edits survive back and close, and global save includes hidden drafts without BR fields', async () => {
   const { save } = setup(); open();
+  expandRequirements();
   fireEvent.click(screen.getByRole('button', { name: 'Редактировать FR-004' }));
   const panel = screen.getByRole('dialog');
   expect(within(panel).queryByLabelText('Критерий успеха FR-004')).not.toBeInTheDocument();
@@ -108,13 +112,13 @@ test('queue origin safely falls back after its question disappears and closure d
 test('keyboard focus wraps within the active surface and skips hidden AI controls', () => {
   setup({ jobId: 'shared' }); open();
   const shell = screen.getByRole('dialog').querySelector('aside');
-  const save = within(shell).getByRole('button', { name: 'Сохранить требования' });
+  expect(within(shell).queryByRole('button', { name: 'Сохранить требования' })).not.toBeInTheDocument();
   const closeButton = within(shell).getByRole('button', { name: 'Закрыть вопрос' });
-  expect(save).toBeDisabled();
   const source = within(shell).getByText('Источник и связи').closest('summary');
   source.focus(); fireEvent.keyDown(shell, { key: 'Tab' }); expect(closeButton).toHaveFocus();
   fireEvent.keyDown(shell, { key: 'Tab', shiftKey: true }); expect(source).toHaveFocus();
   fireEvent.change(screen.getByLabelText('Ответ на GAP-001'), { target: { value: 'Проверяем сохранение' } });
+  const save = within(shell).getByRole('button', { name: 'Сохранить требования' });
   expect(save).toBeEnabled();
   save.focus(); fireEvent.keyDown(shell, { key: 'Tab' }); expect(closeButton).toHaveFocus();
   fireEvent.keyDown(shell, { key: 'Tab', shiftKey: true }); expect(save).toHaveFocus();
@@ -132,7 +136,7 @@ test('save errors remain visible and comparing a conflict closes the question be
 test('a pending save disables question inputs and actions even though the panel uses a portal', () => {
   setup({ busy: true, initialRecordId: 'GAP-001' });
   expect(screen.getByLabelText('Ответ на GAP-001')).toBeDisabled();
-  expect(screen.getAllByRole('button', { name: 'Изменение не требуется' })[0].closest('fieldset')).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Связанные требования · 10' }).closest('fieldset')).toBeDisabled();
   expect(screen.getAllByRole('button', { name: 'Закрыть вопрос' }).at(-1)).toBeEnabled();
 });
 
@@ -140,9 +144,8 @@ test('a pending save disables question inputs and actions even though the panel 
 test('manual confirmation shows wording and records an attestation without rewriting requirements', () => {
   const { registry, save } = setup(); open();
   const panel = screen.getByRole('dialog');
-  expect(within(panel).getByText(registry.groups.FR[0].text)).toBeVisible();
-  expect(within(panel).getByText(/Сохранение ответа не меняет формулировки/)).toBeVisible();
   fireEvent.change(screen.getByLabelText('Ответ на GAP-001'), { target: { value: 'Ответ для проверки' } });
+  expect(within(panel).getByText(registry.groups.FR[0].text)).toBeVisible();
   fireEvent.click(within(panel).getAllByRole('button', { name: 'Подтвердить учёт ответа' })[0]);
   fireEvent.click(within(panel).getByRole('button', { name: 'Сохранить требования' }));
   expect(save.mock.calls[0][0].registry.groups).toEqual(registry.groups);
@@ -151,6 +154,7 @@ test('manual confirmation shows wording and records an attestation without rewri
 
 test('no-change rationale stays inside its selected requirement row', () => {
   setup(); open();
+  expandRequirements();
   const edit = screen.getByRole('button', { name: 'Редактировать FR-004' });
   const row = edit.parentElement.parentElement;
   fireEvent.click(within(row).getByRole('button', { name: 'Изменение не требуется' }));
