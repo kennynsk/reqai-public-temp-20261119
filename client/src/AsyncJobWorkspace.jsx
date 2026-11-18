@@ -15,10 +15,11 @@ import DiscussionPanel from './DiscussionPanel.jsx';
 import { RequirementsReviewContext } from './requirements-review-context.js';
 import { researchPresentation, formatRuDateTime } from './requirements-review-presentation.js';
 import { isBabokTextDraft } from '../../server/src/services/babok-text-draft.js';
-import { collectBabokQualityIssues } from '../../server/src/services/babok-requirements-contract.js';
 import ResearchEvidence from './ResearchEvidence.jsx';
 import VersionExport from './VersionExport.jsx';
 import RecordFocus from './RecordFocus.jsx';
+import DebugPanel from './TaskExecutionPanel.jsx';
+import { STATUS_LABELS, formatDuration, primaryStatus } from './task-execution-presentation.js';
 import ProposalReview from './ProposalReview.jsx';
 import { lazy, Suspense, useCallback, useContext, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react';
 import {
@@ -75,6 +76,7 @@ import { STRUCTURED_FIELDS, QUALITY_OPTIONS } from './review-fields.js';
 import { ReviewDraftProvider, ReviewSessionProvider } from './ReviewDraftProvider.jsx';
 import ResearchInsightWorkspace from './ResearchInsightWorkspace.jsx';
 import RequirementListWorkspace from './RequirementListWorkspace.jsx';
+import BabokRecoveryDraft from './BabokRecoveryDraft.jsx';
 import { filterRequirementList, selectedRequirementEntry } from './requirement-list.js';
 import { buildBabokRequirementIndex, buildLegacyRequirementIndex } from './research-review.js';
 import { RequirementPreviewProvider } from './RequirementPreview.jsx';
@@ -98,8 +100,6 @@ const MODE_LABELS = {
   REQUIREMENTS_INSIGHTS: 'AI-исследование требований',
 };
 const TYPE_LABELS = { DECOMPOSITION: 'Подготовка требований', RESEARCH: 'Исследование' };
-const STATUS_LABELS = { ACCEPTED: 'Ожидает запуска', QUEUED: 'В очереди', RUNNING: 'Выполняется', RETRY_WAIT: 'Повторяем этап', SUCCEEDED: 'Готово', FAILED: 'Не выполнено', CANCEL_REQUESTED: 'Отменяется', CANCELLED: 'Отменено' };
-const OUTCOME_LABELS = { COMPLETE: 'Готово', PARTIAL: 'Готово частично', FAILED: 'Не выполнено' };
 const FAILURE_MESSAGES = {
   OUTPUT_CONTRACT_VIOLATION: 'Ответ AI не соответствует формату требований. Попробуйте запустить задачу ещё раз.',
   BABOK_OUTPUT_INVALID: 'Ответ AI не прошёл проверку формата требований. Попробуйте запустить задачу ещё раз.',
@@ -109,7 +109,6 @@ const FAILURE_MESSAGES = {
   JOB_DEADLINE_EXPIRED: 'AI не завершил проверку за отведённое время. Результат не сохранён. Попробуйте запустить задачу ещё раз.',
   NO_USABLE_OUTPUT: 'AI не сформировал пригодный результат. Попробуйте запустить задачу ещё раз.',
 };
-const STATUS_TONES = { ACCEPTED: 'bg-slate-100 text-slate-600', QUEUED: 'bg-slate-100 text-slate-600', RUNNING: 'bg-indigo-100 text-indigo-700', RETRY_WAIT: 'bg-amber-100 text-amber-700', SUCCEEDED: 'bg-emerald-100 text-emerald-700', FAILED: 'bg-red-100 text-red-700', CANCEL_REQUESTED: 'bg-amber-100 text-amber-700', CANCELLED: 'bg-slate-100 text-slate-600' };
 const DEFAULT_MODELS = ['glm-5.3-flash', 'glm-5.3', 'glm-5.2', 'glm-5-turbo', 'glm-4.7', 'glm-4.7-flash'];
 const REASONING_OPTIONS = [
   ['disabled', 'Выключен'],
@@ -199,13 +198,6 @@ function discussionGapBases(registry, decisions = {}) {
   }]));
 }
 
-function primaryStatus(jobOrResult) {
-  if (!jobOrResult) return null;
-  if (jobOrResult.outcome === 'PARTIAL') return { label: OUTCOME_LABELS.PARTIAL, tone: 'bg-amber-100 text-amber-700' };
-  const status = jobOrResult.status || (jobOrResult.outcome ? 'SUCCEEDED' : null);
-  return { label: STATUS_LABELS[status] || OUTCOME_LABELS[jobOrResult.outcome] || 'Статус неизвестен', tone: STATUS_TONES[status] || 'bg-slate-100 text-slate-600' };
-}
-
 function userFacingError(cause) {
   if (cause?.code === 'BABOK_SEMANTIC_INVALID') return 'Нельзя сохранить реестр: BR должен описывать бизнес-результат. Функции относятся к FR, метрика — к критерию успеха. Для ответа AI повторите декомпозицию.';
   if (cause?.code === 'REVIEW_GAP_ANSWERS_REQUIRED') return 'Уточнение пока частичное. Дополните ответ на оставшиеся вопросы или снимите вопрос с рассмотрения с обоснованием.';
@@ -213,7 +205,7 @@ function userFacingError(cause) {
   if (cause?.code === 'USER_ACTIVE_JOB_LIMIT') return 'Другая задача уже выполняется. Дождитесь её завершения и попробуйте снова.';
   if (cause?.status === 401 || cause?.status === 403) return 'Нет доступа. Проверьте вход и права пользователя.';
   if (cause?.status === 413) return 'Материал превышает допустимый размер.';
-  return 'Не удалось выполнить действие. Ваши данные сохранены в форме. Повторите попытку; если ошибка повторится, откройте «Debug» в верхней панели — там технические подробности.';
+  return 'Не удалось выполнить действие. Ваши данные сохранены в форме. Повторите попытку; если ошибка повторится, откройте «Журнал задачи» в верхней панели — там технические подробности.';
 }
 
 function failureMessage(job) {
@@ -224,15 +216,6 @@ function jobIdFromPath(pathname = window.location.pathname) {
   const match = pathname.match(/^\/tasks\/([^/]+)\/?$/);
   return match ? decodeURIComponent(match[1]) : null;
 }
-
-function formatDuration(value) {
-  if (value == null) return '—';
-  if (value < 1000) return `${value} мс`;
-  const seconds = Math.round(value / 1000);
-  return seconds < 60 ? `${seconds} с` : `${Math.floor(seconds / 60)} мин ${seconds % 60} с`;
-}
-
-const TRACE_TONES = { RUNNING: 'bg-indigo-100 text-indigo-700', COMPLETED: 'bg-emerald-100 text-emerald-700', SUCCEEDED: 'bg-emerald-100 text-emerald-700', FAILED: 'bg-red-100 text-red-700', PENDING: 'bg-slate-100 text-slate-600', INFO: 'bg-slate-100 text-slate-600' };
 
 function WorkflowStepper({ currentStage = 1, completedStage = 0, skippedStages = [], compact = false }) {
   const stages = [
@@ -690,7 +673,7 @@ function RequirementsLayoutToggle({ layout, onChange }) {
   </div>;
 }
 
-function BabokRegistryResult({ value, latestVersion, onSave, onStartResearch, onDirtyChange, busy, researchBusy, finalVersion = false, readOnly = false, title = null, onBack = null, initialRecordId = null, jobId = null, discussionEnabled = true }) {
+function BabokRegistryResult({ value, latestVersion, onSave, onStartResearch, onDirtyChange, busy, researchBusy, recoveryDraft = null, businessContext, finalVersion = false, saveInitialVersion = false, readOnly = false, title = null, onBack = null, initialRecordId = null, jobId = null, discussionEnabled = true }) {
   const recordTarget = initialRecordId || window.location.hash.match(/^#record-((?:BR|SR|FR|NFR|TR|CON|GAP|QUESTION)-[A-Za-z0-9-]+)$/)?.[1] || null;
   const initialRegistry = babokRegistryFrom(value, latestVersion) || value;
   const review = useReviewState(initialRegistry, latestVersion?.decisions || {}, { readOnly });
@@ -806,14 +789,15 @@ function BabokRegistryResult({ value, latestVersion, onSave, onStartResearch, on
     setLastDeletion(null);
   }
 
-  function addRequirement(type, text, { targetIds = [], inQuestion = false } = {}) {
+  function addRequirement(type, text, { targetIds = [], inQuestion = false, fields = {}, showAllTypes = false } = {}) {
     const id = stableBabokId(registry.groups[type], type, review.state.reservedIds);
-    if (!inQuestion) { setTypeFilter(type); setReviewSection('requirements'); }
+    if (!inQuestion) { setTypeFilter(showAllTypes ? 'all' : type); setReviewSection('requirements'); }
     setQuery(''); setNeedsClarification(false); setSelectedRecordId(id); setComposerType(null);
     markEdited(id);
     setRegistry((current) => {
       const actualId = stableBabokId(current.groups[type], type, review.state.reservedIds);
-      return withBabokCounts({ ...current, groups: { ...current.groups, [type]: [...current.groups[type], createBabokManualRecord(type, actualId, text, { sourceArtifactId: current.materials.primary.artifactId, targetIds })] } });
+      const record = createBabokManualRecord(type, actualId, text, { sourceArtifactId: current.materials.primary.artifactId, targetIds });
+      return withBabokCounts({ ...current, groups: { ...current.groups, [type]: [...current.groups[type], { ...record, ...fields }] } });
     });
     if (compact && !inQuestion) requestAnimationFrame(() => { const target = document.getElementById(`record-${id}`); target?.focus(); target?.scrollIntoView?.({ block: 'nearest' }); });
     return id;
@@ -839,8 +823,14 @@ function BabokRegistryResult({ value, latestVersion, onSave, onStartResearch, on
       return;
     }
     const originalRecords = new Map(BABOK_REQUIREMENT_TYPES.flatMap((type) => (baseline.groups || baseline)[type] || []).map((record) => [record.id, record]));
-    const draftIds = BABOK_REQUIREMENT_TYPES.flatMap((type) => assembled.content.groups[type]).filter((record) => JSON.stringify(originalRecords.get(record.id)) !== JSON.stringify(record)).map((record) => record.id);
-    return onSave?.({ registry: assembled.content, baseVersionId: latestVersion?.versionId || null, decisions: assembled.decisions, editedRecordIds: [...new Set([...editedRecordIds, ...draftIds])] });
+    const savedRecords = BABOK_REQUIREMENT_TYPES.flatMap((type) => assembled.content.groups[type]);
+    const draftIds = savedRecords.filter((record) => JSON.stringify(originalRecords.get(record.id)) !== JSON.stringify(record)).map((record) => record.id);
+    let savedDecisions = assembled.decisions;
+    if (recoveryDraft && savedDecisions.recoveryAdded) {
+      const ids = new Set(savedRecords.map((record) => record.id));
+      savedDecisions = { ...savedDecisions, recoveryAdded: Object.fromEntries(Object.entries(savedDecisions.recoveryAdded).filter(([, id]) => ids.has(id))) };
+    }
+    return onSave?.({ registry: assembled.content, baseVersionId: latestVersion?.versionId || null, decisions: savedDecisions, editedRecordIds: [...new Set([...editedRecordIds, ...draftIds])] });
   }
 
   const discussionContext = useMemo(() => {
@@ -957,6 +947,11 @@ function BabokRegistryResult({ value, latestVersion, onSave, onStartResearch, on
     : busy ? 'Сохраняем…' : !hasSavedVersion ? 'Сохраните требования перед AI-исследованием' : hasUnsavedChanges ? 'Есть несохранённые изменения' : `Сохранено · ${latestVersion?.createdAt ? formatRuDateTime(latestVersion.createdAt) : 'только что'}`;
   return (
     <ReviewDraftProvider review={review} submit={saveRegistry} busy={busy}><div className={compact ? "space-y-2" : "space-y-5"}><div inert={Boolean(compact && activeQuestion)} className={compact ? "space-y-2" : "space-y-5"}>
+      {isBabokTextDraft(recoveryDraft) && <BabokRecoveryDraft responses={recoveryDraft.responses} columns={BABOK_REQUIREMENT_COLUMNS} groups={registry.groups}
+        sourceText={businessContext} onAdd={(type, text, fields) => addRequirement(type, text, { fields, showAllTypes: true })}
+        added={review.state.decisions.recoveryAdded || {}}
+        onAccepted={(key, id) => review.dispatch({ type: 'decisions', value: (decisions) => ({ ...decisions, recoveryAdded: { ...decisions.recoveryAdded, [key]: id } }) })}
+      />}
       {pendingDeletion && <ReviewDialog label="Удаление требования" onClose={() => setPendingDeletion(null)}><h2 className="text-lg font-bold">Удалить {pendingDeletion.id}?</h2><p className="my-3">Связанные записи: {pendingDeletion.affectedIds.join(', ') || 'нет'}. Связей в схеме: {pendingDeletion.links}. Ссылки на удалённое требование будут убраны. До сохранения удаление можно отменить.</p><div className="flex gap-3"><button className="rounded-lg border p-3" onClick={() => setPendingDeletion(null)}>Не удалять</button><button className="rounded-lg bg-red-700 text-white p-3" onClick={confirmDeletion}>Подтвердить удаление</button></div></ReviewDialog>}
       {lastDeletion && <p role="status" className="rounded-xl bg-amber-50 p-3">Удалено {lastDeletion.id}. <button className="font-semibold text-indigo-700 underline p-2" onClick={undoDeletion}>Отменить удаление</button></p>}
       {validationError && <p role="alert" className="text-sm text-red-700">{validationError.id}: {validationError.message}</p>}
@@ -970,7 +965,7 @@ function BabokRegistryResult({ value, latestVersion, onSave, onStartResearch, on
           {onBack && <button onClick={onBack} className="min-h-10 max-w-full px-4 py-2 border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 hover:bg-slate-50 flex items-center justify-center gap-2 sm:h-10 sm:shrink-0 sm:whitespace-nowrap"><ArrowLeft className="w-4 h-4 shrink-0" />К результатам AI-исследования</button>}
         {!readOnly && <>
           <ResultExportAction />
-          {hasUnsavedChanges && <button disabled={busy} onClick={() => saveRegistry()} className="h-10 shrink-0 whitespace-nowrap px-4 py-2 text-sm font-semibold rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:bg-slate-300 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-indigo-500">{hasSavedVersion ? 'Сохранить изменения' : 'Сохранить проверенную версию'}</button>}
+          {(hasUnsavedChanges || saveInitialVersion) && <button disabled={busy} onClick={() => saveRegistry()} className="h-10 shrink-0 whitespace-nowrap px-4 py-2 text-sm font-semibold rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:bg-slate-300 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-indigo-500">{saveInitialVersion ? 'Сохранить финальную версию' : hasSavedVersion ? 'Сохранить изменения' : 'Сохранить проверенную версию'}</button>}
           {!finalMode && <>
             <button aria-label={researchBusy ? 'AI-исследование выполняется…' : 'Улучшить требования с помощью AI'} aria-describedby="babok-save-status" title={!hasSavedVersion || hasUnsavedChanges ? 'Сначала сохраните текущую версию требований' : researchBusy ? 'Дождитесь завершения текущего AI-исследования' : 'Необязательный следующий шаг'} disabled={busy || researchBusy || !hasSavedVersion || hasUnsavedChanges} onClick={() => onStartResearch?.({ requirementsVersionId: latestVersion.versionId })} className="h-10 shrink-0 whitespace-nowrap px-4 py-2 border border-indigo-200 bg-white text-indigo-700 text-sm font-semibold rounded-lg hover:bg-indigo-50 disabled:border-slate-200 disabled:text-slate-600 disabled:bg-slate-100 flex items-center justify-center gap-2">{researchBusy ? <><Loader2 className="w-4 h-4 animate-spin" />AI-исследование выполняется…</> : <><Sparkles className="w-4 h-4" />Улучшить с AI</>}</button>
             <button aria-label="Перейти к финальной версии" aria-describedby="babok-save-status" title={!hasSavedVersion || hasUnsavedChanges ? 'Сначала сохраните текущую версию требований' : 'Пропустить необязательное AI-исследование'} disabled={busy || researchBusy || !hasSavedVersion || hasUnsavedChanges} onClick={() => saveRegistry({ ...(latestVersion?.decisions || {}), skippedResearch: true })} className="h-10 shrink-0 whitespace-nowrap px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed">К финальной версии</button>
@@ -1242,7 +1237,7 @@ function BusinessContextInputCard({ open, onOpenChange, running, summary, childr
   </section>;
 }
 
-function FinalRequirementsEditor({ latestVersion, onSave, onShowInsights, onShowSource, onShowContext, onStartResearch, onDirtyChange, busy, researchBusy = false, researchSkipped = false }) {
+function FinalRequirementsEditor({ latestVersion, onSave, onShowInsights, onShowSource, onShowContext, onStartResearch, onDirtyChange, busy, researchBusy = false, researchSkipped = false, saveInitialVersion = false }) {
   const review = useReviewState(latestVersion?.requirements || { business: [], functional: [], nonfunctional: [] }, latestVersion?.decisions || {});
   const { content: requirements, setContent: setRequirements } = review;
   const deletion = useLegacyDeletion(review);
@@ -1294,6 +1289,7 @@ function FinalRequirementsEditor({ latestVersion, onSave, onShowInsights, onShow
           <div className="flex gap-2 flex-wrap">
             {onShowSource && onShowContext && <SourceDataMenu onShowContext={onShowContext} onShowRequirements={onShowSource} />}
             {!hasUnsavedChanges && <ResultExportAction />}
+            {saveInitialVersion && !hasUnsavedChanges && <button disabled={busy} onClick={saveReview} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white disabled:bg-slate-300">Сохранить финальную версию</button>}
             {onShowInsights && <button onClick={onShowInsights} className="px-4 py-2 border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-2"><ArrowLeft className="w-4 h-4" />К результатам AI-исследования</button>}
             {researchSkipped && onStartResearch && <button disabled={busy || researchBusy || hasUnsavedChanges} onClick={() => onStartResearch({ requirementsVersionId: latestVersion.versionId })} className="px-4 py-2 border border-indigo-200 rounded-lg text-sm font-semibold text-indigo-700 hover:bg-indigo-50 disabled:bg-slate-100 disabled:text-slate-600 flex items-center gap-2">{researchBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}Добавить AI-исследование</button>}
           </div>
@@ -1514,7 +1510,22 @@ function ResultView({ content, latestVersion, businessContext, businessContextLo
   const value = safeJson(content);
   if (!value) return <Markdown>{content}</Markdown>;
   if (isBabokTextDraft(value)) return <Suspense fallback={<p>Загрузка черновика…</p>}><BabokTextDraft value={value} /></Suspense>;
+  if (value.recovery && isBabokRegistry(value.manualRegistry)) return <div className="space-y-4">
+    <p role="status" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-950">AI не завершил проверку декомпозиции. {isBabokTextDraft(value.recovery.draft) ? 'Черновик сохранён. Проверьте формулировки и сохраните требования.' : 'Добавьте требования вручную по исходной задаче.'}</p>
+    {value.recovery.omittedResponses && <p className="text-sm text-amber-950">Часть ответов AI не поместилась в черновик.</p>}
+    <BabokRegistryResult value={value.manualRegistry} latestVersion={latestVersion} recoveryDraft={value.recovery.draft} businessContext={businessContext} onSave={onSaveRequirements} onStartResearch={onStartResearch} onDirtyChange={onDirtyChange} busy={busy} researchBusy={researchBusy} finalVersion={Boolean(latestVersion?.decisions?.skippedResearch)} jobId={jobId} discussionEnabled={discussionEnabled} />
+    {isBabokTextDraft(value.recovery.draft) && <details className="rounded-lg border border-slate-200 bg-white p-3"><summary className="cursor-pointer font-semibold">Исходный ответ AI</summary><Suspense fallback={<p>Загрузка ответа…</p>}><BabokTextDraft value={value.recovery.draft} /></Suspense></details>}
+  </div>;
   if (value.mode === 'REQUIREMENTS_INSIGHTS') {
+    if (value.recovery) {
+      const version = latestVersion || { versionId: value.inputRequirementsVersionId, registry: value.baseRegistry, requirements: value.baseRequirements, decisions: value.baseDecisions, createdAt: value.baseCreatedAt };
+      return <div className="space-y-4">
+        <p role="status" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-950">AI не подготовил проверенные рекомендации. Продолжите с сохранёнными требованиями. Их можно отредактировать и сохранить как финальную версию.</p>
+        {isBabokRegistry(version.registry)
+          ? <BabokRegistryResult value={version.registry} latestVersion={version} finalVersion saveInitialVersion={!latestVersion} onSave={onSaveFinal} onDirtyChange={onDirtyChange} busy={busy} jobId={jobId} discussionEnabled={discussionEnabled} />
+          : <FinalRequirementsEditor latestVersion={version} saveInitialVersion={!latestVersion} onSave={onSaveFinal} onDirtyChange={onDirtyChange} busy={busy} />}
+      </div>;
+    }
     if (isBabokRegistry(value.baseRegistry) || isBabokRegistry(latestVersion?.registry)) return <BabokRequirementsInsightsResult value={value} latestVersion={latestVersion} businessContext={businessContext} businessContextLoading={businessContextLoading} onSaveFinal={onSaveFinal} onDirtyChange={onDirtyChange} busy={busy} jobId={jobId} discussionEnabled={discussionEnabled} />;
     return <RequirementsInsightsResult value={value} latestVersion={latestVersion} businessContext={businessContext} businessContextLoading={businessContextLoading} onSaveFinal={onSaveFinal} onDirtyChange={onDirtyChange} busy={busy} />;
   }
@@ -1608,7 +1619,7 @@ function ActiveJobPanel({ job, onCancel, onBackground }) {
         </div>
         <p className="text-sm text-slate-500 shrink-0" aria-label={`Прошло ${formatElapsed(elapsedMs)}, ${durationHint}`}><span className="font-mono font-semibold text-slate-700">{formatElapsed(elapsedMs)}</span> · {durationHint}</p>
       </div>
-      {job.mode === 'REQUIREMENTS_INSIGHTS' && <p className="mt-3 text-sm leading-5 text-slate-600">AI анализирует ваши материалы, рассматривает возможные подходы и риски, затем проверяет предложения по правилам BABOK. Внешний поиск и проверка публикаций не выполняются. Вы сможете оценить гипотезы и выбрать точные изменения требований.</p>}
+      {job.mode === 'REQUIREMENTS_INSIGHTS' && <p className="mt-3 text-sm leading-5 text-slate-600">AI анализирует ваши материалы и предлагает улучшения требований по правилам BABOK. Внешний поиск и проверка публикаций не выполняются. Вы сможете оценить гипотезы и выбрать изменения требований.</p>}
       {focusMessage && <div className="mt-3 rounded-lg bg-indigo-50/60 px-3 py-2 overflow-hidden">
         <p role="status" aria-live={isModelPhase(job) ? 'off' : 'polite'} title={isModelPhase(job) ? 'Формулировки сменяются автоматически и описывают задачи анализа. Текущий этап подтверждается отдельно.' : undefined} className="text-sm font-medium text-indigo-900">{isModelPhase(job) ? waitingTip : focusMessage}</p>
         {reviewTip && <p aria-live="off" className="mt-1 text-sm leading-5 text-slate-500"><strong className="font-semibold">Подсказка:</strong> {reviewTip}</p>}
@@ -1677,93 +1688,10 @@ function JobStateCard({ job, onCancel, onRetry, retryBusy = false }) {
   );
 }
 
-function DebugPanel({ open, onClose, jobId, observations, refreshKey, triggerRef, onDownload, resultContent }) {
-  const panelRef = useRef(null);
-  const [trace, setTrace] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [expanded, setExpanded] = useState(() => new Set());
-  const [details, setDetails] = useState({});
-
-  const load = useCallback(async ({ cursor = null, append = false } = {}) => {
-    if (!jobId) return;
-    setLoading(true); setError('');
-    try {
-      const page = await enterpriseApi.getJobTrace(jobId, { cursor, limit: 50 });
-      setTrace((current) => append && current ? { ...page, timeline: [...current.timeline, ...page.timeline] } : page);
-    } catch (cause) { setError(userFacingError(cause)); }
-    finally { setLoading(false); }
-  }, [jobId]);
-
-  useEffect(() => { if (open) load(); }, [load, open, refreshKey]);
-  useEffect(() => {
-    if (!open) return undefined;
-    const previous = document.activeElement;
-    const returnTarget = triggerRef?.current || previous;
-    const handleKey = (event) => {
-      if (event.key === 'Escape') onClose();
-      if (event.key === 'Tab' && panelRef.current) {
-        const controls = [...panelRef.current.querySelectorAll('button,[href],[tabindex]:not([tabindex="-1"])')].filter((node) => !node.disabled);
-        if (!controls.length) return;
-        const first = controls[0]; const last = controls.at(-1);
-        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
-        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
-      }
-    };
-    window.addEventListener('keydown', handleKey);
-    requestAnimationFrame(() => panelRef.current?.querySelector('button')?.focus());
-    return () => { window.removeEventListener('keydown', handleKey); returnTarget?.focus?.(); };
-  }, [onClose, open, triggerRef]);
-
-  async function toggle(entry) {
-    const next = new Set(expanded);
-    if (next.has(entry.id)) next.delete(entry.id); else next.add(entry.id);
-    setExpanded(next);
-    if (!next.has(entry.id) || details[entry.id] || entry.source !== 'TRACE' || entry.detail?.state !== 'AVAILABLE') return;
-    try { const value = await enterpriseApi.getJobTraceDetail(jobId, entry.id); setDetails((current) => ({ ...current, [entry.id]: value })); }
-    catch (cause) { setDetails((current) => ({ ...current, [entry.id]: { state: 'ERROR', message: userFacingError(cause) } })); }
-  }
-
-  if (!open) return null;
-  const registry = safeJson(resultContent);
-  let qualityIssues = [];
-  if (isBabokRegistry(registry)) {
-    try { qualityIssues = collectBabokQualityIssues(registry, { final: true }); } catch { /* Invalid result shape is covered by execution diagnostics. */ }
-  }
-  const localEntries = observations.map((item, index) => ({ id: `client:${index}:${item.timestamp}`, source: 'CLIENT_LOCAL', category: 'SSE', name: item.type, status: item.type === 'disconnected' || item.type === 'parse-error' ? 'FAILED' : 'INFO', startedAt: item.timestamp, completedAt: item.timestamp, durationMs: 0, metadata: item, detail: { state: 'NOT_RECORDED' } }));
-  const entries = [...(trace?.timeline || []), ...localEntries].sort((a, b) => new Date(a.startedAt || 0) - new Date(b.startedAt || 0));
-  return <div className="fixed inset-0 z-[80]" role="dialog" aria-modal="true" aria-label="Debug текущей задачи">
-    <button aria-label="Закрыть Debug" onClick={onClose} className="absolute inset-0 bg-slate-950/35 backdrop-blur-[1px]" />
-    <aside ref={panelRef} className="absolute right-0 top-0 h-full w-full lg:max-w-2xl bg-white shadow-2xl flex flex-col overflow-hidden">
-      <header className="px-5 py-4 border-b border-slate-200 flex items-start justify-between gap-4">
-        <div><p className="text-xs font-semibold text-indigo-600 uppercase tracking-wide">Диагностика</p><h2 className="font-bold text-slate-900 text-lg">Debug задачи</h2><p className="font-mono text-xs text-slate-500 mt-1 break-all">{jobId}</p></div>
-        <button aria-label="Закрыть" onClick={onClose} className="p-2 rounded-lg text-slate-500 hover:bg-slate-100 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-indigo-500"><X className="w-5 h-5" /></button>
-      </header>
-      <div className="flex-1 overflow-y-auto p-4 md:p-5">
-        {error && <div role="alert" className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
-        {qualityIssues.length > 0 && <details className="mb-5 text-sm text-slate-700">
-          <summary className="cursor-pointer font-semibold">Проверка качества AI-результата · {qualityIssues.length}</summary>
-          <p className="mt-2">Технические замечания к исходному ответу AI. Ручные правки требований здесь не учитываются.</p>
-          <ul className="mt-2 list-disc space-y-2 pl-5">{qualityIssues.map((issue, index) => <li key={`${issue.path}:${index}`}>{issue.reason}<code className="mt-1 block break-all text-xs text-slate-500">{issue.path}</code></li>)}</ul>
-        </details>}
-        {trace && <section aria-label="Сводка трассировки" className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-          {[['Статус', trace.status], ['Этап', trace.currentStep || '—'], ['Создана', trace.createdAt ? new Date(trace.createdAt).toLocaleString() : '—'], ['Длительность', formatDuration(trace.durationMs)]].map(([label, value]) => <div key={label} className="rounded-xl bg-slate-50 border border-slate-200 p-3"><dt className="text-[11px] uppercase tracking-wide text-slate-600">{label}</dt><dd className="text-xs font-semibold text-slate-700 mt-1 break-words">{value}</dd></div>)}
-        </section>}
-        <div className="flex items-center justify-between gap-3 mb-3"><h3 className="font-semibold text-slate-900">Timeline</h3><div className="flex gap-2">{onDownload && <button onClick={onDownload} className="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-600"><Download className="inline w-3.5 h-3.5 mr-1" />JSON</button>}<button onClick={() => load()} disabled={loading} className="px-3 py-1.5 rounded-lg border border-indigo-200 text-xs font-semibold text-indigo-700 disabled:opacity-50">Обновить</button></div></div>
-        {loading && !trace ? <div className="py-12 text-center text-sm text-slate-500"><Loader2 className="w-5 h-5 animate-spin mx-auto mb-2" />Загрузка трассировки…</div> : entries.length === 0 ? <p className="py-12 text-center text-sm text-slate-600">События пока не записаны.</p> : <ol className="space-y-3" aria-label="Timeline выполнения задачи">{entries.map((entry) => {
-          const isOpen = expanded.has(entry.id); const detail = details[entry.id];
-          return <li key={entry.id} className="relative pl-5 before:absolute before:left-[5px] before:top-4 before:bottom-[-14px] before:w-px before:bg-slate-200 last:before:hidden"><span className="absolute left-0 top-4 w-2.5 h-2.5 rounded-full bg-indigo-500 ring-4 ring-white" /><div className="rounded-xl border border-slate-200 bg-white overflow-hidden"><button aria-expanded={isOpen} onClick={() => toggle(entry)} className="w-full p-3 text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500"><div className="flex justify-between gap-3"><div className="min-w-0"><div className="flex gap-2 items-center flex-wrap"><span className="font-semibold text-sm text-slate-800">{entry.name}</span><span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${TRACE_TONES[entry.status] || TRACE_TONES.INFO}`}>{entry.status}</span>{entry.source === 'CLIENT_LOCAL' && <span className="text-[10px] text-violet-700 bg-violet-50 rounded-full px-2 py-0.5">текущая вкладка</span>}</div><p className="text-xs text-slate-600 mt-1">{entry.category}{entry.stepId ? ` · ${entry.stepId}` : ''}</p></div><div className="text-right shrink-0"><time className="text-[11px] text-slate-600">{entry.startedAt ? new Date(entry.startedAt).toLocaleTimeString() : '—'}</time><p className="text-[11px] text-slate-500 mt-1">{formatDuration(entry.durationMs)}</p></div></div></button>{isOpen && <div className="border-t border-slate-100 bg-slate-50 p-3 space-y-2"><p className="text-xs text-slate-500">Детали: {entry.detail?.state === 'NOT_RECORDED' ? 'не записаны' : entry.detail?.state === 'EXPIRED' ? 'срок хранения истёк' : entry.detail?.state === 'REDACTED' ? 'скрыты политикой доступа' : entry.detail?.state || '—'}</p><pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-slate-900 p-3 text-[11px] text-slate-100">{JSON.stringify(detail?.content ?? detail ?? entry.metadata ?? {}, null, 2)}</pre></div>}</div></li>;
-        })}</ol>}
-        {trace?.nextCursor && <button disabled={loading} onClick={() => load({ cursor: trace.nextCursor, append: true })} className="mt-4 w-full px-4 py-2.5 rounded-xl border border-indigo-200 text-indigo-700 text-sm font-semibold disabled:opacity-50">Загрузить ещё</button>}
-      </div>
-    </aside>
-  </div>;
-}
-
 function ArchivedLegacyResult({ job, result, onDownload }) {
   const status = primaryStatus(result || job);
   const timestamps = [['Создана', job.createdAt], ['Запущена', job.startedAt], ['Завершена', job.completedAt]].filter(([, value]) => value);
-  return <section aria-label="Архивный результат" className="bg-white rounded-2xl border border-slate-200 shadow-xs p-5 md:p-6">
+  return <section id="task-result" tabIndex={-1} aria-label="Архивный результат" className="bg-white rounded-2xl border border-slate-200 shadow-xs p-5 md:p-6">
     <div className="flex items-start justify-between gap-4 flex-wrap">
       <div><p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Архивная задача · только чтение</p><h1 className="text-2xl font-bold text-slate-900 mt-1">Результат старой версии</h1><p className="text-sm text-slate-500 mt-2">Этот сценарий больше нельзя запускать или повторять. Сохранённые данные и диагностика остаются доступны.</p></div>
       <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${status.tone}`}>{status.label}</span>
@@ -1798,6 +1726,7 @@ export default function AsyncJobWorkspace() {
   const [model, setModel] = useState('glm-5.3-flash');
   const [temperature, setTemperature] = useState(0.2);
   const [reasoning, setReasoning] = useState('low');
+  const [criticEnabled, setCriticEnabled] = useState(true);
   const [modelSettings, setModelSettings] = useState({});
   const [upload, setUpload] = useState(0);
   const [job, setJob] = useState(null);
@@ -1999,7 +1928,10 @@ export default function AsyncJobWorkspace() {
     if (parsed?.mode === 'REQUIREMENTS_INSIGHTS' && parsed.inputRequirementsVersionId && !parsed.baseDecisions) {
       const source = await enterpriseApi.getRequirementsVersion(parsed.inputRequirementsVersionId);
       if (routeJobIdRef.current !== id || signal?.aborted) return;
-      hydrated = JSON.stringify({ ...parsed, baseDecisions: source?.decisions || {} });
+      hydrated = JSON.stringify({
+        ...parsed, baseDecisions: source?.decisions || {},
+        ...(parsed.recovery ? { baseRegistry: source.registry, baseRequirements: source.requirements, baseCreatedAt: source.createdAt } : {}),
+      });
     }
     setResultContent(hydrated);
     setRequirementsVersions(versions);
@@ -2050,10 +1982,11 @@ export default function AsyncJobWorkspace() {
         }
         setInputCapabilities({ integrationAvailable: value.capabilities?.domainOperations?.includes('decomposition') || false, discussionAvailable: value.capabilities?.requirementDiscussion !== false, maxBytes: value.capabilities?.inputMaxBytes });
         const configured = value.capabilities?.models;
+        const capabilities = value.capabilities?.modelSettings || {};
+        const saved = readNextSettings(value.userId && value.tenantId ? JSON.stringify([value.tenantId, value.userId]) : null, configured?.length ? configured : DEFAULT_MODELS, capabilities);
+        setCriticEnabled(saved.criticEnabled);
         if (!configured?.length) return;
         setModels(configured);
-        const capabilities = value.capabilities?.modelSettings || {};
-        const saved = readNextSettings(value.userId && value.tenantId ? JSON.stringify([value.tenantId, value.userId]) : null, configured, capabilities);
         setModelSettings(capabilities); setModel(saved.model); setTemperature(saved.temperature); setReasoning(saved.reasoning);
       }),
     ]).catch((cause) => { if (generation === identityGenerationRef.current) setError(cause.message); }).finally(() => { if (generation === identityGenerationRef.current) setIdentityReady(true); });
@@ -2191,8 +2124,10 @@ export default function AsyncJobWorkspace() {
 
   useEffect(() => {
     if (!identityReady || !actorScope) return;
-    try { localStorage.setItem(`reqai.nextAiSettings:${actorScope}`, JSON.stringify({ model, temperature: Number(temperature), reasoning })); } catch { /* settings still apply to this tab */ }
-  }, [actorScope, identityReady, model, temperature, reasoning]);
+    try { localStorage.setItem(`reqai.nextAiSettings:${actorScope}`, JSON.stringify({ model, temperature: Number(temperature), reasoning, criticEnabled })); } catch { /* settings still apply to this tab */ }
+  }, [actorScope, identityReady, model, temperature, reasoning, criticEnabled]);
+
+  const nextAiSettings = { model, temperature: Number(temperature), reasoning, criticEnabled };
 
   async function submit() {
     if (editorDirtyRef.current) { setPendingNavigation({ submit: true }); return; }
@@ -2216,7 +2151,7 @@ export default function AsyncJobWorkspace() {
       const artifact = await uploadMaterial(input);
       const extra = await Promise.allSettled([baselineFile, ...referenceFiles].filter(Boolean).map(uploadMaterial));
       if (extra.some((item) => item.status === 'rejected')) throw new Error('Не все материалы загружены. Успешные вложения сохранены; повторите запуск, чтобы загрузить оставшиеся.');
-      const accepted = await enterpriseApi.decomposeRequirements({ inputArtifactId: artifact.artifactId, ...(baselineFile ? { baselineArtifactId: uploadedMaterialsRef.current.get(baselineFile).artifactId } : {}), ...(referenceFiles.length ? { referenceArtifactIds: referenceFiles.map((value) => uploadedMaterialsRef.current.get(value).artifactId) } : {}), model, temperature: Number(temperature), reasoning });
+      const accepted = await enterpriseApi.decomposeRequirements({ inputArtifactId: artifact.artifactId, ...(baselineFile ? { baselineArtifactId: uploadedMaterialsRef.current.get(baselineFile).artifactId } : {}), ...(referenceFiles.length ? { referenceArtifactIds: referenceFiles.map((value) => uploadedMaterialsRef.current.get(value).artifactId) } : {}), ...nextAiSettings });
       unsentContextRef.current = { text: '', file: null, baseline: null, references: [] }; setHasContextDraft(false);
       saveContextDraft(actorScope, unsentContextRef.current); setContextDraftNotice('');
       navigate(accepted.jobId);
@@ -2318,7 +2253,7 @@ export default function AsyncJobWorkspace() {
     setVersionBusy(true);
     setError('');
     try {
-      const accepted = await enterpriseApi.researchRequirements(requirementsVersionId, { model, temperature: Number(temperature), reasoning });
+      const accepted = await enterpriseApi.researchRequirements(requirementsVersionId, nextAiSettings);
       navigate(accepted.jobId);
       await refresh();
     } catch (cause) { setError(userFacingError(cause)); }
@@ -2337,7 +2272,7 @@ export default function AsyncJobWorkspace() {
     // click cannot create a second paid run for the same retry request.
     if (researchRetryRef.current?.sourceJobId !== sourceJobId) researchRetryRef.current = {
       sourceJobId, versionId: job.inputArtifactId, key: crypto.randomUUID(),
-      body: { model, temperature: Number(temperature), reasoning },
+      body: nextAiSettings,
     };
     const request = researchRetryRef.current;
     researchRetryInFlightRef.current = true;
@@ -2397,7 +2332,7 @@ export default function AsyncJobWorkspace() {
     </button>
   );
 
-  const compactReview = [2, 4].includes(currentStage) && !isBabokTextDraft(parsedResult);
+  const compactReview = [2, 4].includes(currentStage) && !isBabokTextDraft(parsedResult) && !parsedResult?.manualRegistry;
   const contextComplete = Boolean(result && !legacyJob && (job?.type === 'DECOMPOSITION' || result.mode === 'DECOMPOSITION'));
   const showReadOnlyBusinessContext = Boolean((linkedResearch && !result) || directFinalReady);
   const contextFormBody = <>
@@ -2423,8 +2358,20 @@ export default function AsyncJobWorkspace() {
             {job && TERMINAL.has(job.status) && <button aria-label="Новая задача" onClick={startNewTask} className="p-2 sm:px-3 sm:py-2 rounded-lg text-sm font-semibold text-indigo-600 hover:bg-indigo-50 flex items-center gap-2 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-indigo-500"><Plus className="w-4 h-4" /><span className="hidden sm:inline">Новая задача</span></button>}
             {backgroundActive && <BackgroundJobIndicator job={backgroundJob} onOpen={() => load(backgroundJob.jobId)} />}
             <button aria-label="История" onClick={() => setHistoryOpen(true)} className="p-2 sm:px-3 sm:py-2 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-100 flex items-center gap-2 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-indigo-500"><History className="w-4 h-4" /><span className="hidden sm:inline">История</span></button>
-            <AiSettingsDisclosure model={model}><ModelControls capabilities={modelSettings} models={models} model={model} setModel={(value) => { setModel(value); setReasoning(effectiveReasoning(value, reasoning, modelSettings)); }} temperature={temperature} setTemperature={setTemperature} reasoning={reasoning} setReasoning={setReasoning} /></AiSettingsDisclosure>
-            <button ref={debugTriggerRef} aria-label="Debug" title={job ? 'Debug' : 'Debug станет доступен после запуска задачи'} disabled={!job} onClick={() => setDebugOpen(true)} className="ml-auto p-2 rounded-lg text-slate-600 hover:text-slate-600 hover:bg-slate-100 disabled:text-slate-300 disabled:hover:bg-transparent disabled:cursor-not-allowed flex items-center justify-center focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-slate-400"><Bug className="w-4 h-4" /></button>
+            <AiSettingsDisclosure model={model}>
+              <ModelControls capabilities={modelSettings} models={models} model={model} setModel={(value) => { setModel(value); setReasoning(effectiveReasoning(value, reasoning, modelSettings)); }} temperature={temperature} setTemperature={setTemperature} reasoning={reasoning} setReasoning={setReasoning} />
+              <div className="mt-3 border-t border-slate-200 pt-3">
+                <label className="flex min-h-8 cursor-pointer items-center justify-between gap-3 text-sm font-semibold text-slate-700">
+                  <span>Независимая проверка (критик)</span>
+                  <span className="relative h-6 w-11 shrink-0">
+                    <input type="checkbox" role="switch" aria-describedby="ai-critic-help" checked={criticEnabled} onChange={(event) => setCriticEnabled(event.target.checked)} className="peer absolute inset-0 z-10 size-full cursor-pointer opacity-0" />
+                    <span aria-hidden="true" className="absolute inset-0 rounded-full bg-slate-500 after:absolute after:left-1 after:top-1 after:size-4 after:rounded-full after:bg-white peer-checked:bg-indigo-600 peer-checked:after:translate-x-5 peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-indigo-500" />
+                  </span>
+                </label>
+                <p id="ai-critic-help" className="text-xs leading-5 text-slate-600">Дополнительная AI-проверка декомпозиции и исследования. Если проверка прервётся, можно продолжить с доступным результатом.</p>
+              </div>
+            </AiSettingsDisclosure>
+            <button ref={debugTriggerRef} aria-label="Журнал задачи" title={job ? 'Журнал задачи' : 'Журнал будет доступен после запуска'} disabled={!job} onClick={() => setDebugOpen(true)} className="ml-auto p-2 rounded-lg text-slate-600 hover:text-slate-600 hover:bg-slate-100 disabled:text-slate-300 disabled:hover:bg-transparent disabled:cursor-not-allowed flex items-center justify-center focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-slate-400"><Bug className="w-4 h-4" /></button>
           </div>
         </div>
       </nav>
@@ -2463,13 +2410,14 @@ export default function AsyncJobWorkspace() {
             {remoteRequirementsVersions && <section role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-4 flex items-center justify-between gap-4 flex-wrap"><div><p className="text-sm font-semibold text-amber-900">Доступна новая сохранённая версия</p><p className="text-xs text-amber-700 mt-1">Она создана в другом клиенте. Текущие несохранённые изменения оставлены без изменений.</p></div><button onClick={loadRemoteRequirementsVersion} className={compactReview ? "px-4 py-2 rounded-lg bg-indigo-600 text-sm font-semibold text-white hover:bg-indigo-700" : "px-4 py-2 rounded-lg border border-amber-300 bg-white text-sm font-semibold text-amber-800 hover:bg-amber-100"}>Загрузить новую версию</button></section>}
             {progressingJob && !activeLinkedResearch && <ActiveJobPanel job={job} onCancel={cancelActiveJob} onBackground={continueInBackground} />}
             <JobStateCard job={job} onCancel={cancelActiveJob} onRetry={linkedResearch && job?.inputArtifactId ? retryResearch : undefined} retryBusy={researchRetryBusy} />
+            {linkedResearch && job?.status === 'FAILED' && job.parentJobId && <button type="button" className="rounded-lg border px-4 py-2 text-sm font-semibold text-indigo-700" onClick={() => load(job.parentJobId)}>Вернуться к сохранённым требованиям</button>}
             {result && identityReady && <RequirementsReviewContext.Provider value={{ conflict: Boolean(remoteRequirementsVersions), saveError: error, onCompareVersions: loadRemoteRequirementsVersion, childId: linkedChildId, child: linkedChild, submitting: linkedResearchSubmitting, onOpenResearch: () => load(linkedChildId), source: compactReview ? <OriginalBusinessContext compact value={requirements} loading={businessContextLoading} editable><h2 className="text-lg font-bold">Изменить бизнес-задачу</h2><p className="mb-4 text-sm text-slate-600">После изменений запустите декомпозицию повторно.</p>{contextFormBody}</OriginalBusinessContext> : null }}><ResultExportContext.Provider value={<VersionExport key={`${result.jobId}:${authEpoch}`} version={requirementsVersions[0]} isDirty={() => editorDirtyRef.current} onSave={() => editorControllerRef.current?.save?.()} />}><ResultPanel reservedIds={requirementsVersions.flatMap((version) => Object.values(version.registry?.groups || version.requirements || {}).filter(Array.isArray).flat().map((record) => record.id))} editorEpoch={editorEpoch} activeReviewView={activeReviewView} requestReviewView={requestReviewView} restoredReviewState={restoredReviewState} compareRecovery={compareRecovery} restoreRecovery={restoreRecovery} actorScope={actorScope} registerEditor={registerEditor} result={result} resultContent={resultContent} latestVersion={requirementsVersions[0] || null} businessContext={requirements} businessContextLoading={businessContextLoading} onSaveRequirements={saveRequirementsVersion} onStartResearch={startResearchFromDecomposition} onSaveFinal={saveRequirementsVersion} onDirtyChange={handleEditorDirty} busy={versionBusy} researchBusy={linkedResearchBusy} discussionEnabled={inputCapabilities.discussionAvailable !== false} /></ResultExportContext.Provider></RequirementsReviewContext.Provider>}
           </div>
         </main>
       )}
 
       <HistoryDrawer key={actorScope || 'anonymous'} open={historyOpen && !pendingNavigation && !rebasePreview && !finalReviewPrompt} onClose={closeHistory} activeJobId={jobId} onSelect={load} refreshKey={historyRefreshKey} />
-      <DebugPanel resultContent={resultContent || result?.summary} open={debugOpen} onClose={() => setDebugOpen(false)} jobId={jobId} observations={sseObservations} refreshKey={debugRefreshKey} triggerRef={debugTriggerRef} onDownload={result?.resultArtifactId ? download : null} />
+      <DebugPanel open={debugOpen} onClose={() => setDebugOpen(false)} job={job} jobId={jobId} observations={sseObservations} refreshKey={debugRefreshKey} triggerRef={debugTriggerRef} onDownload={result?.resultArtifactId ? download : null} />
 
     </div>
   );
@@ -2556,7 +2504,7 @@ function UnsavedNavigationDialog({ busy, onSave, onDiscard, onStay }) {
 
 function ResultPanel({ result, resultContent, latestVersion, businessContext, businessContextLoading, onSaveRequirements, onStartResearch, onSaveFinal, onDirtyChange, busy, researchBusy = false, actorScope, registerEditor, reservedIds, restoredReviewState, compareRecovery, restoreRecovery, editorEpoch, activeReviewView, requestReviewView, discussionEnabled = true }) {
   return (
-    <section className="space-y-4">
+    <section id="task-result" tabIndex={-1} className="space-y-4 scroll-mt-20">
       <ReviewSessionProvider businessContext={businessContext} reservedIds={reservedIds} view={activeReviewView} requestView={requestReviewView} restoredState={restoredReviewState} compareRecovery={compareRecovery} restoreRecovery={restoreRecovery} scope={actorScope} jobId={result.jobId} baseVersionId={latestVersion?.versionId} register={registerEditor}><ResultView key={`${result.jobId}:${latestVersion?.versionId || 'base'}:${editorEpoch}`} content={resultContent || result.summary || ''} latestVersion={latestVersion} businessContext={businessContext} businessContextLoading={businessContextLoading} onSaveRequirements={onSaveRequirements} onStartResearch={onStartResearch} onSaveFinal={onSaveFinal} onDirtyChange={onDirtyChange} busy={busy} researchBusy={researchBusy} jobId={result.jobId} discussionEnabled={discussionEnabled} /></ReviewSessionProvider>
     </section>
   );

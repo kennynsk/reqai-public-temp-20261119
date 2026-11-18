@@ -352,6 +352,38 @@ test('five-direction research snapshots its BABOK skill and fifteen-minute deadl
   assert.deepEqual(accepted.audit.metadata.babokSkillProfile, babokSkillProfile);
   assert.equal(accepted.job.deadlineAt.getTime() - now.getTime(), 900000);
   assert.equal(accepted.job.configurationSnapshot.promptProfile, promptProfile);
+  assert.equal(accepted.job.configurationSnapshot.criticEnabled, true);
+});
+
+test('decomposition creation and retry use the configured deadline with the snapshotted critic choice', async () => {
+  const now = new Date('2026-11-18T00:00:00Z');
+  const originalId = '00000000-0000-4000-8000-000000000010';
+  const inputArtifactId = '00000000-0000-4000-8000-000000000011';
+  const promptProfile = { id: 'requirements-decomposition', version: '2.17.0', performanceBudgetMs: 240_000 };
+  let saved;
+  const auth = { tenantId: 'test', userId: 'test', roles: ['tenant-admin'] };
+  const service = createJobService({
+    config: { asyncEnabled: true, features: { versionedPrompts: true }, process: { siteId: 'test' },
+      jobs: { decompositionDeadlineMs: 3_600_000 }, llm: { models: ['test'] } },
+    clock: () => now,
+    promptProfileResolver: { resolve: () => promptProfile },
+    jobRepository: {
+      async createAccepted({ job }) { saved = job; return { job, replayed: false }; },
+      async findVisibleById() {
+        return { id: originalId, owner_user_id: 'test', status: 'FAILED', type: 'DECOMPOSITION',
+          input_artifact_id: inputArtifactId, configuration_snapshot: saved.configurationSnapshot };
+      },
+    },
+  });
+  await service.create({ auth, idempotencyKey: 'decomposition-critic-off', body: {
+    type: 'DECOMPOSITION', inputArtifactId, options: { criticEnabled: false },
+  } });
+  assert.equal(saved.deadlineAt.getTime() - now.getTime(), 3_600_000);
+  assert.equal(saved.configurationSnapshot.criticEnabled, false);
+  assert.equal(saved.configurationSnapshot.promptProfile, promptProfile);
+  await service.retry({ auth, jobId: originalId, idempotencyKey: 'decomposition-critic-retry' });
+  assert.equal(saved.deadlineAt.getTime() - now.getTime(), 3_600_000);
+  assert.equal(saved.configurationSnapshot.criticEnabled, false);
 });
 
 test('linked requirements research publishes an ordered discovery event on its parent stream', async () => {

@@ -326,7 +326,7 @@
           { "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 50 } }
         ],
         "responses": {
-          "200": { "description": "Safe, ordered diagnostic timeline", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JobTrace" } } } },
+          "200": { "description": "Safe execution summary and paginated diagnostic timeline", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JobTrace" } } } },
           "400": { "$ref": "#/components/responses/BadRequest" },
           "401": { "$ref": "#/components/responses/Unauthorized" },
           "404": { "$ref": "#/components/responses/NotFound" }
@@ -540,8 +540,8 @@
       },
       "DecompositionRequest": {
         "oneOf": [
-          { "type": "object", "required": ["businessContext"], "properties": { "businessContext": { "type": "string", "minLength": 1, "maxLength": 1048576 }, "baselineArtifactId": { "type": "string", "format": "uuid" }, "referenceArtifactIds": { "type": "array", "maxItems": 20, "uniqueItems": true, "items": { "type": "string", "format": "uuid" } }, "model": { "type": "string", "minLength": 1 }, "temperature": { "type": "number", "minimum": 0, "maximum": 2 }, "reasoning": { "$ref": "#/components/schemas/ReasoningLevel" }, "promptVersion": { "type": "string", "pattern": "^[1-9][0-9]*\\.[0-9]+\\.[0-9]+$" } }, "additionalProperties": false },
-          { "type": "object", "required": ["inputArtifactId"], "properties": { "inputArtifactId": { "type": "string", "format": "uuid" }, "baselineArtifactId": { "type": "string", "format": "uuid" }, "referenceArtifactIds": { "type": "array", "maxItems": 20, "uniqueItems": true, "items": { "type": "string", "format": "uuid" } }, "model": { "type": "string", "minLength": 1 }, "temperature": { "type": "number", "minimum": 0, "maximum": 2 }, "reasoning": { "$ref": "#/components/schemas/ReasoningLevel" }, "promptVersion": { "type": "string", "pattern": "^[1-9][0-9]*\\.[0-9]+\\.[0-9]+$" } }, "additionalProperties": false }
+          { "type": "object", "required": ["businessContext"], "properties": { "businessContext": { "type": "string", "minLength": 1, "maxLength": 1048576 }, "baselineArtifactId": { "type": "string", "format": "uuid" }, "referenceArtifactIds": { "type": "array", "maxItems": 20, "uniqueItems": true, "items": { "type": "string", "format": "uuid" } }, "model": { "type": "string", "minLength": 1 }, "temperature": { "type": "number", "minimum": 0, "maximum": 2 }, "reasoning": { "$ref": "#/components/schemas/ReasoningLevel" }, "criticEnabled": { "type": "boolean", "default": true }, "promptVersion": { "type": "string", "pattern": "^[1-9][0-9]*\\.[0-9]+\\.[0-9]+$" } }, "additionalProperties": false },
+          { "type": "object", "required": ["inputArtifactId"], "properties": { "inputArtifactId": { "type": "string", "format": "uuid" }, "baselineArtifactId": { "type": "string", "format": "uuid" }, "referenceArtifactIds": { "type": "array", "maxItems": 20, "uniqueItems": true, "items": { "type": "string", "format": "uuid" } }, "model": { "type": "string", "minLength": 1 }, "temperature": { "type": "number", "minimum": 0, "maximum": 2 }, "reasoning": { "$ref": "#/components/schemas/ReasoningLevel" }, "criticEnabled": { "type": "boolean", "default": true }, "promptVersion": { "type": "string", "pattern": "^[1-9][0-9]*\\.[0-9]+\\.[0-9]+$" } }, "additionalProperties": false }
         ]
       },
       "RequirementsResearchRequest": {
@@ -550,6 +550,7 @@
           "model": { "type": "string", "minLength": 1 },
           "temperature": { "type": "number", "minimum": 0, "maximum": 2 },
           "reasoning": { "$ref": "#/components/schemas/ReasoningLevel" },
+          "criticEnabled": { "type": "boolean", "default": true, "description": "Run the independent AI review supported by the selected prompt profile." },
           "promptVersion": { "type": "string", "pattern": "^[1-9][0-9]*\\.[0-9]+\\.[0-9]+$" }
         },
         "additionalProperties": false
@@ -878,8 +879,54 @@
           "completedAt": { "type": ["string", "null"], "format": "date-time" },
           "durationMs": { "type": ["integer", "null"], "minimum": 0 },
           "skillUsage": { "type": "string" },
+          "executionSummary": {
+            "type": "object",
+            "description": "Observed stages from the entire authorized snapshot, independent of the timeline cursor",
+            "required": ["stages"],
+            "properties": {
+              "stages": {
+                "type": "array",
+                "maxItems": 5,
+                "items": { "$ref": "#/components/schemas/JobTraceStage" }
+              }
+            }
+          },
           "timeline": { "type": "array", "items": { "$ref": "#/components/schemas/JobTraceEntry" } },
           "nextCursor": { "type": ["string", "null"] }
+        }
+      },
+      "JobTraceStage": {
+        "type": "object",
+        "required": ["stage", "status", "startedAt", "completedAt", "attemptCount", "attempts", "reasonCode", "issues"],
+        "properties": {
+          "stage": { "enum": ["preparation", "generation", "assembly", "audit", "result"] },
+          "status": { "enum": ["running", "completed", "completed_after_retry", "partial", "failed", "skipped", "unknown"] },
+          "startedAt": { "type": ["string", "null"], "format": "date-time" },
+          "completedAt": { "type": ["string", "null"], "format": "date-time" },
+          "attemptCount": { "type": "integer", "minimum": 0 },
+          "attempts": {
+            "type": "array", "maxItems": 8, "description": "Most recent identifiable model calls in time order",
+            "items": {
+              "type": "object",
+              "required": ["id", "status", "startedAt", "durationMs", "model", "reasonCode"],
+              "properties": {
+                "id": { "type": "string" },
+                "status": { "enum": ["running", "received", "failed", "rejected", "accepted"] },
+                "startedAt": { "type": ["string", "null"], "format": "date-time" },
+                "durationMs": { "type": ["integer", "null"], "minimum": 0 },
+                "model": { "type": ["string", "null"] },
+                "reasonCode": { "type": ["string", "null"] }
+              }
+            }
+          },
+          "reasonCode": { "type": ["string", "null"] },
+          "issues": {
+            "type": "array", "maxItems": 8,
+            "items": {
+              "type": "object", "required": ["key", "code"],
+              "properties": { "key": { "type": ["string", "null"] }, "code": { "type": "string" } }
+            }
+          }
         }
       },
       "JobTraceDetail": {

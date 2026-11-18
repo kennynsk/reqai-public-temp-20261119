@@ -24,6 +24,8 @@ vi.mock('./api/enterprise-api.js', () => ({
 
 import AsyncJobWorkspace from './AsyncJobWorkspace.jsx';
 import { roomBookingBrief, roomBookingRegistry } from './room-booking.fixture.js';
+import { createEmptyBabokRegistry } from '../../server/src/services/babok-requirements-contract.js';
+import { createBabokTextDraft } from '../../server/src/services/babok-text-draft.js';
 
 const storage = new Map();
 Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: {
@@ -81,7 +83,7 @@ test('material roles use integration API and retry only failed file uploads', as
   await screen.findByText(/Не все материалы загружены/);
   expect(mocks.decomposeRequirements).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: 'Декомпозировать требования' }));
-  await waitFor(() => expect(mocks.decomposeRequirements).toHaveBeenCalledWith({ inputArtifactId: 'primary.txt', baselineArtifactId: 'baseline.txt', referenceArtifactIds: ['reference.txt'], model: 'glm-5.3-flash', reasoning: 'low', temperature: 0.2 }));
+  await waitFor(() => expect(mocks.decomposeRequirements).toHaveBeenCalledWith({ inputArtifactId: 'primary.txt', baselineArtifactId: 'baseline.txt', referenceArtifactIds: ['reference.txt'], model: 'glm-5.3-flash', reasoning: 'low', temperature: 0.2, criticEnabled: true }));
   expect(mocks.uploadArtifact.mock.calls.filter(([file]) => file === primary)).toHaveLength(1);
   expect(mocks.uploadArtifact.mock.calls.filter(([file]) => file === baseline)).toHaveLength(1);
   expect(mocks.uploadArtifact.mock.calls.filter(([file]) => file === reference)).toHaveLength(2);
@@ -90,7 +92,7 @@ test('material roles use integration API and retry only failed file uploads', as
 test('next-run settings restore per actor and old disabled migrates to low for GLM', async () => {
   localStorage.setItem('reqai.nextAiSettings:["tenant","user"]', JSON.stringify({ model: 'glm-5.3-flash', reasoning: 'disabled', temperature: 0.7 }));
   mocks.getCapabilities.mockResolvedValue({ tenantId: 'tenant', userId: 'user', capabilities: { models: ['glm-4.7', 'glm-5.3-flash'] } });
-  render(<AsyncJobWorkspace />);
+  const first = render(<AsyncJobWorkspace />);
   fireEvent.click(screen.getByLabelText('Настройки AI'));
   await waitFor(() => expect(screen.getByRole('combobox', { name: 'Модель' })).toHaveValue('glm-5.3-flash'));
   expect(screen.getByRole('combobox', { name: 'Модель' })).toHaveClass('reqai-control');
@@ -99,6 +101,14 @@ test('next-run settings restore per actor and old disabled migrates to low for G
   expect(screen.getByRole('combobox', { name: 'Reasoning' })).toHaveValue('low');
   expect(screen.queryByRole('option', { name: 'Выключен' })).not.toBeInTheDocument();
   expect(screen.getByRole('spinbutton', { name: 'Температура' })).toHaveValue(0.7);
+  const critic = screen.getByRole('switch', { name: 'Независимая проверка (критик)' });
+  expect(critic).toBeChecked();
+  fireEvent.click(critic);
+  expect(critic).not.toBeChecked();
+  first.unmount();
+  render(<AsyncJobWorkspace />);
+  fireEvent.click(screen.getByLabelText('Настройки AI'));
+  await waitFor(() => expect(screen.getByRole('switch', { name: 'Независимая проверка (критик)' })).not.toBeChecked());
 });
 
 test('reading a saved job preserves the unsent context draft and attachments', async () => {
@@ -388,8 +398,8 @@ function makeBabokRegistry() {
 
 test('shows the guided workflow and hides expert settings by default', async () => {
   render(<AsyncJobWorkspace />);
-  expect(screen.getByRole('button', { name: 'Debug' })).toBeDisabled();
-  expect(screen.getByRole('button', { name: 'Debug' })).toHaveAttribute('title', 'Debug станет доступен после запуска задачи');
+  expect(screen.getByRole('button', { name: 'Журнал задачи' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Журнал задачи' })).toHaveAttribute('title', 'Журнал будет доступен после запуска');
   expect(await screen.findByRole('button', { name: 'Подготовка требований' })).toHaveAttribute('aria-current', 'page');
   expect(screen.getByRole('heading', { name: 'Подготовка требований' })).toBeInTheDocument();
   const steps = screen.getByRole('list', { name: 'Этапы подготовки требований' });
@@ -403,7 +413,7 @@ test('shows the guided workflow and hides expert settings by default', async () 
   expect(screen.queryByText('Декомпозиция ещё не выполнена')).not.toBeInTheDocument();
 });
 
-test('allows choosing a reasoning level and sends it with a new task', async () => {
+test('sends the reasoning level and critic choice with a new decomposition', async () => {
   mocks.uploadArtifact.mockResolvedValue({ artifactId: 'artifact-1' });
   mocks.decomposeRequirements.mockResolvedValue({ jobId: 'job-1' });
   render(<AsyncJobWorkspace />);
@@ -412,9 +422,10 @@ test('allows choosing a reasoning level and sends it with a new task', async () 
   const reasoning = screen.getByRole('combobox', { name: 'Reasoning' });
   expect(reasoning).toHaveValue('disabled');
   fireEvent.change(reasoning, { target: { value: 'high' } });
+  fireEvent.click(screen.getByRole('switch', { name: 'Независимая проверка (критик)' }));
   fireEvent.change(screen.getByRole('textbox', { name: 'Бизнес-контекст' }), { target: { value: 'Сократить время обработки' } });
   fireEvent.click(screen.getByRole('button', { name: 'Декомпозировать требования' }));
-  await waitFor(() => expect(mocks.decomposeRequirements).toHaveBeenCalledWith(expect.objectContaining({ reasoning: 'high' })));
+  await waitFor(() => expect(mocks.decomposeRequirements).toHaveBeenCalledWith(expect.objectContaining({ reasoning: 'high', criticEnabled: false })));
 });
 
 test('restores abandoned active session with clear activity feedback', async () => {
@@ -664,8 +675,10 @@ test('saves reviewed decomposition and starts linked research inside requirement
   fireEvent.click(screen.getByRole('button', { name: 'Сохранить требования' }));
   await waitFor(() => expect(screen.getByRole('button', { name: 'Улучшить требования с помощью AI' })).toBeEnabled());
   expect(screen.getByText(/Сохранено ·/)).toBeInTheDocument();
+  fireEvent.click(screen.getByLabelText('Настройки AI'));
+  fireEvent.click(screen.getByRole('switch', { name: 'Независимая проверка (критик)' }));
   fireEvent.click(screen.getByRole('button', { name: 'Улучшить требования с помощью AI' }));
-  await waitFor(() => expect(mocks.researchRequirements).toHaveBeenCalledWith('version-1', { model: 'GC-Max', temperature: 0.2, reasoning: 'disabled' }));
+  await waitFor(() => expect(mocks.researchRequirements).toHaveBeenCalledWith('version-1', { model: 'GC-Max', temperature: 0.2, reasoning: 'disabled', criticEnabled: false }));
   expect(await screen.findByRole('heading', { name: 'AI-исследование требований' })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Отменить' })).toBeInTheDocument();
   expect(mocks.researchRequirements).toHaveBeenCalledTimes(1);
@@ -841,18 +854,18 @@ test('opens accessible Debug timeline, shows local SSE observations and removes 
   mocks.subscribe.mockImplementation((jobId, options) => { onObservation = options.onObservation; return Promise.resolve(); });
   mocks.getJobTrace.mockResolvedValue({ jobId: 'debug-job', status: 'RUNNING', currentStep: 'research', createdAt: new Date().toISOString(), durationMs: null, timeline: [{ id: 'event:1', source: 'SERVER_EVENT', category: 'EVENT', name: 'job.accepted', status: 'INFO', startedAt: new Date().toISOString(), durationMs: 0, metadata: { sequence: 1 }, detail: { state: 'NOT_RECORDED' } }], nextCursor: null });
   render(<AsyncJobWorkspace />);
-  const trigger = await screen.findByRole('button', { name: 'Debug' });
+  const trigger = await screen.findByRole('button', { name: 'Журнал задачи' });
   await waitFor(() => expect(trigger).toBeEnabled());
   await waitFor(() => expect(onObservation).toBeTypeOf('function'));
   expect(screen.queryByText('Техническая информация')).not.toBeInTheDocument();
   await act(() => onObservation({ type: 'reconnect', jobId: 'debug-job', cursor: 1, timestamp: new Date().toISOString() }));
   fireEvent.click(trigger);
-  const dialog = await screen.findByRole('dialog', { name: 'Debug текущей задачи' });
-  expect(await within(dialog).findByText('job.accepted')).toBeInTheDocument();
-  expect(within(dialog).getByText('reconnect')).toBeInTheDocument();
-  expect(within(dialog).getByText('текущая вкладка')).toBeInTheDocument();
+  const dialog = await screen.findByRole('dialog', { name: 'Журнал задачи' });
+  expect(within(dialog).getByText(/Браузер восстанавливает связь/)).toBeVisible();
+  expect(await within(dialog).findByText('job.accepted')).toBeVisible();
+  expect(within(within(dialog).getByRole('list', { name: 'Хронология выполнения задачи' })).getByText('текущая вкладка')).toBeVisible();
   fireEvent.keyDown(window, { key: 'Escape' });
-  await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Debug текущей задачи' })).not.toBeInTheDocument());
+  await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Журнал задачи' })).not.toBeInTheDocument());
   expect(trigger).toHaveFocus();
 });
 
@@ -865,16 +878,55 @@ test('loads protected Debug details lazily and paginates in the responsive panel
   mocks.getJobTraceDetail.mockResolvedValue({ entryId: '00000000-0000-4000-8000-000000000010', state: 'REDACTED', content: null });
 
   render(<AsyncJobWorkspace />);
-  fireEvent.click(await screen.findByRole('button', { name: 'Debug' }));
-  const dialog = await screen.findByRole('dialog', { name: 'Debug текущей задачи' });
+  fireEvent.click(await screen.findByRole('button', { name: 'Журнал задачи' }));
+  const dialog = await screen.findByRole('dialog', { name: 'Журнал задачи' });
   expect(dialog.querySelector('aside')).toHaveClass('w-full', 'lg:max-w-2xl');
   expect(mocks.getJobTraceDetail).not.toHaveBeenCalled();
+  await within(dialog).findByText('LLM output');
   fireEvent.click(within(dialog).getByRole('button', { name: /LLM output/ }));
   await waitFor(() => expect(mocks.getJobTraceDetail).toHaveBeenCalledWith('debug-detail-job', '00000000-0000-4000-8000-000000000010'));
   expect(await within(dialog).findByText(/"state": "REDACTED"/)).toBeInTheDocument();
   fireEvent.click(within(dialog).getByRole('button', { name: 'Загрузить ещё' }));
   expect(await within(dialog).findByText('job.progress')).toBeInTheDocument();
   expect(mocks.getJobTrace).toHaveBeenLastCalledWith('debug-detail-job', { cursor: 'next-page', limit: 50 });
+});
+
+test.each(['decomposition', 'research'])('shows the audit failure in the journal and keeps the editor on the task page in %s', async (workflow) => {
+  const research = workflow === 'research';
+  const job = {
+    jobId: 'audit-stopped', status: 'SUCCEEDED', outcome: 'PARTIAL', type: research ? 'RESEARCH' : 'DECOMPOSITION',
+    mode: research ? 'REQUIREMENTS_INSIGHTS' : 'DECOMPOSITION',
+  };
+  const registry = roomBookingRegistry();
+  const manualRegistry = createEmptyBabokRegistry({ outcome: 'PARTIAL' });
+  manualRegistry.materials.primary = registry.materials.primary;
+  window.history.replaceState({}, '', '/tasks/audit-stopped');
+  mocks.getJob.mockResolvedValue(job);
+  mocks.getResult.mockResolvedValue({ ...job, resultArtifactId: 'audit-draft', modelAttempts: [] });
+  mocks.getResultContent.mockResolvedValue(JSON.stringify(research
+    ? { mode: job.mode, recovery: {}, baseDecisions: {}, baseRegistry: registry, inputRequirementsVersionId: 'saved-v1', insights: [] }
+    : { mode: job.mode, recovery: { draft: createBabokTextDraft(['Система хранит дату заявки.']) }, manualRegistry }));
+  mocks.getJobTrace.mockResolvedValue({ ...job, timeline: [{
+    id: 'audit-rejected', source: 'TRACE', category: 'VALIDATION', name: 'BABOK audit rejected', status: 'FAILED',
+    metadata: { issues: [{ key: '$', code: 'SEMANTIC_AUDIT_INVALID' }] }, detail: { state: 'NOT_RECORDED' },
+  }], nextCursor: null });
+
+  render(<AsyncJobWorkspace />);
+  const target = research ? await screen.findByRole('heading', { name: 'Финальная версия требований' }).then((node) => node.closest('#task-result'))
+    : await screen.findByRole('region', { name: 'Формулировки AI на проверку' });
+  expect(screen.getByText(research ? /Продолжите с сохранёнными требованиями/ : /Черновик сохранён/)).toBeVisible();
+  const trigger = screen.getByRole('button', { name: 'Журнал задачи' });
+  fireEvent.click(trigger);
+  const dialog = within(screen.getByRole('dialog', { name: 'Журнал задачи' }));
+  expect(await dialog.findByText('Ответ независимой проверки отклонён')).toBeVisible();
+  expect(dialog.getByText('Ответ проверяющей модели оказался в неверном формате.')).toBeVisible();
+  expect(dialog.queryByText('Этапы выполнения')).not.toBeInTheDocument();
+  fireEvent.keyDown(window, { key: 'Escape' });
+  expect(target).toBeVisible();
+  expect(trigger).toHaveFocus();
+  expect(window.location.pathname).toBe('/tasks/audit-stopped');
+  expect(mocks.decomposeRequirements).not.toHaveBeenCalled();
+  expect(mocks.researchRequirements).not.toHaveBeenCalled();
 });
 
 test('starts a clean new task from a terminal workflow and keeps the completed job in history', async () => {
@@ -1105,6 +1157,109 @@ test('reviews a BABOK registry by type, preserves evidence and saves a complete 
   expect(screen.getAllByText('Система сохраняет историю статусов')[0]).toBeInTheDocument();
 });
 
+test('reviews candidate cards individually and saves only selected requirements after failed decomposition', async () => {
+  const manualRegistry = createEmptyBabokRegistry({ outcome: 'PARTIAL' });
+  manualRegistry.materials.primary = makeBabokRegistry().materials.primary;
+  manualRegistry.scope.partial = true;
+  const job = { jobId: 'manual-review', type: 'DECOMPOSITION', mode: 'DECOMPOSITION', status: 'SUCCEEDED', outcome: 'PARTIAL' };
+  window.history.replaceState({}, '', '/tasks/manual-review');
+  mocks.getJob.mockResolvedValue(job);
+  mocks.getResult.mockResolvedValue({ ...job, resultArtifactId: 'artifact', modelAttempts: [] });
+  mocks.getResultContent.mockResolvedValue(JSON.stringify({
+    mode: 'DECOMPOSITION', manualRegistry, recovery: { draft: createBabokTextDraft([
+      JSON.stringify({ groups: { NFR: [{ text: 'Поиск завершается за две секунды.', category: 'Производительность', scope: 'Поиск заявок', verificationMethod: 'Нагрузочный тест', quality: 'Готово', relatedTo: ['FR-404'], source: { quote: 'Две секунды на поиск' } }] } }),
+      'Непроверенная формулировка AI',
+    ]) },
+  }));
+  mocks.saveRequirementsVersion.mockImplementation(async (body) => ({ ...body, versionId: 'manual-v1' }));
+
+  const view = render(<AsyncJobWorkspace />);
+  expect(await screen.findByRole('heading', { name: 'На проверку · 2' })).toBeVisible();
+  const [typed, plain] = screen.getAllByRole('button', { name: 'Проверить', exact: true });
+  fireEvent.click(plain);
+  let dialog = within(screen.getByRole('dialog', { name: 'Проверка формулировки AI' }));
+  expect(dialog.getByLabelText('Тип требования')).toHaveValue('');
+  expect(dialog.getByRole('button', { name: 'Добавить в реестр' })).toBeDisabled();
+  fireEvent.click(dialog.getByRole('button', { name: 'Отмена' }));
+  fireEvent.click(typed);
+  dialog = within(screen.getByRole('dialog', { name: 'Проверка формулировки AI' }));
+  expect(dialog.getByLabelText('Тип требования')).toHaveValue('NFR');
+  expect(dialog.getByLabelText('Метод проверки')).toHaveValue('Нагрузочный тест');
+  expect(dialog.getByText('Две секунды на поиск')).toBeVisible();
+  fireEvent.change(dialog.getByLabelText('Формулировка'), { target: { value: 'Система выполняет поиск заявок за две секунды.' } });
+  fireEvent.click(dialog.getByRole('button', { name: 'Добавить в реестр' }));
+  expect(screen.getByRole('heading', { name: 'На проверку · 1' })).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: 'Сохранить требования' }));
+  await waitFor(() => expect(mocks.saveRequirementsVersion).toHaveBeenCalledWith(expect.objectContaining({
+    sourceJobId: 'manual-review', baseVersionId: null, decisions: { recoveryAdded: { 0: 'NFR-001' } }, registry: expect.objectContaining({
+      groups: expect.objectContaining({ NFR: [expect.objectContaining({
+        text: 'Система выполняет поиск заявок за две секунды.', category: 'Производительность',
+        scope: 'Поиск заявок', verificationMethod: 'Нагрузочный тест', relatedTo: [], quality: 'Требует уточнения',
+        source: expect.objectContaining({ locator: 'manual-review', quote: null }),
+      })] }),
+    }),
+  })));
+  expect(JSON.stringify(mocks.saveRequirementsVersion.mock.calls[0][0])).not.toContain('Непроверенная формулировка AI');
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Перейти к финальной версии' })).toBeEnabled());
+  expect(screen.getByRole('heading', { name: 'На проверку · 1' })).toBeVisible();
+  mocks.listRequirementsVersions.mockResolvedValue({ items: [{ versionId: 'manual-v1' }] });
+  mocks.getRequirementsVersion.mockResolvedValue({ ...mocks.saveRequirementsVersion.mock.calls[0][0], versionId: 'manual-v1' });
+  view.unmount();
+  sessionStorage.clear();
+  render(<AsyncJobWorkspace />);
+  expect(await screen.findByRole('heading', { name: 'На проверку · 1' })).toBeVisible();
+  expect(screen.getAllByRole('button', { name: 'Проверить', exact: true })).toHaveLength(1);
+});
+
+test('hides the completed recovery queue and shows all requirement types in the registry', async () => {
+  const draft = roomBookingRegistry();
+  const manualRegistry = createEmptyBabokRegistry({ outcome: 'PARTIAL' });
+  manualRegistry.materials = draft.materials;
+  manualRegistry.scope.partial = true;
+  const job = { jobId: 'finished-queue', type: 'DECOMPOSITION', mode: 'DECOMPOSITION', status: 'SUCCEEDED', outcome: 'PARTIAL' };
+  window.history.replaceState({}, '', '/tasks/finished-queue');
+  mocks.getJob.mockResolvedValue(job);
+  mocks.getResult.mockResolvedValue({ ...job, resultArtifactId: 'artifact', modelAttempts: [] });
+  mocks.getResultContent.mockResolvedValue(JSON.stringify({
+    mode: job.mode, manualRegistry, recovery: { draft: createBabokTextDraft([JSON.stringify(draft)]) },
+  }));
+
+  render(<AsyncJobWorkspace />);
+  const queue = within(await screen.findByRole('region', { name: 'Формулировки AI на проверку' }));
+  for (const remaining of [3, 2, 1]) {
+    expect(queue.getByRole('heading', { name: `На проверку · ${remaining}` })).toBeVisible();
+    fireEvent.click(queue.getAllByRole('button', { name: 'Проверить', exact: true })[0]);
+    fireEvent.click(within(screen.getByRole('dialog', { name: 'Проверка формулировки AI' })).getByRole('button', { name: 'Добавить в реестр' }));
+    if (remaining === 3) fireEvent.click(screen.getByRole('button', { name: 'BR · Бизнес-требования · 1' }));
+  }
+  expect(screen.queryByRole('region', { name: 'Формулировки AI на проверку' })).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Все типы' })).toHaveAttribute('aria-pressed', 'true');
+  const registry = within(screen.getByRole('navigation', { name: 'Список требований' }));
+  expect(registry.getAllByRole('button', { name: /^Выбрать / })).toHaveLength(3);
+  expect(registry.getByRole('button', { name: /^Выбрать FR-002:/ })).toHaveAttribute('aria-pressed', 'true');
+});
+
+test.each([false, true])('finalizes the saved input after failed linked research without requiring edits (BABOK: %s)', async (babok) => {
+  const job = { jobId: 'research-recovery', type: 'RESEARCH', mode: 'REQUIREMENTS_INSIGHTS', status: 'SUCCEEDED', outcome: 'PARTIAL', inputArtifactId: 'input-version' };
+  const requirements = { business: [{ id: 'BT-1', text: 'Сократить срок рассмотрения' }], functional: [], nonfunctional: [] };
+  const registry = babok ? makeBabokRegistry() : undefined;
+  window.history.replaceState({}, '', '/tasks/research-recovery');
+  mocks.getJob.mockResolvedValue(job);
+  mocks.getResult.mockResolvedValue({ ...job, resultArtifactId: 'artifact', modelAttempts: [] });
+  mocks.getResultContent.mockResolvedValue(JSON.stringify({ mode: job.mode, inputRequirementsVersionId: 'input-version', insights: [], recovery: { reasonCode: 'BABOK_SEMANTIC_INVALID' } }));
+  mocks.getRequirementsVersion.mockResolvedValue({ versionId: 'input-version', requirements, registry, decisions: {}, createdAt: '2026-11-18T08:00:00Z' });
+  mocks.saveRequirementsVersion.mockImplementation(async (body) => ({ ...body, versionId: 'final-version' }));
+
+  render(<AsyncJobWorkspace />);
+  expect(await screen.findByText(/Продолжите с сохранёнными требованиями/)).toBeInTheDocument();
+  if (babok) expect(document.getElementById('record-BR-001')).toHaveTextContent('Сократить время согласования');
+  else expect(screen.getByText('Сократить срок рассмотрения')).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: 'Сохранить финальную версию' }));
+  await waitFor(() => expect(mocks.saveRequirementsVersion).toHaveBeenCalledWith(expect.objectContaining({
+    sourceJobId: 'research-recovery', baseVersionId: 'input-version', ...(babok ? { registry } : { requirements }),
+  })));
+});
+
 test.each([false, true])('keeps BABOK target types and original decision indices when filtering unsupported proposals: %s', async (unsupportedFirst) => {
   const baseRegistry = makeBabokRegistry();
   const expectedKey = `babok-insight:${unsupportedFirst ? 1 : 0}`;
@@ -1204,9 +1359,9 @@ test('downloads a result artifact from the accessible Debug panel', async () => 
   try {
     await openSavedRoomReview({ title: 'Скачать результат' });
     expect(await screen.findByRole('region', { name: 'Экспорт сохранённой версии' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Debug' }));
-    const dialog = await screen.findByRole('dialog', { name: 'Debug текущей задачи' });
-    fireEvent.click(within(dialog).getByRole('button', { name: 'JSON' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Журнал задачи' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Журнал задачи' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Скачать результат JSON' }));
     await waitFor(() => expect(mocks.downloadArtifact).toHaveBeenCalledWith('rooms-result'));
     expect(createObjectURL).toHaveBeenCalledWith(artifact);
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:reqai-result');
@@ -1398,6 +1553,9 @@ test('retry research preserves its idempotency key after a network failure', asy
   await screen.findByRole('alert');
   expect(screen.getByRole('button', { name: 'Повторить исследование' })).toBeEnabled();
   const first = mocks.researchRequirements.mock.calls[0];
+  fireEvent.click(screen.getByLabelText('Настройки AI'));
+  fireEvent.click(screen.getByRole('switch', { name: 'Независимая проверка (критик)' }));
+  expect(first[1].criticEnabled).toBe(true);
   fireEvent.click(screen.getByRole('button', { name: 'Повторить исследование' }));
   await waitFor(() => expect(mocks.researchRequirements).toHaveBeenCalledTimes(2));
   expect(mocks.researchRequirements.mock.calls[1]).toEqual(first);

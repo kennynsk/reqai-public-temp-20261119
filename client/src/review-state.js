@@ -113,12 +113,13 @@ export function reviewReducer(state, action) {
     }
     case 'clear': { const drafts = { ...state.drafts }; delete drafts[action.key]; return { ...state, drafts }; }
     case 'decisions': {
-      if (JSON.stringify(state.decisions.review) === JSON.stringify(action.value.review)) return { ...state, decisions: action.value };
+      const value = typeof action.value === 'function' ? action.value(state.decisions) : action.value;
+      if (JSON.stringify(state.decisions.review) === JSON.stringify(value.review)) return { ...state, decisions: value };
       const assembled = assembleReview({ ...state, drafts: Object.fromEntries(Object.entries(state.drafts).filter(([, draft]) => !draft.isNew)) });
-      if (assembled.error) return { ...state, decisions: action.value };
+      if (assembled.error) return { ...state, decisions: value };
       // Apply automatic invalidation before the user's new decision. A fresh
       // confirmation describes the current draft, not the original version.
-      const decisions = mergeDecisionChanges(state.decisions, action.value, assembled.decisions, []);
+      const decisions = mergeDecisionChanges(state.decisions, value, assembled.decisions, []);
       return { ...state, decisions, evidenceContent: assembled.content };
     }
     case 'restore': return action.value;

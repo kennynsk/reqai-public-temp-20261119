@@ -592,7 +592,7 @@ describe('AsyncJobWorkspace presentational branches', () => {
 
     cleanup();
     render(<DebugPanel open jobId={null} observations={[{ timestamp: new Date().toISOString(), type: 'reconnect' }]} refreshKey={0} onClose={vi.fn()} triggerRef={{ current: null }} />);
-    const localEntry = await screen.findByText('reconnect');
+    const localEntry = await screen.findByText('Браузер восстанавливает связь');
     fireEvent.click(localEntry.closest('button'));
     expect(screen.getByText('Детали: не записаны')).toBeInTheDocument();
   });
@@ -685,11 +685,10 @@ describe('AsyncJobWorkspace presentational branches', () => {
     const onClose = vi.fn();
     const onDownload = vi.fn();
     render(<DebugPanel open jobId="job" observations={[{ timestamp: now, type: 'disconnected' }]} refreshKey={0} onClose={onClose} onDownload={onDownload} triggerRef={{ current: null }} />);
-    const dialog = await screen.findByRole('dialog', { name: 'Debug текущей задачи' });
+    const dialog = await screen.findByRole('dialog', { name: 'Журнал задачи' });
     expect(screen.queryByText('События пока не записаны')).not.toBeInTheDocument();
-    expect(screen.getByText('текущая вкладка')).toBeInTheDocument();
-    expect(screen.getByText('Длительность')).toBeInTheDocument();
-    const available = screen.getByText('Доступная деталь').closest('button');
+    expect(screen.getByText(/Связь с сервером прервалась/)).toBeVisible();
+    const available = (await screen.findByText('Доступная деталь')).closest('button');
     fireEvent.click(available);
     await waitFor(() => expect(screen.getByText(/"ok": true/)).toBeInTheDocument());
     fireEvent.click(available);
@@ -708,7 +707,7 @@ describe('AsyncJobWorkspace presentational branches', () => {
     fireEvent.click(redacted);
     await waitFor(() => expect(redacted).toHaveAttribute('aria-expanded', 'true'));
     expect(screen.getByText(/скрыты политикой доступа/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'JSON' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Скачать результат JSON' }));
     expect(onDownload).toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Загрузить ещё' }));
     await screen.findByText('Следующая страница');
@@ -730,6 +729,44 @@ describe('AsyncJobWorkspace presentational branches', () => {
     render(<DebugPanel open jobId={null} observations={[]} refreshKey={0} onClose={onClose} triggerRef={{ current: null }} />);
     expect(screen.getByText('События пока не записаны.')).toBeInTheDocument();
     expect(apiMocks.getJobTrace).not.toHaveBeenCalled();
+  });
+
+  test('distinguishes a successful retry from browser disconnection and copies only a safe summary', async () => {
+    const writeText = vi.fn().mockResolvedValueOnce().mockRejectedValueOnce(new Error('clipboard denied'));
+    const clipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    try {
+      const events = [
+        { id: 'first', source: 'TRACE', name: 'BABOK audit rejected', category: 'VALIDATION', status: 'FAILED', startedAt: '2026-11-18T10:00:00Z',
+          metadata: { issues: [{ key: 'FR-007', code: 'NON_ATOMIC' }], prompt: 'private payload' } },
+        { id: 'second', source: 'TRACE', name: 'BABOK audit accepted', category: 'VALIDATION', status: 'SUCCEEDED', startedAt: '2026-11-18T10:00:02Z' },
+      ];
+      apiMocks.getJobTrace.mockResolvedValue({
+        jobId: 'diagnostic-id', status: 'SUCCEEDED', outcome: 'COMPLETE', durationMs: 2000, timeline: events, nextCursor: null,
+        instructionProfile: { version: '2.17.0' }, executionSummary: { stages: [{
+          stage: 'audit', status: 'completed_after_retry', attemptCount: 2, issues: [{ key: 'FR-007', code: 'NON_ATOMIC' }],
+          attempts: [{ id: 'first', status: 'rejected', model: 'glm-5.3-flash', reasonCode: 'NON_ATOMIC' }, { id: 'second', status: 'accepted', model: 'glm-5.3-flash' }],
+        }] },
+      });
+      render(<DebugPanel open jobId="diagnostic-id" observations={[{ type: 'disconnected', timestamp: '2026-11-18T10:00:05Z' }]} onClose={vi.fn()} />);
+      const rejected = await screen.findByRole('button', { name: /Ответ независимой проверки отклонён/ });
+      const entries = within(screen.getByRole('list', { name: 'Хронология выполнения задачи' })).getAllByRole('listitem');
+      expect(entries[0]).toHaveTextContent('В одной формулировке могут быть объединены несколько требований.');
+      expect(entries[1]).toHaveTextContent('Независимая проверка пройдена');
+      expect(entries[2]).toHaveTextContent(/Связь с сервером прервалась.+текущая вкладка/);
+      fireEvent.click(rejected);
+      expect(screen.getByText('BABOK audit rejected')).toBeVisible();
+      fireEvent.click(screen.getByRole('button', { name: 'Скопировать для поддержки' }));
+      expect(await screen.findByText('Сведения скопированы.')).toBeVisible();
+      const [support] = writeText.mock.calls[0];
+      expect(support).toMatch(/diagnostic-id[\s\S]+NON_ATOMIC[\s\S]+glm-5\.3-flash[\s\S]+2\.17\.0/);
+      expect(support).not.toMatch(/private payload|BABOK audit rejected/);
+      fireEvent.click(screen.getByRole('button', { name: 'Скопировать для поддержки' }));
+      expect(await screen.findByRole('textbox', { name: 'Сводка для ручного копирования' })).toHaveValue(support);
+    } finally {
+      if (clipboard) Object.defineProperty(navigator, 'clipboard', clipboard);
+      else delete navigator.clipboard;
+    }
   });
 
   test.each([

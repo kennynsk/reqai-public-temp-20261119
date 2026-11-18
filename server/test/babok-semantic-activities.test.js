@@ -34,15 +34,20 @@ function checks(records, mode, patch = {}) {
   return { schemaVersion: BABOK_SEMANTIC_POLICY, checks: records.map(({ key, type, record }) => ({ key, text: record.text, classification: type, classificationReason: 'Самостоятельная цель организации; метрика только в successIndicator.', obligations: [record.text], atomicityReason: 'Один бизнес-результат.', evidence: mode === 'DECOMPOSITION' ? 'SUPPORTED' : 'PROPOSED', evidenceReason: 'Цель подтверждена исходным текстом, показатель — кандидат.', verifiable: true, verificationReason: 'Показатель будет согласован через GAP-001.', preservesOriginal: true, preservationReason: 'Исходный text BR-001 сохранён.', distinctOutcome: true, issues: [], repair: '', ...patch })) };
 }
 function harness(type, respond, version) {
-  const saved = [], calls = [];
+  const saved = [], calls = [], trace = [];
   const base = registry();
   const input = { tenantId: 'test', ownerUserId: 'test', jobId: 'test', inputArtifactId: type === 'RESEARCH' ? 'version' : 'primary', failedChunks: [], sectionArtifactIds: ['section'], configurationSnapshot: { promptProfile: profile(type, version), babokSkillProfile: qualifyBabokSkillBundle({ loader, policy: { active: '1.0.0', released: ['1.0.0'] } }), materials: base.materials, models: ['test'], maxAttemptsPerModel: 1, maxConcurrency: { test: 1 } } };
   const handlers = createEnterpriseActivityHandlers({ promptCatalog: catalog, babokSkillLoader: loader,
+    jobTraceRepository: { append: async (entry) => trace.push(entry) },
     config: { process: { siteId: 'test' }, retention: { intermediateDays: 1, finalResultsDays: 1 }, jobs: { resultMaxBytes: 1000000 }, llm: {} },
     artifactRepository: { readText: async ({ artifactId }) => artifactId === 'version' ? JSON.stringify({ kind: 'REQUIREMENTS_VERSION', registry: base, requirements: { business: [], functional: [], nonfunctional: [] }, decisions: {}, businessContextArtifactId: 'primary' }) : artifactId === 'section' ? JSON.stringify(base) : 'Привлечь новых клиентов банка.', createText: async ({ text }) => { saved.push(JSON.parse(text)); return { artifactId: 'saved' }; } },
-    modelExecutor: { execute: async (request) => { calls.push(request); return { text: JSON.stringify(await respond(request)), actualModel: 'test', fallbackApplied: false }; } },
+    modelExecutor: { execute: async (request) => {
+      calls.push(request);
+      const value = await respond(request);
+      return { text: typeof value === 'string' ? value : JSON.stringify(value), actualModel: 'test', fallbackApplied: false };
+    } },
   });
-  return { input, calls, saved, handlers, base };
+  return { input, calls, saved, handlers, base, trace };
 }
 
 test('research automatically turns the live metric-as-BR error into an update of the original indicator and audits the corrected text', async () => {
@@ -270,6 +275,16 @@ test('single-unit fast decomposition uses only an audit, not another consolidati
   assert.equal(h.saved[0].outcome, 'COMPLETE');
 });
 
+test('decomposition without the critic saves a structured registry and traces the skip', async () => {
+  const h = harness('DECOMPOSITION', () => assert.fail('single-unit merge does not need a model call without the critic'), '2.17.0');
+  h.input.configurationSnapshot.criticEnabled = false;
+  await h.handlers.mergeDecomposition(h.input);
+  assert.equal(h.saved[0].outcome, 'COMPLETE');
+  assert.deepEqual(h.saved[0].groups.BR, h.base.groups.BR);
+  assert.equal(h.saved[0].semanticValidation.status, 'SKIPPED');
+  assert.equal(h.trace.find(({ name }) => name === 'BABOK audit skipped')?.metadata.reasonCode, 'CRITIC_DISABLED');
+});
+
 test('fast research needs generation plus compact audit and retains explicit semantic checks', async () => {
   const h = harness('RESEARCH', (request) => request.stepId.includes(':audit:') ? compactChecks(request, [{ key: 'insight-1:0', type: 'BR', record: corrected }], 'RESEARCH') : research([corrected]), '2.9.0');
   await h.handlers.generateRequirementsInsights(h.input);
@@ -324,6 +339,73 @@ test('source-aware fast decomposition requires all source-condition checks befor
   const bad = harness('DECOMPOSITION', respond(false), '2.9.0');
   await assert.rejects(bad.handlers.mergeDecomposition(bad.input), { type: 'BABOK_SEMANTIC_INVALID' });
   assert.equal(bad.saved.length, 0);
+});
+
+test('a stale source audit is repaired without changing the requirement candidate', async () => {
+  const records = [{ key: 'BR-001', type: 'BR', record: registry().groups.BR[0] }];
+  const h = harness('DECOMPOSITION', (request) => {
+    const prompt = request.messages.at(-1).content;
+    const source = JSON.parse(prompt.split('sourceCoverage:\n')[1].split('\n')[0]);
+    return { ...compactChecks(request, records, 'DECOMPOSITION'),
+      sourceRevision: request.stepId.endsWith(':audit:0') ? 'stale' : source.revision,
+      sourceChecks: source.units.map(({ key }) => ({ key, targetKeys: ['BR-001'], preservesConditions: true, issues: [] })),
+    };
+  }, '2.17.0');
+  await h.handlers.mergeDecomposition(h.input);
+  assert.deepEqual(h.saved[0].groups, h.base.groups);
+  assert.equal(h.saved[0].semanticValidation.auditFormatRepairs, 1);
+  assert.equal(h.calls.some(({ stepId }) => stepId.includes('semantic-repair')), false);
+});
+
+test('a repaired research response still passes semantic audit before publication', async () => {
+  const h = harness('RESEARCH', (request) => {
+    if (request.stepId.endsWith(':audit:0')) return fiveDirectionAudit(request);
+    if (request.stepId.endsWith(':repair')) return fiveDirections();
+    return '{"insights":[{"id":"truncated';
+  }, '2.15.0');
+  await h.handlers.generateRequirementsInsights(h.input);
+  assert.deepEqual(h.calls.map(({ stepId }) => stepId), ['requirements-insights', 'requirements-insights:repair', 'requirements-insights:audit:0']);
+  assert.equal(h.saved[0].semanticValidation.status, 'PASSED');
+  assert.equal(h.saved[0].insights.length, 5);
+});
+
+test('research without the critic still repairs malformed JSON before saving all five directions', async () => {
+  const h = harness('RESEARCH', (request) => request.stepId.endsWith(':repair') ? fiveDirections() : '{"insights":[', '2.15.0');
+  h.input.configurationSnapshot.criticEnabled = false;
+  await h.handlers.generateRequirementsInsights(h.input);
+  assert.deepEqual(h.calls.map(({ stepId }) => stepId), ['requirements-insights', 'requirements-insights:repair']);
+  assert.equal(h.saved[0].insights.length, 5);
+  assert.equal(h.saved[0].semanticValidation.status, 'SKIPPED');
+  assert.equal(h.trace.find(({ name }) => name === 'BABOK audit skipped')?.metadata.reasonCode, 'CRITIC_DISABLED');
+});
+
+test('malformed research JSON gets one repair before falling back to the input version', async () => {
+  const h = harness('RESEARCH', () => '{"insights":[{"id":"truncated', '2.15.0');
+  await assert.rejects(h.handlers.generateRequirementsInsights(h.input), { type: 'INVALID_REQUIREMENTS_INSIGHTS' });
+  assert.deepEqual(h.calls.map(({ stepId }) => stepId), ['requirements-insights', 'requirements-insights:repair']);
+  await h.handlers.recoverRequirements({ ...h.input, recoveryMode: 'REQUIREMENTS_INSIGHTS', reasonCode: 'INVALID_REQUIREMENTS_INSIGHTS' });
+  assert.deepEqual(h.saved[0], {
+    schemaVersion: 1, mode: 'REQUIREMENTS_INSIGHTS', outcome: 'PARTIAL',
+    inputRequirementsVersionId: 'version', insights: [], recovery: { reasonCode: 'INVALID_REQUIREMENTS_INSIGHTS' },
+  });
+});
+
+test('malformed responses from the enabled critic can be recovered into a manual registry and draft', async () => {
+  const h = harness('DECOMPOSITION', () => ({ passed: true }), '2.17.0');
+  h.input.configurationSnapshot.criticEnabled = true;
+  await assert.rejects(h.handlers.mergeDecomposition(h.input), { type: 'BABOK_SEMANTIC_INVALID' });
+  const callCount = h.calls.length;
+  for (const sectionArtifactIds of [[], ['section']]) {
+    await h.handlers.recoverRequirements({ ...h.input, sectionArtifactIds, recoveryMode: 'DECOMPOSITION', reasonCode: 'BABOK_SEMANTIC_INVALID' });
+  }
+  for (const value of h.saved) {
+    assert.equal(value.outcome, 'PARTIAL');
+    assert.equal(value.manualRegistry.materials.primary.artifactId, 'primary');
+    assert.deepEqual(value.manualRegistry.groups.BR, []);
+  }
+  assert.equal(h.saved[0].recovery.draft, undefined);
+  assert.deepEqual(JSON.parse(h.saved[1].recovery.draft.responses[0]).groups.BR, h.base.groups.BR);
+  assert.equal(h.calls.length, callCount);
 });
 
 test('independent decomposition auditor receives GAP, questions and delta, not only requirement rows', async () => {

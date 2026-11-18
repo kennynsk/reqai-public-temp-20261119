@@ -103,6 +103,12 @@ Exact platform values remain in `docs/platform-integration-profile.md` until sup
 | `LLM_CHUNK_TARGET_TOKENS` | `60000` | 1,000–120,000 and below model context | ConfigMap |
 | `LLM_CHUNK_CONCURRENCY` | `3` | 1–20 | ConfigMap |
 
+New decomposition jobs and server-side retries use `JOB_DECOMPOSITION_DEADLINE_MS`
+as the hard job deadline. The prompt profile's performance budget remains an
+execution target for decomposition. Compact decomposition allows up to 15 minutes
+for execution of the merge activity and 16 minutes including its queue.
+Research still uses the lower of its configured deadline and prompt profile budget.
+
 ## LLM model execution
 
 The first async implementation uses one ZAI provider. `ZAI_API_KEY` is a secret; endpoint and model catalog are non-secret configuration. The UI exposes the complete catalog, while each job step snapshots no more than three fallback models.
@@ -173,6 +179,11 @@ intermediate payloads and error stacks are not implied to exist when protected c
 Debug labels them as not recorded. Protected artifact reads require a diagnostic role, stack
 traces require `system-admin`, and every permitted protected read creates an audit event.
 Responses are redacted again and bounded by `DIAGNOSTIC_DETAIL_MAX_BYTES`.
+
+«Журнал задачи» сразу показывает хронологию событий и загружает следующие
+страницы по запросу. Действие «Скопировать для поддержки» использует только
+служебные поля сводки по полному авторизованному снимку трассы.
+События переподключения помечены как наблюдения текущей вкладки.
 
 ## Retention and SLO
 

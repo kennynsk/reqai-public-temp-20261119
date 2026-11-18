@@ -44,6 +44,12 @@ function prioritizedModels(configured, selected, limit = 3) {
   return [selected, ...configured.filter((model) => model !== selected)].slice(0, limit);
 }
 
+function jobDeadlineMs(config, type, promptProfile) {
+  return type === 'RESEARCH'
+    ? Math.min(config.jobs.researchDeadlineMs, promptProfile?.performanceBudgetMs || Infinity)
+    : config.jobs.decompositionDeadlineMs;
+}
+
 export function createJobService({ config, jobRepository, operationalRepository, requirementsVersionService, jobTraceRepository, promptProfileResolver = null, babokSkillProfile = null, clock = () => new Date(), uuid = randomUUID }) {
   return {
     async create({ auth, idempotencyKey, body, requestId, requestHashOverride = null, inlineArtifact = null }) {
@@ -86,7 +92,7 @@ export function createJobService({ config, jobRepository, operationalRepository,
       }
 
       const now = clock();
-      const deadlineMs = Math.min(body.type === 'RESEARCH' ? config.jobs.researchDeadlineMs : config.jobs.decompositionDeadlineMs, promptProfile?.performanceBudgetMs || Infinity);
+      const deadlineMs = jobDeadlineMs(config, body.type, promptProfile);
       const requestHash = requestHashOverride || createHash('sha256').update(canonicalJson(body)).digest('hex');
       const jobId = uuid();
       const decompositionMode = featureMode === 'DECOMPOSITION';
@@ -115,6 +121,7 @@ export function createJobService({ config, jobRepository, operationalRepository,
             featureMode,
             ...(promptProfile ? { promptProfile } : {}),
             temperature: body.options?.temperature ?? 0.2,
+            criticEnabled: body.options?.criticEnabled !== false,
             executionSettings: executionSettingsSnapshot({ model: selectedModels[0], reasoning, temperature: body.options?.temperature ?? 0.2 }),
             maxModelsPerStep: config.llm.maxModelsPerStep,
             maxAttemptsPerModel: config.llm.maxAttemptsPerModel,
@@ -214,7 +221,7 @@ export function createJobService({ config, jobRepository, operationalRepository,
           priority: original.priority,
           configurationSnapshot: original.configuration_snapshot,
           createdSite: config.process.siteId,
-          deadlineAt: new Date(now.getTime() + Math.min(original.type === 'RESEARCH' ? config.jobs.researchDeadlineMs : config.jobs.decompositionDeadlineMs, original.configuration_snapshot?.promptProfile?.performanceBudgetMs || Infinity)),
+          deadlineAt: new Date(now.getTime() + jobDeadlineMs(config, original.type, original.configuration_snapshot?.promptProfile)),
         },
         admission: {
           maxPerMinute: config.jobs.maxPerMinute,

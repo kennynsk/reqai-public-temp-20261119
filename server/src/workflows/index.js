@@ -1,4 +1,4 @@
-import { CancellationScope, defineSignal, isCancellation, patched, proxyActivities, setHandler } from '@temporalio/workflow';
+import { CancellationScope, TimeoutFailure, defineSignal, isCancellation, patched, proxyActivities, setHandler } from '@temporalio/workflow';
 
 const retryRequested = defineSignal('retryRequested');
 const activityOptions = {
@@ -42,6 +42,9 @@ const semanticActivities = proxyActivities({ ...activityOptions,
 const compactSemanticActivities = proxyActivities({ ...activityOptions,
   startToCloseTimeout: '5 minutes', scheduleToCloseTimeout: '6 minutes', retry: { ...activityOptions.retry, maximumAttempts: 1 },
 });
+const decompositionSemanticActivities = proxyActivities({ ...activityOptions,
+  startToCloseTimeout: '15 minutes', scheduleToCloseTimeout: '16 minutes', retry: { ...activityOptions.retry, maximumAttempts: 1 },
+});
 
 const researchSemanticActivities = proxyActivities({ ...activityOptions,
   startToCloseTimeout: '16 minutes', scheduleToCloseTimeout: '17 minutes', retry: { ...activityOptions.retry, maximumAttempts: 1 },
@@ -49,13 +52,31 @@ const researchSemanticActivities = proxyActivities({ ...activityOptions,
 
 function semanticActivitiesFor(input) {
   if (patched('babok-research-activity-budget-v1') && input.configurationSnapshot.promptProfile?.performanceBudgetMs > 240_000 && input.configurationSnapshot.promptProfile?.id === 'requirements-insights') return researchSemanticActivities;
-  if (patched('babok-compact-activity-budget-v1') && input.configurationSnapshot.promptProfile?.semanticPolicy === 'babok-semantic.v2') return compactSemanticActivities;
+  if (patched('babok-compact-activity-budget-v1') && input.configurationSnapshot.promptProfile?.semanticPolicy === 'babok-semantic.v2') {
+    return input.configurationSnapshot.featureMode === 'DECOMPOSITION' && patched('babok-decomposition-activity-budget-v2')
+      ? decompositionSemanticActivities : compactSemanticActivities;
+  }
   return patched('babok-semantic-activity-budget-v1') && input.configurationSnapshot.promptProfile?.templates?.['semantic-audit']
     ? semanticActivities : activities;
 }
 
 function assertDeadline(input) {
   if (Date.now() >= new Date(input.deadlineAt).getTime()) throw Object.assign(new Error('Job deadline expired'), { name: 'JOB_DEADLINE_EXPIRED' });
+}
+
+function failureCode(error) {
+  const cause = error?.cause;
+  if (cause instanceof TimeoutFailure) return 'MODEL_ACTIVITY_TIMEOUT';
+  return cause?.reasonCode || cause?.type || error?.reasonCode || error?.type || error?.name || 'ACTIVITY_FAILED';
+}
+
+function canRecoverOutput(code) {
+  return /^(?:MODEL_[A-Z0-9_]+|UNKNOWN_PROVIDER_ERROR|NON_RETRYABLE_PROVIDER_ERROR|JOB_DEADLINE_EXPIRED|PROMPT_RENDER_TOO_LARGE|ACTIVITY_INPUT_TOO_LARGE|ARTIFACT_TOO_LARGE|NO_USABLE_OUTPUT|OUTPUT_CONTRACT_VIOLATION|BABOK_OUTPUT_INVALID|BABOK_SEMANTIC_INVALID|INVALID_DECOMPOSITION_RESULT|INVALID_REQUIREMENTS_INSIGHTS)$/u.test(code);
+}
+
+async function finishWithManualReview(input, recovery) {
+  const result = await activities.recoverRequirements({ ...input, ...recovery });
+  return activities.finalizeSucceeded({ ...input, resultArtifactId: result.artifactId, successfulUnits: 1, failedUnits: 1 });
 }
 
 async function bounded(items, concurrency, fn) {
@@ -67,8 +88,7 @@ async function bounded(items, concurrency, fn) {
 async function recoverable(items, concurrency, fn, identity) {
   return bounded(items, concurrency, async (item) => {
     try { return await fn(item); } catch (error) {
-      const cause = error?.cause;
-      return { success: false, ...identity(item), reasonCode: cause?.reasonCode || cause?.type || error?.reasonCode || error?.type || error?.name || 'ACTIVITY_FAILED' };
+      return { success: false, ...identity(item), reasonCode: failureCode(error) };
     }
   });
 }
@@ -85,8 +105,7 @@ async function cancellationBoundary(input, run) {
       await CancellationScope.nonCancellable(() => activities.finalizeCancelled({ ...input, reasonCode: 'CANCELLED_BY_REQUEST' }));
       return { status: 'CANCELLED' };
     }
-    const cause = error?.cause;
-    await CancellationScope.nonCancellable(() => activities.finalizeFailed({ ...input, reasonCode: cause?.reasonCode || cause?.type || error?.reasonCode || error?.type || error?.name || 'WORKFLOW_FAILED' }));
+    await CancellationScope.nonCancellable(() => activities.finalizeFailed({ ...input, reasonCode: failureCode(error) }));
     throw error;
   }
 }
@@ -102,12 +121,25 @@ export async function decompositionWorkflow(input) {
     }, (chunk) => ({ chunkId: chunk.chunkId, sourceArtifactId: chunk.artifactId }));
     const successful = sections.filter((section) => section.success && section.artifactId);
     const failedChunks = sections.filter((section) => !section.success).map((section) => ({ chunkId: section.chunkId, artifactId: section.sourceArtifactId }));
+    const recoveryEnabled = patched('requirements-manual-review-v1');
+    const sectionArtifactIds = successful.map((section) => section.artifactId);
     if (!successful.length) {
+      if (recoveryEnabled && sections.every((section) => !section.reasonCode || canRecoverOutput(section.reasonCode))) {
+        return finishWithManualReview(input, { recoveryMode: 'DECOMPOSITION', reasonCode: 'NO_USABLE_OUTPUT', sectionArtifactIds, failedChunks });
+      }
       return activities.finalizeSucceeded({ ...input, resultArtifactId: null, successfulUnits: 0, failedUnits: sections.length });
     }
-    assertDeadline(input);
-    const merged = await semanticActivitiesFor(input).mergeDecomposition({ ...input, sectionArtifactIds: successful.map((section) => section.artifactId), failedChunks });
+    let merged;
+    try {
+      assertDeadline(input);
+      merged = await semanticActivitiesFor(input).mergeDecomposition({ ...input, sectionArtifactIds, failedChunks });
+    } catch (error) {
+      const reasonCode = failureCode(error);
+      if (!recoveryEnabled || isCancellation(error) || !canRecoverOutput(reasonCode)) throw error;
+      return finishWithManualReview(input, { recoveryMode: 'DECOMPOSITION', reasonCode, sectionArtifactIds, failedChunks });
+    }
     const textDraft = patched('babok-text-draft-outcome-v1') && merged.textDraft === true;
+    if (recoveryEnabled && textDraft) return finishWithManualReview(input, { recoveryMode: 'DECOMPOSITION', reasonCode: 'OUTPUT_CONTRACT_VIOLATION', sectionArtifactIds: [merged.artifactId], failedChunks });
     return activities.finalizeSucceeded({ ...input, resultArtifactId: merged.artifactId, successfulUnits: successful.length, failedUnits: failedChunks.length, ...(textDraft ? { textDraft: true } : {}) });
   });
 }
@@ -118,7 +150,15 @@ export async function researchWorkflow(input) {
     if (mode !== 'REQUIREMENTS_INSIGHTS') throw Object.assign(new Error(`Unsupported research workflow mode: ${mode || 'missing'}`), { name: 'UNSUPPORTED_JOB_MODE' });
     assertDeadline(input);
     await activities.validateInput(input);
-    const result = await semanticActivitiesFor(input).generateRequirementsInsights(input);
+    const recoveryEnabled = patched('requirements-manual-review-v1');
+    let result;
+    try {
+      result = await semanticActivitiesFor(input).generateRequirementsInsights(input);
+    } catch (error) {
+      const reasonCode = failureCode(error);
+      if (!recoveryEnabled || isCancellation(error) || !canRecoverOutput(reasonCode)) throw error;
+      return finishWithManualReview(input, { recoveryMode: mode, reasonCode });
+    }
     return activities.finalizeSucceeded({ ...input, resultArtifactId: result.artifactId, successfulUnits: 1, failedUnits: 0 });
   });
 }

@@ -22,18 +22,27 @@ export function sourceCoverageFor(source, registry) {
   return { revision: canonicalSha256({ units, metadataUnits, targets }).slice(0, 16), units: obligationUnits, metadataUnits, targets };
 }
 
+function validateAuditCoverage(revision, checks, coverage, keys, validShape) {
+  const expected = new Set(keys);
+  const seen = new Set();
+  if (revision !== coverage.revision || !Array.isArray(checks) || checks.length !== expected.size || checks.some((check) => {
+    if (!expected.has(check?.key) || seen.has(check.key) || !validShape(check)) return true;
+    seen.add(check.key);
+    return false;
+  })) throw semanticViolation([{ key: '$', code: 'SEMANTIC_AUDIT_INVALID', reason: 'Coverage audit must match the current revision and contain one complete check per requested key' }]);
+}
+
 export function validateSourceCoverage(audit, coverage) {
   const fail = (key, reason) => ({ key, code: 'SOURCE_CONDITION_LOST', reason, repair: 'Сохранить каждое явно заданное условие первичного источника в требованиях или подтверждённом бизнес-правиле CTX. Не переносить подтверждённое поведение в HYP из-за неверной классификации CON.' });
-  if (!coverage.units.length || audit?.sourceRevision !== coverage.revision || !Array.isArray(audit.sourceChecks)) throw semanticViolation([fail('$source', 'Проверка должна ссылаться на текущий первичный источник и все его фрагменты.')]);
-  const expected = new Set(coverage.units.map((unit) => unit.key)), targets = new Set(coverage.targets.map((target) => target.key)), seen = new Set(), issues = [];
+  const targets = new Set(coverage.targets.map((target) => target.key));
+  validateAuditCoverage(audit?.sourceRevision, audit?.sourceChecks, coverage, coverage.units.map((unit) => unit.key),
+    (check) => typeof check.preservesConditions === 'boolean' && Array.isArray(check.targetKeys) && check.targetKeys.every((key) => targets.has(key)) && Array.isArray(check.issues));
+  const issues = [];
   for (const check of audit.sourceChecks) {
-    if (!expected.has(check.key) || seen.has(check.key)) issues.push(fail(check.key, 'Неизвестный или повторный фрагмент источника.'));
-    seen.add(check.key);
     const nonObligation = check.disposition === 'non_obligation' && nonempty(check.reason)
-      && Array.isArray(check.targetKeys) && check.targetKeys.length === 0;
-    if (check.preservesConditions !== true || !Array.isArray(check.targetKeys) || (!check.targetKeys.length && !nonObligation) || check.targetKeys.some((key) => !targets.has(key)) || !Array.isArray(check.issues) || check.issues.length) issues.push(fail(check.key, check.reason || 'Исходное обязательство, условие или контекст не сохранены в указанных записях.'));
+      && check.targetKeys.length === 0;
+    if (!check.preservesConditions || (!check.targetKeys.length && !nonObligation) || check.issues.length) issues.push(fail(check.key, check.reason || 'Исходное обязательство, условие или контекст не сохранены в указанных записях.'));
   }
-  for (const key of expected) if (!seen.has(key)) issues.push(fail(key, 'Фрагмент первичного источника не проверен.'));
   if (issues.length) throw semanticViolation(issues);
   return { revision: coverage.revision, contentHash: canonicalSha256(coverage), checks: audit.sourceChecks };
 }
@@ -87,14 +96,12 @@ export function researchNarrativeIssues(insights, groups = {}, businessContext =
 
 export function validateNarrativeAudit(audit, coverage) {
   const issue = (key, reason) => ({ key, code: 'INSIGHT_EVIDENCE_INVALID', reason, repair: 'Исправить текст инсайта: отделить подтверждённые факты источника от аналитических гипотез и будущих механизмов; сохранить согласованные ответы.' });
-  if (audit?.narrativeRevision !== coverage.revision || !Array.isArray(audit.insightChecks)) throw semanticViolation([issue('$insights', 'Независимая проверка должна охватывать точный полный текст всех инсайтов.')]);
-  const expected = new Set(coverage.records.map((record) => record.key)), seen = new Set(), problems = [];
+  validateAuditCoverage(audit?.narrativeRevision, audit?.insightChecks, coverage, coverage.records.map((record) => record.key),
+    (check) => ['factsSupported', 'hypothesesLabelled', 'answersPreserved'].every((field) => typeof check[field] === 'boolean') && Array.isArray(check.issues));
+  const problems = [];
   for (const check of audit.insightChecks) {
-    if (!expected.has(check.key) || seen.has(check.key)) problems.push(issue(check.key, 'Неизвестный или повторный инсайт.'));
-    seen.add(check.key);
-    if (check.factsSupported !== true || check.hypothesesLabelled !== true || check.answersPreserved !== true || !Array.isArray(check.issues) || check.issues.length) problems.push(issue(check.key, check.reason || check.issues?.join('; ') || 'В тексте смешаны факты и гипотезы либо потерян согласованный ответ.'));
+    if (!check.factsSupported || !check.hypothesesLabelled || !check.answersPreserved || check.issues.length) problems.push(issue(check.key, check.reason || check.issues.join('; ') || 'В тексте смешаны факты и гипотезы либо потерян согласованный ответ.'));
   }
-  for (const key of expected) if (!seen.has(key)) problems.push(issue(key, 'Текст инсайта не проверен.'));
   if (problems.length) throw semanticViolation(problems);
   return { revision: coverage.revision, contentHash: canonicalSha256(coverage), checks: audit.insightChecks };
 }
@@ -141,10 +148,10 @@ export function validateSemanticAudit(value, records, { mode }) {
     if (value.revision !== revision || !Array.isArray(value.coverageIssues)) throw semanticViolation([{ key: '$', code: 'SEMANTIC_AUDIT_INVALID', reason: 'Compact audit must bind the exact revision and check source coverage' }]);
     const candidates = new Map(records.map((item) => [item.key, item]));
     const expanded = { schemaVersion: BABOK_SEMANTIC_POLICY, checks: Array.isArray(value.checks) ? value.checks.map((check) => ({
-      ...check, text: candidates.get(check.key)?.record.text,
-      classificationReason: check.reason || 'Независимая классификация по BABOK.', atomicityReason: check.reason || 'Проверены отдельно согласуемые обязательства.',
-      evidenceReason: check.reason || 'Проверено происхождение относительно материалов.', verificationReason: check.reason || 'Сопоставлены правило, область и метод проверки.',
-      preservationReason: check.reason || 'Сверены исходные условия и результат.',
+      ...check, text: candidates.get(check?.key)?.record.text,
+      classificationReason: check?.reason || 'Независимая классификация по BABOK.', atomicityReason: check?.reason || 'Проверены отдельно согласуемые обязательства.',
+      evidenceReason: check?.reason || 'Проверено происхождение относительно материалов.', verificationReason: check?.reason || 'Сопоставлены правило, область и метод проверки.',
+      preservationReason: check?.reason || 'Сверены исходные условия и результат.',
     })) : value.checks };
     const validation = validateSemanticAudit(expanded, records, { mode });
     if (value.coverageIssues.length) throw semanticViolation(value.coverageIssues.map((reason) => ({ key: '$coverage', code: 'SOURCE_COVERAGE_LOST', reason: String(reason), repair: 'Восстановить явно названные обязательства источника; не выдумывать неизвестные детали.' })));

@@ -33,6 +33,10 @@ function executionOptions(body) {
     if (!REASONING_LEVELS.has(body.reasoning)) invalid('reasoning must be disabled, low, high or max');
     result.reasoning = body.reasoning;
   }
+  if (body.criticEnabled !== undefined) {
+    if (typeof body.criticEnabled !== 'boolean') invalid('criticEnabled must be a boolean');
+    result.criticEnabled = body.criticEnabled;
+  }
   if (body.promptVersion != null) {
     if (typeof body.promptVersion !== 'string' || !VERSION.test(body.promptVersion)) invalid('promptVersion must use semantic versioning');
     result.promptVersion = body.promptVersion;
@@ -145,17 +149,17 @@ export function createRequirementsIntegrationService({ config, artifactRepositor
 
   return Object.freeze({
     async startDecomposition({ auth, idempotencyKey, requestId, command }) {
-      strictObject(command, ['businessContext', 'inputArtifactId', 'baselineArtifactId', 'referenceArtifactIds', 'model', 'temperature', 'reasoning', 'promptVersion']);
-      const input = await resolveOptionalMaterials({ auth, body: command, input: await resolveInput({ auth, body: command, inlineField: 'businessContext' }) });
+      strictObject(command, ['businessContext', 'inputArtifactId', 'baselineArtifactId', 'referenceArtifactIds', 'model', 'temperature', 'reasoning', 'criticEnabled', 'promptVersion']);
       const options = { mode: 'DECOMPOSITION', ...executionOptions(command) };
+      const input = await resolveOptionalMaterials({ auth, body: command, input: await resolveInput({ auth, body: command, inlineField: 'businessContext' }) });
       return submit({ auth, idempotencyKey, requestId, operation: 'decomposition', input, type: 'DECOMPOSITION', options });
     },
 
     async startRequirementsResearch({ auth, idempotencyKey, requestId, versionId, command }) {
-      strictObject(command || {}, ['model', 'temperature', 'reasoning', 'promptVersion']);
+      strictObject(command || {}, ['model', 'temperature', 'reasoning', 'criticEnabled', 'promptVersion']);
       if (!UUID.test(versionId || '')) invalid('versionId must be a UUID');
-      const source = await requirementsVersionService.resolveResearchSource({ auth, versionId });
       const options = { mode: 'REQUIREMENTS_INSIGHTS', ...executionOptions(command || {}) };
+      const source = await requirementsVersionService.resolveResearchSource({ auth, versionId });
       const input = { inputArtifactId: source.inputArtifactId, inputSha256: source.inputSha256, inlineContent: null, materials: { primary: { artifactId: source.inputArtifactId, role: 'primary', name: 'Requirements version', sha256: source.inputSha256, status: 'AVAILABLE' }, baseline: [], references: [] }, babokIdentifierSet: source.babokIdentifierSet };
       return submit({ auth, idempotencyKey, requestId, operation: 'requirements-research', input, type: 'RESEARCH', parentJobId: source.parentJobId, options });
     },

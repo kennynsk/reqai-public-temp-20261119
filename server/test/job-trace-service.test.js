@@ -25,7 +25,7 @@ function setup(overrides = {}) {
     artifactRepository: overrides.artifactRepository || {},
     auditRepository: { async record(value) { audits.push(value); } },
   });
-  return { service, repository, audits };
+  return { service, repository, audits, snapshot };
 }
 
 test('trace composes durable sources in order, paginates and redacts sensitive metadata', async () => {
@@ -81,3 +81,53 @@ test('historical model reasons are redacted on ordinary trace reads', async () =
   assert.equal(JSON.stringify(result).includes(marker), false);
   assert.equal(result.timeline[0].metadata.issues[0].code, 'SOURCE_LOSS');
 });
+
+for (const auditPassed of [false, true]) {
+  test(`summary includes a late audit verdict independently of trace pagination (passed: ${auditPassed})`, async () => {
+    const { service, snapshot } = setup();
+    const at = (seconds) => new Date(Date.UTC(2026, 0, 1, 0, 0, seconds)).toISOString();
+    const add = (name, step_id, status, seconds, metadata = {}) => snapshot.entries.push({
+      id: `trace-${snapshot.entries.length}`, name, step_id, status, created_at: at(seconds),
+      completed_at: status === 'RUNNING' ? null : at(seconds), category: 'VALIDATION', metadata,
+    });
+    const attempt = (step, number, seconds) => {
+      const metadata = { actualModel: 'm1', attempt: 1, executionId: `run-${number}` };
+      add('LLM attempt: m1', step, 'RUNNING', seconds - 1, metadata);
+      add('LLM attempt completed: m1', step, 'COMPLETED', seconds, metadata);
+      snapshot.attempts.push({ id: `test-${number}`, execution_id: metadata.executionId, actual_model: 'm1', attempt: 1, step_id: 'merge-decomposition', status: 'SUCCEEDED', started_at: at(seconds - 1), completed_at: at(seconds) });
+    };
+    Object.assign(snapshot.job, { status: 'SUCCEEDED', outcome: auditPassed ? 'COMPLETE' : 'PARTIAL', completed_at: at(20) });
+    snapshot.attempts = [];
+    snapshot.steps = [
+      { step_id: 'validate', step_type: 'validate', status: 'SUCCEEDED', started_at: at(1), completed_at: at(2) },
+      { step_id: 'decompose-chunk:chunk-1', step_type: 'decompose-chunk', status: 'SUCCEEDED', started_at: at(2), completed_at: at(8) },
+      { step_id: 'merge-decomposition', step_type: 'merge-decomposition', status: auditPassed ? 'SUCCEEDED' : 'FAILED', started_at: at(9), completed_at: at(17), summary: auditPassed ? {} : { reasonCode: 'BABOK_SEMANTIC_INVALID', details: { issues: [{ key: '$', code: 'SEMANTIC_AUDIT_INVALID', reason: 'private data' }] } } },
+    ];
+    add('Unknown', 'unrecognised-step', 'FAILED', 7, { reasonCode: 'UNKNOWN' });
+    add('BABOK audit started', 'consolidate-decomposition', 'RUNNING', 10);
+    attempt('consolidate-decomposition:audit:0', 0, 12);
+    add('BABOK audit rejected', 'consolidate-decomposition:audit:0', 'FAILED', 12, { issues: [{ key: '$', code: 'SEMANTIC_AUDIT_INVALID', reason: 'private data' }] });
+    add('BABOK audit response contract repair', 'consolidate-decomposition', 'INFO', 13, { issues: [{ key: '$', code: 'SEMANTIC_AUDIT_INVALID', reason: 'private data' }] });
+    attempt('consolidate-decomposition:audit-contract-repair', 1, 16);
+    if (auditPassed) add('BABOK audit accepted', 'consolidate-decomposition:audit-contract-repair', 'COMPLETED', 17);
+    else {
+      add('BABOK audit rejected', 'consolidate-decomposition:audit-contract-repair', 'FAILED', 17, { issues: [{ key: '$', code: 'SEMANTIC_AUDIT_INVALID' }] });
+      add('recover-requirements', 'recover-requirements', 'COMPLETED', 19);
+    }
+    add('Task completed', null, 'COMPLETED', 20);
+
+    const first = await service.trace({ auth: { tenantId: 't', userId: 'u', roles: ['user'] }, jobId, limit: 1 });
+    assert.equal(first.timeline[0].name, 'job.accepted');
+    assert.ok(first.nextCursor);
+    const stages = first.executionSummary.stages;
+    assert.deepEqual(stages.map(({ stage, status }) => [stage, status]), [
+      ['preparation', 'completed'], ['generation', 'completed'], ['assembly', 'completed'],
+      ['audit', auditPassed ? 'completed_after_retry' : 'failed'], ['result', 'completed'],
+    ]);
+    assert.equal(stages[3].attemptCount, 2);
+    assert.deepEqual(stages[3].attempts.map(({ status }) => status), ['rejected', auditPassed ? 'accepted' : 'rejected']);
+    assert.deepEqual(stages[3].issues, [{ key: '$', code: 'SEMANTIC_AUDIT_INVALID' }]);
+    assert.equal(stages[3].reasonCode, auditPassed ? null : 'BABOK_SEMANTIC_INVALID');
+    assert.doesNotMatch(JSON.stringify(first.executionSummary), /private data|UNKNOWN/);
+  });
+}

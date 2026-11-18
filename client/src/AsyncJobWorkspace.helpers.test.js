@@ -56,7 +56,7 @@ describe('AsyncJobWorkspace compatibility helpers', () => {
     expect(userFacingError({ status: 413 })).toContain('допустимый размер');
     expect(userFacingError({ code: 'REVIEW_GAP_ANSWERS_REQUIRED' })).toContain('Дополните ответ');
     expect(userFacingError({ code: 'REVIEW_GAP_CHECKLIST_REQUIRED' })).toContain('повторно проверьте');
-    expect(userFacingError(new Error('network'))).toContain('Debug');
+    expect(userFacingError(new Error('network'))).toContain('Журнал задачи');
     expect(failureMessage({ reasonCode: 'NO_USABLE_OUTPUT' })).toContain('пригодный результат');
     expect(failureMessage({ reasonCode: 'OTHER' })).toBe('Попробуйте запустить задачу ещё раз.');
   });

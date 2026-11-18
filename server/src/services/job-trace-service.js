@@ -1,5 +1,6 @@
 import { ApiError } from '../errors/api-error.js';
 import { redactSensitive, redactDiagnosticMetadata } from '../middleware/safe-logging.js';
+import { summarizeJobTrace } from './job-trace-summary.js';
 
 const PRIVILEGED_READ_ROLES = new Set(['tenant-admin', 'operator', 'auditor', 'system-admin']);
 const DIAGNOSTIC_DETAIL_ROLES = new Set(['operator', 'auditor', 'system-admin']);
@@ -90,6 +91,7 @@ export function createJobTraceService({ config, jobTraceRepository, artifactRepo
         durationMs: duration(job.started_at || job.created_at, job.completed_at), skillUsage: job.configuration_snapshot?.babokSkillProfile ? 'BUNDLE_SNAPSHOTTED' : 'NOT_APPLICABLE',
         ...(job.configuration_snapshot?.babokSkillProfile ? { skillProfile: Object.fromEntries(['id', 'version', 'manifestHash'].map((key) => [key, job.configuration_snapshot.babokSkillProfile[key]])) } : {}),
         ...(job.configuration_snapshot?.promptProfile ? { instructionProfile: Object.fromEntries(['id', 'version', 'manifestHash'].map((key) => [key, job.configuration_snapshot.promptProfile[key]])) } : {}),
+        executionSummary: summarizeJobTrace(all, job),
         timeline, nextCursor: index + parsedLimit < all.length ? Buffer.from(JSON.stringify({ index: index + parsedLimit })).toString('base64url') : null,
       };
     },
