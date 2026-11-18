@@ -153,15 +153,13 @@ describe('AsyncJobWorkspace presentational branches', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Отклонить улучшение: Новая проверка' }));
     fireEvent.click(screen.getByRole('button', { name: 'Удалить принятое требование' }));
     expect(screen.getByText('Выбрано улучшений: 0')).toBeInTheDocument();
-    fireEvent.click(screen.getByText('Материалы исследования'));
-    fireEvent.click(screen.getByRole('button', { name: 'Бизнес-задача' }));
+    fireEvent.click(within(screen.getByRole('group', { name: 'Материалы исследования' })).getByRole('button', { name: 'Исходная бизнес-задача' }));
     expect(callbacks.requestView).toHaveBeenCalledWith('context', { preserveDraft: true });
     rerender(<SessionContext.Provider value={{ view: 'context', requestView: callbacks.requestView }}><RequirementsInsightsResult value={value} latestVersion={latestVersion} businessContext="Контекст" onSaveFinal={callbacks.save} onDirtyChange={callbacks.dirty} /></SessionContext.Provider>);
     expect(screen.getByRole('region', { name: 'Текст исходной бизнес-задачи' })).toHaveTextContent('Контекст');
     fireEvent.click(screen.getByRole('button', { name: 'Назад' }));
     rerender(<SessionContext.Provider value={{ view: 'insights', requestView: callbacks.requestView }}><RequirementsInsightsResult value={value} latestVersion={latestVersion} businessContext="Контекст" onSaveFinal={callbacks.save} onDirtyChange={callbacks.dirty} /></SessionContext.Provider>);
-    fireEvent.click(screen.getByText('Материалы исследования'));
-    fireEvent.click(screen.getByRole('button', { name: 'Требования для AI' }));
+    fireEvent.click(within(screen.getByRole('group', { name: 'Материалы исследования' })).getByRole('button', { name: 'Снимок требований для AI' }));
     expect(callbacks.requestView).toHaveBeenCalledWith('source', { preserveDraft: true });
     rerender(<SessionContext.Provider value={{ view: 'source', requestView: callbacks.requestView }}><RequirementsInsightsResult value={value} latestVersion={latestVersion} businessContext="Контекст" onSaveFinal={callbacks.save} onDirtyChange={callbacks.dirty} /></SessionContext.Provider>);
     expect(screen.getByText('Требования, переданные в AI-исследование')).toBeInTheDocument();

@@ -13,7 +13,7 @@ Make the next action legible while preserving the current draft, linked research
 - Use the same coverage result for the open question count and remaining coverage warnings. Reuse the full-name type selector for compact review.
 - Build the browser's «Связи вне дерева» list from the edges actually rendered in the tree. Distinguish relations and statuses between the same endpoints. Preserve the export's existing traceability presentation.
 
-- Reuse guarded job navigation for the return from research to the parent requirements task. Keep source snapshots under «Материалы исследования» and move the finalization control and selected count to the results header.
+- Reuse guarded job navigation for the return from research to the parent requirements task. Place direct links to the source context and frozen requirements below the research results and move the finalization control and selected count to the results header.
 
 ## Risks and Trade-offs
 

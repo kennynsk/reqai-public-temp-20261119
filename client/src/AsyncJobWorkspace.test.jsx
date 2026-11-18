@@ -1024,8 +1024,7 @@ test('restores requirements insights and applies explicit accepted enhancements'
   expect(within(diff).getAllByText('Станет').some((node) => node.classList.contains('reqai-proposal-diff__mobile-label'))).toBe(true);
   fireEvent.click(screen.getByRole('button', { name: 'Принять точное изменение' }));
   expect(acceptEnhancement).toHaveAttribute('aria-pressed', 'true');
-  fireEvent.click(screen.getByText('Материалы исследования'));
-  fireEvent.click(screen.getByRole('button', { name: 'Требования для AI' }));
+  fireEvent.click(within(screen.getByRole('group', { name: 'Материалы исследования' })).getByRole('button', { name: 'Снимок требований для AI' }));
   const sourceRequirements = screen.getByRole('region', { name: 'Требования, переданные в AI-исследование' });
   expect(within(sourceRequirements).getByRole('region', { name: 'Бизнес-требования' })).toHaveClass('border-t-blue-500');
   expect(within(sourceRequirements).getByRole('region', { name: 'Функциональные требования' })).toHaveClass('border-t-violet-500');
@@ -1035,6 +1034,7 @@ test('restores requirements insights and applies explicit accepted enhancements'
   fireEvent.click(screen.getByRole('button', { name: 'К результатам AI-исследования' }));
   expect(screen.getByRole('button', { name: 'Принять улучшение: Система должна автоматически обрабатывать заявку' })).toHaveAttribute('aria-pressed', 'true');
   const resultsHeader = screen.getByRole('heading', { name: 'Результаты AI-исследования' }).closest('header');
+  expect(within(resultsHeader).queryByText('Материалы исследования')).not.toBeInTheDocument();
   fireEvent.click(within(resultsHeader).getByRole('button', { name: 'Сохранить финальную версию' }));
   await waitFor(() => expect(mocks.saveRequirementsVersion).toHaveBeenCalledWith(expect.objectContaining({ sourceJobId: 'ri1', baseVersionId: 'base-v2', decisions: expect.objectContaining({ acceptedEnhancementKeys: ['i1:0'], rejectedEnhancementKeys: [] }) })));
   await waitFor(() => expectBusinessStage(4));
@@ -1080,8 +1080,7 @@ test('restores the original business task for a directly opened linked research 
   fireEvent.click(screen.getByRole('button', { name: 'Принять точное изменение' }));
   expect(accept).toHaveAttribute('aria-pressed', 'true');
 
-  fireEvent.click(screen.getByText('Материалы исследования'));
-  fireEvent.click(screen.getByRole('button', { name: 'Бизнес-задача' }));
+  fireEvent.click(within(screen.getByRole('group', { name: 'Материалы исследования' })).getByRole('button', { name: 'Исходная бизнес-задача' }));
   expect(screen.getByRole('region', { name: 'Текст исходной бизнес-задачи' })).toHaveTextContent(originalContext);
   fireEvent.click(screen.getByRole('button', { name: 'Назад' }));
   expect(screen.getByText('Результаты AI-исследования')).toBeInTheDocument();

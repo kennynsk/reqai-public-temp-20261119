@@ -1202,20 +1202,25 @@ function SourceDataMenu({ onShowContext, onShowRequirements }) {
   </details>;
 }
 
-function ResearchResultsHeader({ acceptedCount, busy, onSave, saveLabel, onShowContext, onShowRequirements }) {
+function ResearchResultsHeader({ acceptedCount, busy, onSave, saveLabel }) {
   return <header className="flex flex-wrap items-start justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-5">
     <div>
       <h1 className="text-xl font-bold text-slate-900">Результаты AI-исследования</h1>
       <p className="mt-2 text-sm text-slate-600">Выберите полезные улучшения для финальной версии требований.</p>
     </div>
     <div className="space-y-2">
-      <div className="flex flex-col items-start gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-        <button type="button" disabled={busy} onClick={onSave} className="min-h-10 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:bg-slate-300">{saveLabel}</button>
-        <SourceDataMenu onShowContext={onShowContext} onShowRequirements={onShowRequirements} />
-      </div>
+      <button type="button" disabled={busy} onClick={onSave} className="min-h-10 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:bg-slate-300">{saveLabel}</button>
       <p className="text-sm text-slate-600">Выбрано улучшений: {acceptedCount}</p>
     </div>
   </header>;
+}
+
+function ResearchSourceLinks({ onShowContext, onShowRequirements }) {
+  const linkClass = 'min-h-10 text-sm text-slate-600 underline underline-offset-4 hover:text-indigo-700 focus-visible:outline-indigo-600';
+  return <div role="group" aria-label="Материалы исследования" className="flex flex-wrap items-center gap-x-5 border-t border-slate-200 pt-1">
+    <button type="button" className={linkClass} onClick={onShowContext}>Исходная бизнес-задача</button>
+    <button type="button" className={linkClass} onClick={onShowRequirements}>Снимок требований для AI</button>
+  </div>;
 }
 
 function OriginalBusinessContext({ value, loading = false, editable = false, compact = false, children }) {
@@ -1433,8 +1438,7 @@ function BabokRequirementsInsightsResult({ value, latestVersion, businessContext
     <ReviewDraftProvider review={review} submit={saveInsights} busy={busy}><section className="space-y-5">
       <ResearchResultsHeader acceptedCount={acceptedKeys.length} busy={busy}
         onSave={() => finalVersionSaved ? setActiveView('final') : saveInsights()}
-        saveLabel={finalVersionSaved ? 'К финальным требованиям' : latestVersion ? 'Сохранить новую редакцию' : 'Сохранить финальную версию'}
-        onShowContext={() => setActiveView('context')} onShowRequirements={() => setActiveView('source')} />
+        saveLabel={finalVersionSaved ? 'К финальным требованиям' : latestVersion ? 'Сохранить новую редакцию' : 'Сохранить финальную версию'} />
       <ResearchInsightWorkspace
         insights={insights}
         categoryMeta={INSIGHT_CATEGORY_META}
@@ -1445,6 +1449,7 @@ function BabokRequirementsInsightsResult({ value, latestVersion, businessContext
         renderEnhancement={(enhancement, insight) => <ProposalReview key={enhancement.key} enhancement={{ ...enhancement, insightTitle: insight.title, rationale: enhancement.rationale || insight.rationale }} decision={decisions[enhancement.key]}>{(onDecision) => <InsightEnhancementDecisionRow enhancement={enhancement} decision={decisions[enhancement.key]} onDecision={onDecision} />}</ProposalReview>}
         decisions={decisions}
       />
+      <ResearchSourceLinks onShowContext={() => setActiveView('context')} onShowRequirements={() => setActiveView('source')} />
     </section></ReviewDraftProvider>
   );
 }
@@ -1509,8 +1514,7 @@ function RequirementsInsightsResult({ value, latestVersion, businessContext, bus
     <ReviewDraftProvider review={review} submit={saveInsights} busy={busy}><section className="space-y-5">
       <ResearchResultsHeader acceptedCount={acceptedKeys.length} busy={busy}
         onSave={() => finalVersionSaved ? setActiveView('final') : saveInsights()}
-        saveLabel={finalVersionSaved ? 'К финальным требованиям' : latestVersion ? 'Сохранить новую редакцию' : 'Сохранить финальную версию'}
-        onShowContext={() => setActiveView('context')} onShowRequirements={() => setActiveView('source')} />
+        saveLabel={finalVersionSaved ? 'К финальным требованиям' : latestVersion ? 'Сохранить новую редакцию' : 'Сохранить финальную версию'} />
       <ResearchInsightWorkspace
         insights={insights}
         categoryMeta={INSIGHT_CATEGORY_META}
@@ -1521,6 +1525,7 @@ function RequirementsInsightsResult({ value, latestVersion, businessContext, bus
         renderEnhancement={(enhancement, insight) => <ProposalReview key={enhancement.key} enhancement={{ ...enhancement, insightTitle: insight.title, rationale: enhancement.rationale || insight.rationale }} decision={decisions[enhancement.key]}>{(onDecision) => <InsightEnhancementDecisionRow enhancement={enhancement} decision={decisions[enhancement.key]} onDecision={onDecision} />}</ProposalReview>}
         decisions={decisions}
       />
+      <ResearchSourceLinks onShowContext={() => setActiveView('context')} onShowRequirements={() => setActiveView('source')} />
     </section></ReviewDraftProvider>
   );
 }

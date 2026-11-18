@@ -118,7 +118,7 @@ The compact review SHALL show at most one emphasized action for the current stat
 
 ### Requirement: Direct navigation from linked research
 
-The linked-research screen SHALL expose direct navigation to the parent requirements task above the research content when the parent is known. The results header SHALL expose the current finalization action and number of accepted improvements. Source snapshots SHALL remain available through «Материалы исследования».
+The linked-research screen SHALL expose direct navigation to the parent requirements task above the research content when the parent is known. The results header SHALL expose the current finalization action and number of accepted improvements. The source context and requirements snapshot SHALL be reachable via separate links below the results.
 
 #### Scenario: User returns from linked research
 
