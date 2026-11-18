@@ -11,6 +11,7 @@ Make the next action legible while preserving the current draft, linked research
 - Reuse the current action priority and save callbacks. Give secondary finalization an outline and keep persistence status next to the heading.
 - Use the existing export disclosure for «Ещё» with an optional research action. This puts export formats and version confirmation in their existing owner and avoids nested menus.
 - Use the same coverage result for the open question count and remaining coverage warnings. Reuse the full-name type selector for compact review.
+- Build the browser's «Связи вне дерева» list from the edges actually rendered in the tree. Distinguish relations and statuses between the same endpoints. Preserve the export's existing traceability presentation.
 
 ## Risks and Trade-offs
 

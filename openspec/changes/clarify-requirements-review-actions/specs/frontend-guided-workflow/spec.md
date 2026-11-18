@@ -92,3 +92,13 @@ The compact review SHALL show at most one emphasized action for the current stat
 
 - **WHEN** the user changes the requirement type
 - **THEN** a single selector offers all full type names including empty categories and combines with the existing search and clarification filter
+
+#### Scenario: All traceability links appear in the tree
+
+- **WHEN** every relation and status is already shown at the corresponding edge in the tree
+- **THEN** tentative markers stay visible in the tree and the separate «Связи вне дерева» section is absent
+
+#### Scenario: Some traceability links are outside the tree
+
+- **WHEN** a dependency, constraint or other relation is absent from the tree
+- **THEN** «Связи вне дерева» lists the additional links, including a different type of relation between the same records

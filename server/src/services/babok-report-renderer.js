@@ -137,14 +137,14 @@ export function buildBabokTraceability(registry) {
     treeLinks.set(`${link.from}|${link.to}`, link);
   }
   const renderedIds = new Set();
-  const treeEdges = new Set();
+  const treeEdges = new Map();
   const visit = (id, incoming = null) => {
     if (renderedIds.has(id) || !byId.has(id)) return null;
     renderedIds.add(id);
     const nodes = [];
     for (const child of new Set(children.get(id) || [])) {
       const node = visit(child, treeLinks.get(`${id}|${child}`));
-      if (node) { treeEdges.add(`${id}|${child}`); nodes.push(node); }
+      if (node) { treeEdges.set(`${id}|${child}`, node.incoming); nodes.push(node); }
     }
     const hierarchyNote = incoming?.from.startsWith('BR-') && id.startsWith('NFR-')
       ? 'Общее NFR: прямая связь с бизнес-целью, без промежуточного SR' : null;
@@ -157,7 +157,11 @@ export function buildBabokTraceability(registry) {
   }
   const supplemental = links.filter((link) => link.status !== 'Подтверждено источником'
     || !treeEdges.has(`${link.from}|${link.to}`) || crossRelation(link.relation));
-  return { forest, supplemental, links };
+  const outsideTree = links.filter((link) => {
+    const displayed = treeEdges.get(`${link.from}|${link.to}`);
+    return !displayed || displayed.relation !== link.relation || displayed.status !== link.status;
+  });
+  return { forest, supplemental, links, outsideTree };
 }
 
 function renderTraceability(registry, review) {

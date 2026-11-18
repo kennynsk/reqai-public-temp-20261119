@@ -27,22 +27,33 @@ test('navigates traceability links and renders an empty-links explanation', () =
   expect(screen.getByText('Отдельная схема связей не сформирована. Связанные записи доступны на карточках требований.')).toBeInTheDocument();
 });
 
-test('renders nested requirement hierarchy and separates assumptions and non-parent references', () => {
+test('keeps assumptions in the tree and shows a separate list only for other links', () => {
   const registry = roomBookingRegistry();
   registry.groups.SR = [{ id: 'SR-001', text: 'Пользователю нужна возможность бронирования.', quality: 'Готово', relatedTo: ['BR-001'] }];
+  registry.groups.FR.forEach((record) => { record.relatedTo = ['SR-001']; });
   registry.analysis.traceability = [
     { from: 'BR-001', to: 'SR-001', relation: 'обосновывает', status: 'Предполагается' },
     { from: 'SR-001', to: 'FR-001', relation: 'реализует', status: 'Подтверждено источником' },
+    { from: 'SR-001', to: 'FR-002', relation: 'реализует', status: 'Предполагается' },
   ];
-  render(<RegistryAnalysis registry={registry} section="links" onNavigate={vi.fn()} readOnly />);
+  const onNavigate = vi.fn();
+  const { rerender } = render(<RegistryAnalysis registry={registry} section="links" onNavigate={onNavigate} readOnly />);
   const tree = screen.getByRole('list', { name: 'Иерархия требований' });
   const stakeholder = within(tree).getByRole('link', { name: 'SR-001' }).closest('li');
   expect(within(stakeholder).getByRole('link', { name: 'FR-001' })).toBeInTheDocument();
-  expect(within(tree).getByText('Предполагается')).toBeInTheDocument();
-  const supplemental = screen.getByRole('region', { name: 'Дополнительные связи' });
-  const assumption = within(supplemental).getByRole('link', { name: 'SR-001' }).closest('li');
-  expect(within(assumption).getByRole('link', { name: 'BR-001' })).toBeInTheDocument();
-  expect(within(assumption).getByText('Предполагается')).toBeInTheDocument();
+  expect(within(tree).getAllByText('Предполагается')).toHaveLength(2);
+  expect(screen.queryByRole('region', { name: 'Связи вне дерева' })).not.toBeInTheDocument();
+
+  registry.analysis.traceability.push(
+    { from: 'FR-002', to: 'FR-001', relation: 'зависит от', status: 'Предполагается' },
+    { from: 'SR-001', to: 'FR-001', relation: 'уточняет', status: 'Подтверждено источником' },
+  );
+  rerender(<RegistryAnalysis registry={registry} section="links" onNavigate={onNavigate} readOnly />);
+  const outsideTree = within(screen.getByRole('region', { name: 'Связи вне дерева' }));
+  expect(outsideTree.getByRole('heading', { name: 'Связи вне дерева · 2' })).toBeInTheDocument();
+  expect(outsideTree.getByText('зависит от').closest('li')).toHaveTextContent(/FR-002.*FR-001/);
+  expect(outsideTree.getByText('реализует').closest('li')).toHaveTextContent(/SR-001.*FR-001/);
+  expect(outsideTree.queryByText('обосновывает')).not.toBeInTheDocument();
 });
 
 test('renders questions section with read-only answers and sources', () => {

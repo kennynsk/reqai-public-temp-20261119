@@ -32,16 +32,15 @@ function TraceabilityNode({ node, registry, onNavigate }) {
 }
 
 function TraceabilityLinks({ registry, onNavigate }) {
-  const { forest, supplemental, links } = buildBabokTraceability(registry);
+  const { forest, outsideTree, links } = buildBabokTraceability(registry);
   return <section aria-label="Связи требований" className="space-y-4">
     <h2 className="text-lg font-bold">Связи требований · {links.length}</h2>
     <p className="text-sm text-slate-600">Бизнес-результат → потребность роли → поведение и качество решения. Предположительные связи помечены; отдельные корни не означают вложенность.</p>
     {links.length === 0 && <p className="text-sm text-slate-600">Отдельная схема связей не сформирована. Связанные записи доступны на карточках требований.</p>}
     {forest.length > 0 && <ul aria-label="Иерархия требований" className="min-w-0 rounded-xl border border-slate-200 bg-white p-3 sm:p-4 space-y-3">{forest.map((node) => <TraceabilityNode key={node.record.id} node={node} registry={registry} onNavigate={onNavigate} />)}</ul>}
-    {supplemental.length > 0 && <section aria-label="Дополнительные связи" className="space-y-2">
-      <h3 className="text-base font-semibold text-slate-900">Ограничения и дополнительные связи</h3>
-      <p className="text-xs text-slate-600">Связи вне дерева и предположения для проверки. Ссылка без указанного типа связи не считается подтверждённой.</p>
-      <ul className="divide-y divide-slate-200 rounded-xl border border-slate-200 bg-white px-3 sm:px-4">{supplemental.map((link, index) => <li key={index} className="flex flex-wrap items-center gap-x-2 gap-y-1 py-3">
+    {outsideTree.length > 0 && <section aria-label="Связи вне дерева" className="space-y-2">
+      <h3 className="text-base font-semibold text-slate-900">Связи вне дерева · {outsideTree.length}</h3>
+      <ul className="divide-y divide-slate-200 rounded-xl border border-slate-200 bg-white px-3 sm:px-4">{outsideTree.map((link, index) => <li key={index} className="flex flex-wrap items-center gap-x-2 gap-y-1 py-3">
         <RecordLinks ids={[link.from]} onNavigate={onNavigate} />
         <span className="text-sm text-slate-600">{link.relation}</span>
         <RecordLinks ids={[link.to]} onNavigate={onNavigate} />
