@@ -47,7 +47,7 @@ test('embedded FR edits survive back and close, and global save includes hidden 
   fireEvent.change(within(panel).getByLabelText('Текст требования FR-004'), { target: { value: 'Система отправляет уведомление по электронной почте.' } });
   fireEvent.click(screen.getByRole('button', { name: '← К вопросу GAP-001' }));
   close(); await new Promise(raf);
-  fireEvent.click(screen.getByRole('button', { name: 'Сохранить изменения' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Сохранить черновик' }));
   expect(save.mock.calls[0][0].registry.groups.FR[3].text).toContain('электронной почте');
   expect(save.mock.calls[0][0].registry.groups.FR[3].quality).toBe('Готово');
   expect(save.mock.calls[0][0].decisions.review?.gaps?.['GAP-001']?.state).not.toBe('closed');

@@ -17,7 +17,7 @@ test('completed child has one primary action and explicit repeat is secondary', 
   const open = vi.fn(), repeat = vi.fn();
   header({ childId: 'child', child: { status: 'SUCCEEDED', inputArtifactId: 'v1' }, onOpenResearch: open }, { onResearch: repeat });
   expect(screen.getByRole('button', { name: 'Посмотреть предложения AI' })).toHaveClass('bg-indigo-600');
-  expect(screen.getByRole('button', { name: 'Создать финальную версию' })).not.toHaveClass('bg-indigo-600');
+  expect(screen.getByRole('button', { name: 'Завершить подготовку' })).not.toHaveClass('bg-indigo-600');
   expect(screen.getByRole('button', { name: 'Запустить AI-исследование повторно' }).closest('details')).not.toHaveAttribute('open');
   fireEvent.click(screen.getByRole('button', { name: 'Посмотреть предложения AI' }));
   expect(open).toHaveBeenCalledOnce();
@@ -30,9 +30,10 @@ test('dirty changes keep downstream actions enabled and route them through save'
   const save = vi.fn(() => Promise.resolve({ versionId: 'v2', createdAt: version.createdAt }));
   const repeat = vi.fn(), finalize = vi.fn();
   header({ childId: 'child', child: { status: 'SUCCEEDED', inputArtifactId: 'v1' } }, { dirty: true, onSave: save, onResearch: repeat, onFinal: finalize });
-  const saveButton = screen.getByRole('button', { name: 'Сохранить изменения' });
+  expect(screen.getByText('В черновике есть несохранённые изменения')).toHaveAttribute('role', 'status');
+  const saveButton = screen.getByRole('button', { name: 'Сохранить черновик' });
   expect(saveButton).toHaveClass('bg-indigo-600');
-  const finalizeButton = screen.getByRole('button', { name: 'Создать финальную версию' });
+  const finalizeButton = screen.getByRole('button', { name: 'Завершить подготовку' });
   expect(finalizeButton).toBeEnabled();
   fireEvent.click(finalizeButton);
   expect(finalize).toHaveBeenCalledOnce();
@@ -46,9 +47,9 @@ test('first review prioritizes saving and blocks research if saving fails', asyn
   const save = vi.fn().mockResolvedValue(null);
   const research = vi.fn();
   header({}, { version: null, onSave: save, onResearch: research });
-  expect(screen.getByRole('status')).toHaveTextContent('Рабочая версия ещё не сохранена');
-  expect(screen.getByRole('button', { name: 'Сохранить рабочую версию' })).toHaveClass('bg-indigo-600');
-  expect(screen.getByRole('button', { name: 'Создать финальную версию' })).toHaveClass('border-slate-300');
+  expect(screen.getByRole('status')).toHaveTextContent('Черновик ещё не сохранён');
+  expect(screen.getByRole('button', { name: 'Сохранить черновик' })).toHaveClass('bg-indigo-600');
+  expect(screen.getByRole('button', { name: 'Завершить подготовку' })).toHaveClass('border-slate-300');
   const disclosure = screen.getByRole('button', { name: 'Ещё ▾' }).parentElement;
   disclosure.open = true;
   expect(screen.queryByRole('button', { name: 'Скачать DOCX' })).not.toBeInTheDocument();
@@ -60,16 +61,16 @@ test('first review prioritizes saving and blocks research if saving fails', asyn
 
 test('a clean saved version shows a saved chip with timestamp and final as primary', () => {
   header({});
-  expect(screen.getByText(/Рабочая версия сохранена · /)).toBeInTheDocument();
+  expect(screen.getByText(/Черновик сохранён · /)).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /Сохранить/ })).not.toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'Создать финальную версию' })).toHaveClass('bg-indigo-600');
-  expect(screen.getByRole('button', { name: 'Создать финальную версию' })).toBeEnabled();
+  expect(screen.getByRole('button', { name: 'Завершить подготовку' })).toHaveClass('bg-indigo-600');
+  expect(screen.getByRole('button', { name: 'Завершить подготовку' })).toBeEnabled();
 });
 
 test('an active older child remains openable and blocks new launch and finalization', () => {
   header({ childId: 'child', child: { status: 'RUNNING', inputArtifactId: 'old' } });
   expect(screen.getByRole('button', { name: 'Открыть AI-исследование' })).toBeEnabled();
-  expect(screen.getByRole('button', { name: 'Создать финальную версию' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Завершить подготовку' })).toBeDisabled();
   expect(screen.queryByRole('button', { name: 'Ещё ▾' })).not.toBeInTheDocument();
   expect(screen.getByText(/Исследование предыдущей версии/)).toBeInTheDocument();
 });
@@ -81,7 +82,7 @@ test('BABOK default shows nonempty types and can open a composer in an empty typ
   expect(screen.getByRole('button', { name: /^Выбрать SR-001:/ })).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /^Выбрать FR-/ })).not.toBeInTheDocument();
   expect(screen.queryByText(/Полнота:|Сверить полноту/)).not.toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'Создать финальную версию' })).toBeEnabled();
+  expect(screen.getByRole('button', { name: 'Завершить подготовку' })).toBeEnabled();
   fireEvent.click(screen.getAllByText('Добавить требование')[0]);
   fireEvent.click(screen.getByRole('button', { name: 'Функциональные требования', exact: true }));
   const input = await screen.findByRole('textbox', { name: 'Новое требование: FR' });
@@ -100,16 +101,16 @@ test('legacy empty type is addable and pending drafts survive filtering and glob
   fireEvent.click(within(screen.getByRole('region', { name: 'Функциональные требования' })).getByRole('button', { name: 'Добавить требование' }));
   fireEvent.change(screen.getByRole('textbox', { name: 'Новое требование: Функциональные требования' }), { target: { value: 'Отправить уведомление' } });
   fireEvent.change(screen.getByRole('combobox', { name: 'Тип требований' }), { target: { value: 'business' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Сохранить изменения' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Сохранить черновик' }));
   expect(save).toHaveBeenCalledWith(expect.objectContaining({ requirements: expect.objectContaining({ functional: [expect.objectContaining({ text: 'Отправить уведомление' })] }) }));
 });
 
 
 test('a remote-version conflict blocks saving and downstream actions without discarding local edits', () => {
   header({ conflict: true }, { dirty: true });
-  expect(screen.getByRole('button', { name: 'Сохранить изменения' })).toBeDisabled();
-  expect(screen.getByRole('button', { name: 'Сохранить изменения' })).not.toHaveClass('bg-indigo-600');
-  expect(screen.getByRole('button', { name: 'Создать финальную версию' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Сохранить черновик' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Сохранить черновик' })).not.toHaveClass('bg-indigo-600');
+  expect(screen.getByRole('button', { name: 'Завершить подготовку' })).toBeDisabled();
   screen.getByRole('button', { name: 'Ещё ▾' }).parentElement.open = true;
   expect(screen.getByRole('button', { name: 'Сохранить и запустить AI-исследование' })).toBeDisabled();
 });

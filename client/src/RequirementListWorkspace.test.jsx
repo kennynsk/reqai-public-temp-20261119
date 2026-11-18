@@ -40,7 +40,7 @@ test('quality review focuses the assessment and saves it without reopening resol
   expect(assessment).toHaveFocus();
   fireEvent.change(assessment, { target: { value: 'Готово' } });
   expect(screen.getByText('Оценка формулировки: Готово')).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: 'Сохранить изменения' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Сохранить черновик' }));
   expect(save).toHaveBeenCalledOnce();
   const saved = save.mock.calls[0][0];
   expect(saved.registry.groups.BR[0].quality).toBe('Готово');
@@ -128,7 +128,7 @@ test('keeps text, structured fields and relations across selection and saves hid
   fireEvent.click(screen.getByText('Редактировать связи'));
   expect(screen.getByRole('checkbox', { name: 'FR-002' })).toBeChecked();
   filter('NFR');
-  fireEvent.click(screen.getByRole('button', { name: 'Сохранить изменения' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Сохранить черновик' }));
   expect(save).toHaveBeenCalledOnce();
   expect(save.mock.calls[0][0].registry.groups.BR[0]).toMatchObject({ text: 'Новая бизнес-цель', successIndicator: 'Нет конфликтов', relatedIds: ['FR-002'], source: registry.groups.BR[0].source });
   expect(save.mock.calls[0][0].registry.groups.FR).toEqual(registry.groups.FR);
@@ -142,7 +142,7 @@ test('reveals and focuses invalid structured fields after switching section and 
   filter('BR');
   fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'BR-' } });
   fireEvent.click(screen.getByRole('button', { name: /^Вопросы(?: |$)/ }));
-  fireEvent.click(screen.getByRole('button', { name: 'Сохранить изменения' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Сохранить черновик' }));
   await waitFor(() => expect(screen.getByRole('textbox', { name: 'Категория NFR-001' })).toHaveFocus());
   expect(screen.getByRole('searchbox')).toHaveValue('');
   expect(save).not.toHaveBeenCalled();
@@ -181,7 +181,7 @@ test('new-record drafts survive switching composers and participate in global sa
   fireEvent.change(await compose('TR', 'Требования перехода'), { target: { value: 'Перенести расписание' } });
   expect(await compose('SR', 'Требования заинтересованных сторон')).toHaveValue('Роль сотрудника');
   filter('BR');
-  fireEvent.click(screen.getByRole('button', { name: 'Сохранить изменения' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Сохранить черновик' }));
   expect(save.mock.calls[0][0].registry.groups.SR[0].text).toBe('Роль сотрудника');
   expect(save.mock.calls[0][0].registry.groups.TR[0].text).toBe('Перенести расписание');
 });

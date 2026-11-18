@@ -7,11 +7,11 @@ After a successful decomposition, the frontend SHALL make the generated requirem
 #### Scenario: User enters requirements review
 
 - **WHEN** the first review opens after decomposition
-- **THEN** the page states that the working version has yet to be saved and shows «Сохранить рабочую версию» with the outlined «Создать финальную версию» action beside it
+- **THEN** the page shows «Черновик ещё не сохранён» and shows «Сохранить черновик» with the outlined «Завершить подготовку» action beside it
 
 #### Scenario: User creates a final version directly
 
-- **WHEN** the user selects «Создать финальную версию»
+- **WHEN** the user selects «Завершить подготовку»
 - **THEN** the workspace validates the current requirements and asks for existing acknowledgement of open issues when applicable before creating the version
 
 #### Scenario: User needs to change context
@@ -32,7 +32,7 @@ After a successful decomposition, the frontend SHALL make the generated requirem
 #### Scenario: Reviewed version is ready to finish
 
 - **WHEN** a working version is saved with no pending edits and no active or completed research for that version takes priority
-- **THEN** «Создать финальную версию» is primary and optional research is reachable from «Ещё»
+- **THEN** «Завершить подготовку» is primary and optional research is reachable from «Ещё»
 
 ### Requirement: Clear action and visual hierarchy
 
@@ -41,12 +41,12 @@ The compact review SHALL show at most one emphasized action for the current stat
 #### Scenario: Requirements contain unsaved changes
 
 - **WHEN** the working version has pending edits
-- **THEN** the header announces unsaved changes and prioritizes «Сохранить изменения»
+- **THEN** the header shows «В черновике есть несохранённые изменения» and prioritizes «Сохранить черновик»
 
 #### Scenario: Reviewed requirements are saved
 
 - **WHEN** the current working version has been persisted with no edits pending
-- **THEN** the status identifies the version as saved without implying that all requirements are complete
+- **THEN** the status shows «Черновик сохранён» and the timestamp when available
 
 #### Scenario: User chooses AI research from a draft
 

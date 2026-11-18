@@ -14,7 +14,7 @@ export default function RequirementsReviewHeader({ version, dirty, busy, researc
   const gateBlocked = Boolean(context.conflict || busy || researchBusy || research.active);
   const gateHint = context.conflict ? 'Разрешите конфликт версий' : busy ? 'Подождите завершения операции' : researchBusy || research.active ? 'Дождитесь завершения AI-исследования' : '';
   const savedAt = formatRuDateTime(version?.createdAt);
-  const versionStatus = !saved ? 'Рабочая версия ещё не сохранена' : dirty ? 'Есть несохранённые изменения' : `Рабочая версия сохранена${savedAt ? ` · ${savedAt}` : ''}`;
+  const versionStatus = !saved ? 'Черновик ещё не сохранён' : dirty ? 'В черновике есть несохранённые изменения' : `Черновик сохранён${savedAt ? ` · ${savedAt}` : ''}`;
   const buttonClass = (key) => `min-h-10 rounded-lg border px-4 py-2 text-sm font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:cursor-not-allowed disabled:opacity-50 ${primary === key ? 'border-transparent bg-indigo-600 text-white hover:bg-indigo-700' : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-100'}`;
 
   async function startResearch(event) {
@@ -45,10 +45,10 @@ export default function RequirementsReviewHeader({ version, dirty, busy, researc
       <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto" aria-label="Действия с требованиями">
         {busy && !context.submitting
           ? <button type="button" disabled className={buttonClass('save')}><Loader2 aria-hidden="true" className="mr-2 inline h-4 w-4 animate-spin" />Сохраняем…</button>
-          : needsSave && <button type="button" className={buttonClass('save')} disabled={Boolean(context.conflict)} onClick={onSave}>{saved ? 'Сохранить изменения' : 'Сохранить рабочую версию'}</button>}
+          : needsSave && <button type="button" className={buttonClass('save')} disabled={Boolean(context.conflict)} onClick={onSave}>Сохранить черновик</button>}
         {context.submitting && !context.childId && <button type="button" disabled className={buttonClass('starting')}><Loader2 aria-hidden="true" className="mr-2 inline h-4 w-4 animate-spin" />Запускаем AI-исследование…</button>}
         {context.childId && <button type="button" className={buttonClass('open')} disabled={busy} onClick={context.onOpenResearch}>{research.openLabel}</button>}
-        <button type="button" className={buttonClass('final')} aria-describedby={statusId} disabled={gateBlocked} onClick={onFinal}>Создать финальную версию</button>
+        <button type="button" className={buttonClass('final')} aria-describedby={statusId} disabled={gateBlocked} onClick={onFinal}>Завершить подготовку</button>
         {(saved || researchAction) && <ResultExportAction triggerLabel="Ещё">{researchAction}</ResultExportAction>}
       </div>
     </div>
