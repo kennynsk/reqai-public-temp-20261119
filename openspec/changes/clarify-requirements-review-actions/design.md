@@ -19,4 +19,4 @@ The research launch takes one extra click. The progress indicator labels it as o
 
 ## Migration Plan
 
-Deploy as a frontend change. Saved versions and review decisions use their existing formats.
+Release the revised traceability method as BABOK skill 1.1.0 for new jobs with 1.0.0 retained for snapshots. Derive completeness from actual gaps, structural breaks, omissions and partial processing. Keep recorded edge evidence available on demand. Saved versions and review decisions use their existing formats.

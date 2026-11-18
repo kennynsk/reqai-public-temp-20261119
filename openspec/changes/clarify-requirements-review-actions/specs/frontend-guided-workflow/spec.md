@@ -96,9 +96,20 @@ The compact review SHALL show at most one emphasized action for the current stat
 #### Scenario: All traceability links appear in the tree
 
 - **WHEN** every relation and status is already shown at the corresponding edge in the tree
-- **THEN** tentative markers stay visible in the tree and the separate «Связи вне дерева» section is absent
+- **THEN** edge provenance is available on demand and the separate «Связи вне дерева» section is absent
 
 #### Scenario: Some traceability links are outside the tree
 
 - **WHEN** a dependency, constraint or other relation is absent from the tree
 - **THEN** «Связи вне дерева» lists the additional links, including a different type of relation between the same records
+
+#### Scenario: Normalizing one source obligation into a need and a behavior
+
+- **WHEN** a source obligation supports both records and their connection without a new business decision
+- **THEN** the decomposition method records the supported link with evidence and review shows its provenance on request
+- **AND** a stored inferred link alone does not make a structurally complete decomposition incomplete
+
+#### Scenario: A link would require a business decision
+
+- **WHEN** a proposed connection depends on a choice of scope or behavior absent from the source
+- **THEN** the method captures the decision as a linked gap and question, and review exposes the open gap from the relevant record

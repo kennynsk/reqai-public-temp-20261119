@@ -2,7 +2,7 @@ import { buildBabokTraceability } from '../../server/src/services/babok-report-r
 import ReviewQuestions from './ReviewQuestions.jsx';
 import { MaterialCoverage, SourceEvidence } from './SourceEvidence.jsx';
 import { RequirementPreviewContext, RequirementPreviewLink } from './RequirementPreview.jsx';
-import { useContext } from 'react';
+import { useContext, useState } from 'react';
 import { DraftContext } from './review-context.js';
 
 export function RecordLinks({ ids = [], onNavigate, previewRequirementsOnly = false }) {
@@ -12,39 +12,56 @@ export function RecordLinks({ ids = [], onNavigate, previewRequirementsOnly = fa
     : <a key={id} href={`#record-${id}`} onClick={(event) => { if (onNavigate) { event.preventDefault(); onNavigate(id); } }} className="inline-block rounded-sm bg-indigo-50 px-2 py-1 text-xs font-semibold text-indigo-700 underline underline-offset-2">{id}</a>)} </span>;
 }
 
-function TraceabilityNode({ node, registry, onNavigate }) {
+function TraceabilityNode({ node, registry, onNavigate, showEvidence }) {
   const review = useContext(DraftContext);
   const { record, incoming, children } = node;
-  const gaps = registry.analysis.GAP.filter((gap) => (gap.affectedIds.includes(record.id) || [...(record.relatedIds || []), ...(record.relatedTo || [])].includes(gap.id)) && review?.state.decisions.review?.gaps?.[gap.id]?.state !== 'closed');
+  const openGaps = registry.analysis.GAP.filter((gap) => {
+    const related = gap.affectedIds.includes(record.id) || record.relatedIds?.includes(gap.id) || record.relatedTo?.includes(gap.id);
+    const decision = review?.state.decisions.review?.gaps?.[gap.id];
+    return related && (decision?.state !== 'closed' || decision.stale);
+  });
   return <li className="min-w-0">
     <div className="py-2">
       <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
         <RecordLinks ids={[record.id]} onNavigate={onNavigate} />
-        {incoming && <span className="text-xs text-slate-500">{incoming.relation}</span>}
-        {incoming && incoming.status !== 'Подтверждено источником' && <span className="rounded-sm bg-amber-50 px-2 py-1 text-xs text-amber-900">{incoming.status}</span>}
-        {gaps.length > 0 && <span className="text-xs text-amber-900">{ /^(BR|SR)-/.test(record.id) ? 'Покрытие требует уточнения' : 'Есть пробелы' }</span>}
+        {openGaps.length > 0 && <details className="text-sm">
+          <summary className="cursor-pointer text-amber-900">Открытые вопросы · {openGaps.length}</summary>
+          <ul className="mt-1 space-y-1">{openGaps.map((gap) => <li key={gap.id}>
+            <a href={`#record-${gap.id}`} className="text-indigo-700 underline" onClick={(event) => {
+              if (onNavigate) { event.preventDefault(); onNavigate(gap.id); }
+            }}>{registry.analysis.questions?.find((question) => question.gapId === gap.id)?.text || gap.text}</a>
+          </li>)}</ul>
+        </details>}
       </div>
       <p className="mt-1 break-words text-sm leading-6 text-slate-700">{record.text}</p>
+      {showEvidence && incoming && <div className="mt-2 space-y-1 text-xs text-slate-600">
+        <p>{incoming.from} → {record.id} · {incoming.relation} · {incoming.status}</p>
+        <SourceEvidence source={incoming.source} materials={registry.materials} />
+      </div>}
       {node.hierarchyNote && <p className="mt-1 text-xs text-slate-500">{node.hierarchyNote}</p>}
     </div>
-    {children.length > 0 && <ul className="ml-3 border-l border-slate-200 pl-3 sm:ml-5 sm:pl-5">{children.map((child) => <TraceabilityNode key={child.record.id} node={child} registry={registry} onNavigate={onNavigate} />)}</ul>}
+    {children.length > 0 && <ul className="ml-3 border-l border-slate-200 pl-3 sm:ml-5 sm:pl-5">{children.map((child) => <TraceabilityNode key={child.record.id} node={child} registry={registry} onNavigate={onNavigate} showEvidence={showEvidence} />)}</ul>}
   </li>;
 }
 
 function TraceabilityLinks({ registry, onNavigate }) {
+  const [showEvidence, setShowEvidence] = useState(false);
   const { forest, outsideTree, links } = buildBabokTraceability(registry);
   return <section aria-label="Связи требований" className="space-y-4">
     <h2 className="text-lg font-bold">Связи требований · {links.length}</h2>
-    <p className="text-sm text-slate-600">Бизнес-результат → потребность роли → поведение и качество решения. Предположительные связи помечены; отдельные корни не означают вложенность.</p>
+    {links.length > 0 && <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-slate-600">
+      <p>Бизнес-цель → потребность → требования к решению</p>
+      <label className="inline-flex cursor-pointer items-center gap-2"><input type="checkbox" checked={showEvidence} onChange={(event) => setShowEvidence(event.target.checked)} />Показать основания связей</label>
+    </div>}
     {links.length === 0 && <p className="text-sm text-slate-600">Отдельная схема связей не сформирована. Связанные записи доступны на карточках требований.</p>}
-    {forest.length > 0 && <ul aria-label="Иерархия требований" className="min-w-0 rounded-xl border border-slate-200 bg-white p-3 sm:p-4 space-y-3">{forest.map((node) => <TraceabilityNode key={node.record.id} node={node} registry={registry} onNavigate={onNavigate} />)}</ul>}
+    {forest.length > 0 && <ul aria-label="Иерархия требований" className="min-w-0 rounded-xl border border-slate-200 bg-white p-3 sm:p-4 space-y-3">{forest.map((node) => <TraceabilityNode key={node.record.id} node={node} registry={registry} onNavigate={onNavigate} showEvidence={showEvidence} />)}</ul>}
     {outsideTree.length > 0 && <section aria-label="Связи вне дерева" className="space-y-2">
       <h3 className="text-base font-semibold text-slate-900">Связи вне дерева · {outsideTree.length}</h3>
       <ul className="divide-y divide-slate-200 rounded-xl border border-slate-200 bg-white px-3 sm:px-4">{outsideTree.map((link, index) => <li key={index} className="flex flex-wrap items-center gap-x-2 gap-y-1 py-3">
         <RecordLinks ids={[link.from]} onNavigate={onNavigate} />
         <span className="text-sm text-slate-600">{link.relation}</span>
         <RecordLinks ids={[link.to]} onNavigate={onNavigate} />
-        <span className={`rounded-sm px-2 py-1 text-xs ${link.status === 'Предполагается' ? 'bg-amber-50 text-amber-900' : 'bg-slate-100 text-slate-600'}`}>{link.status}</span>
+        {showEvidence && <div className="w-full space-y-1"><span className={`rounded-sm px-2 py-1 text-xs ${link.status === 'Предполагается' ? 'bg-amber-50 text-amber-900' : 'bg-slate-100 text-slate-600'}`}>{link.status}</span><SourceEvidence source={link.source} materials={registry.materials} /></div>}
       </li>)}</ul>
     </section>}
   </section>;

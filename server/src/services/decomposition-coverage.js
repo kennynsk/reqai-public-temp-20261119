@@ -23,5 +23,5 @@ export function decompositionCoverage(content, decisions = {}) {
   const pendingRequirements = openGaps.flatMap((gap) => (currentGapClarification(review, gap.id)?.remainingQuestions || []).filter((text) => /(?:добавить|выделить|создать).{0,40}требован/iu.test(text)).map((text) => ({ gapId: gap.id, text })));
   const unconfirmedLinks = (content.analysis?.traceability || []).filter((link) => byId.has(link.from) && byId.has(link.to) && link.status === 'Предполагается');
   const partialSource = content.scope?.partial === true || content.outcome === 'PARTIAL';
-  return { ready: records.filter((record) => record.quality === 'Готово').length, total: records.length, openGaps, breaks, omissions, pendingRequirements, unconfirmedLinks, partialSource, incomplete: Boolean(openGaps.length || breaks.length || omissions.length || pendingRequirements.length || unconfirmedLinks.length || partialSource) };
+  return { ready: records.filter((record) => record.quality === 'Готово').length, total: records.length, openGaps, breaks, omissions, pendingRequirements, unconfirmedLinks, partialSource, incomplete: Boolean(openGaps.length || breaks.length || omissions.length || pendingRequirements.length || partialSource) };
 }

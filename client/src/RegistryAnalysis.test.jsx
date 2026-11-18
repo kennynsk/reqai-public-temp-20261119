@@ -33,7 +33,7 @@ test('keeps assumptions in the tree and shows a separate list only for other lin
   registry.groups.FR.forEach((record) => { record.relatedTo = ['SR-001']; });
   registry.analysis.traceability = [
     { from: 'BR-001', to: 'SR-001', relation: 'обосновывает', status: 'Предполагается' },
-    { from: 'SR-001', to: 'FR-001', relation: 'реализует', status: 'Подтверждено источником' },
+    { from: 'SR-001', to: 'FR-001', relation: 'реализует', status: 'Подтверждено источником', source: registry.groups.FR[0].source },
     { from: 'SR-001', to: 'FR-002', relation: 'реализует', status: 'Предполагается' },
   ];
   const onNavigate = vi.fn();
@@ -41,7 +41,13 @@ test('keeps assumptions in the tree and shows a separate list only for other lin
   const tree = screen.getByRole('list', { name: 'Иерархия требований' });
   const stakeholder = within(tree).getByRole('link', { name: 'SR-001' }).closest('li');
   expect(within(stakeholder).getByRole('link', { name: 'FR-001' })).toBeInTheDocument();
-  expect(within(tree).getAllByText('Предполагается')).toHaveLength(2);
+  expect(within(tree).queryByText(/Предполагается/)).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Показать основания связей' }));
+  expect(within(tree).getAllByText(/Предполагается/)).toHaveLength(2);
+  expect(within(tree).getByText('Бриф переговорных')).toBeInTheDocument();
+  fireEvent.click(within(tree).getByText('Открытые вопросы · 7'));
+  fireEvent.click(within(tree).getByRole('link', { name: 'Как определить: Канал уведомлений?' }));
+  expect(onNavigate).toHaveBeenCalledWith('GAP-001');
   expect(screen.queryByRole('region', { name: 'Связи вне дерева' })).not.toBeInTheDocument();
 
   registry.analysis.traceability.push(

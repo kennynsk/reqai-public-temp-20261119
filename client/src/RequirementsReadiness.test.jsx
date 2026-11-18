@@ -23,9 +23,14 @@ test('closed questions do not conceal orphan requirements, omissions, or partial
   expect(decompositionCoverage(covered, { review: { gaps: { 'GAP-001': { state: 'closed' } } } }).incomplete).toBe(false);
 });
 
-test('transition coverage is legitimate but assumed traceability cannot certify complete decomposition', () => {
+test('inferred links keep their provenance without triggering a completeness warning', () => {
   const content = { groups: { BR: [{ id: 'BR-001', relatedIds: ['TR-001'], quality: 'Готово' }], TR: [{ id: 'TR-001', relatedTo: ['BR-001'], quality: 'Готово' }] }, analysis: { traceability: [{ from: 'BR-001', to: 'TR-001', relation: 'обосновывает', status: 'Предполагается' }] } };
-  expect(decompositionCoverage(content)).toMatchObject({ breaks: [], incomplete: true });
+  expect(decompositionCoverage(content)).toMatchObject({ breaks: [], incomplete: false, unconfirmedLinks: content.analysis.traceability });
+  render(<RequirementsReadiness registry={content} />);
+  expect(screen.queryByRole('button', { name: 'Проверить связи' })).not.toBeInTheDocument();
+  content.analysis.GAP = [{ id: 'GAP-001', text: 'Какой канал нужен?' }];
+  expect(decompositionCoverage(content).incomplete).toBe(true);
+  content.analysis.GAP = [];
   content.analysis.traceability[0].status = 'Подтверждено источником';
   expect(decompositionCoverage(content)).toMatchObject({ breaks: [], incomplete: false });
 });

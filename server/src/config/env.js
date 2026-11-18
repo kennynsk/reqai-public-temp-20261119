@@ -209,7 +209,7 @@ export function loadConfig(env = process.env, { loadFiles = env === process.env 
       },
     },
     skills: {
-      babokRequirements: promptRelease(env, 'SKILL_BABOK_REQUIREMENTS'),
+      babokRequirements: promptRelease(env, 'SKILL_BABOK_REQUIREMENTS', '1.1.0', ['1.0.0', '1.1.0']),
     },
     process: {
       role: choice(env, 'APP_ROLE', 'api', ['api', 'workflow-worker', 'event-worker', 'maintenance-worker']),

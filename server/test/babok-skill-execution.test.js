@@ -60,6 +60,20 @@ test('original skill and every reference reach the model verbatim', async () => 
   assert.match(h.calls[0].messages[1].content, /Фрагмент/);
 });
 
+test('the default skill sends separate rules for derived obligations and decisions on scope', async () => {
+  const { loadConfig } = await import('../src/config/env.js');
+  const policy = loadConfig({}).skills.babokRequirements;
+  const skill = qualifyBabokSkillBundle({ loader, policy });
+  assert.equal(skill.version, '1.1.0');
+  assert.ok(policy.released.includes('1.0.0'));
+  const h = harness([registry()]);
+  h.input.configurationSnapshot.babokSkillProfile = skill;
+  await h.handlers.decomposeChunk(h.input);
+  const method = h.calls[0].messages[0].content;
+  assert.match(method, /Само разложение на SR и FR не создаёт вопроса/);
+  assert.match(method, /открытый выбор — в GAP с затронутыми ID и вопросом/);
+});
+
 test('global verification sees original source and preserves independent baseline deltas', async () => {
   const value = registry();
   value.materials.baseline = { status: 'AVAILABLE', artifacts: [{ artifactId: 'baseline', role: 'baseline', name: null, sha256: null, status: 'AVAILABLE' }] };

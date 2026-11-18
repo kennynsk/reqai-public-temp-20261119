@@ -1,0 +1,50 @@
+{
+  "id": "babok-requirements-v3",
+  "version": "1.1.0",
+  "displayName": "BABOK: декомпозиция требований",
+  "release": "babok-requirements.v1",
+  "entrypoint": "SKILL.md",
+  "metadata": "agents/openai.yaml",
+  "requiredReferences": [
+    "references/classification.md",
+    "references/requirements-quality.md",
+    "references/output-template.md"
+  ],
+  "optionalReferences": [
+    "references/verbal-nouns.md",
+    "references/elicitation.md",
+    "references/baseline-and-delta.md",
+    "references/traceability.md"
+  ],
+  "applicationAdapter": "server/prompt-bundles/requirements-decomposition/2.0.0/decompose.md",
+  "output": {
+    "schemaVersion": "babok-requirements.v1",
+    "format": "json",
+    "renderer": "server/src/services/babok-report-renderer.js"
+  },
+  "qualification": {
+    "releasePolicy": "qualified-canary",
+    "requiredVariables": [
+      "BUSINESS_CONTEXT",
+      "SOURCE_MATERIAL",
+      "BASELINE_MATERIAL",
+      "REFERENCE_MATERIALS"
+    ],
+    "requiredMaterialRoles": [
+      "primary",
+      "baseline",
+      "reference"
+    ]
+  },
+  "files": {
+    "SKILL.md": "2d7d0c8676ac376f078fa72fa5f7d5e6970e13ec03d1d5e60a9dafeff8a22555",
+    "agents/openai.yaml": "7a8e37e9fbabd839e262405bb3a8e0296e5f12e153dc36b2f59f01853b25c59f",
+    "references/baseline-and-delta.md": "1bf5268c0d4c3ac7553cb3e2f86e8f2e7f42c86632106bbeff916fba96c90a9e",
+    "references/classification.md": "fda86123912e9af59ccf70aa242e3e260bf9e005f3cdf489061be0c8ec778e44",
+    "references/elicitation.md": "d47e1d001cb7ee31f25cddd847d731bfeab9d41626568da1db720cdc758efe78",
+    "references/output-template.md": "cc8fb948011e744d90596395bc2ba5204a369519d1a80d243ae942bc1052725d",
+    "references/requirements-quality.md": "19c8e6fe8118bee034bbab5990aa90c4b645404d690649ca7835786458556f50",
+    "references/traceability.md": "287334e6fab791ad46a05e1d15e705b1f8c3413cd5487617b952294282fa2bf7",
+    "references/verbal-nouns.md": "3e94ae475b644b0b5ad759a5d67598657a5c6cd033092f9937a4645339b7ee24"
+  }
+}
