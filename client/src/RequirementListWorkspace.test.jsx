@@ -18,7 +18,7 @@ function setup(extra = {}) {
   return { registry, save };
 }
 const select = (id) => fireEvent.click(screen.getByRole('button', { name: new RegExp(`^Выбрать ${id}:`) }));
-const filter = (type) => fireEvent.click(screen.getByRole('button', { name: type === 'all' ? 'Все типы' : new RegExp(`^${type} ·`) }));
+const filter = (type) => fireEvent.change(screen.getByRole('combobox', { name: 'Тип требований' }), { target: { value: type } });
 const detail = () => document.getElementById('selected-requirement-detail');
 
 test('quality review focuses the assessment and saves it without reopening resolved questions', async () => {
@@ -57,15 +57,12 @@ async function compose(type, label) {
   return screen.findByRole('textbox', { name: `Новое требование: ${type}` });
 }
 
-test('registry header reports review progress and demotes empty type chips', () => {
+test('registry header reports review progress and keeps empty types in the single selector', () => {
   setup();
   expect(screen.getByText(/^Качество · \d+ из \d+$/)).toBeInTheDocument();
-  const empty = screen.getByRole('button', { name: /^TR ·/ });
-  expect(empty).toHaveClass('text-slate-600');
-  expect(empty).not.toHaveClass('border-slate-200');
-  expect(empty.querySelector('span[aria-hidden="true"]')).toHaveClass('bg-slate-300');
-  expect(screen.getByRole('button', { name: /^NFR ·/ })).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'Все типы' })).toBeInTheDocument();
+  expect(screen.getByRole('combobox', { name: 'Тип требований' })).toHaveValue('all');
+  expect(screen.getByRole('option', { name: 'Требования перехода · 0' })).toHaveValue('TR');
+  expect(screen.getByRole('option', { name: /^Нефункциональные требования ·/ })).toHaveValue('NFR');
   expect(within(detail()).getByText('BR · Бизнес-требования')).toHaveClass('bg-blue-50');
 });
 
@@ -144,7 +141,7 @@ test('reveals and focuses invalid structured fields after switching section and 
   fireEvent.change(screen.getByRole('textbox', { name: 'Категория NFR-001' }), { target: { value: '' } });
   filter('BR');
   fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'BR-' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Вопросы' }));
+  fireEvent.click(screen.getByRole('button', { name: /^Вопросы(?: |$)/ }));
   fireEvent.click(screen.getByRole('button', { name: 'Сохранить изменения' }));
   await waitFor(() => expect(screen.getByRole('textbox', { name: 'Категория NFR-001' })).toHaveFocus());
   expect(screen.getByRole('searchbox')).toHaveValue('');

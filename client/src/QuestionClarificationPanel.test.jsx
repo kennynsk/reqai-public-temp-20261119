@@ -30,7 +30,7 @@ test('one shared GAP has two questions and ten unique requirement checks, with c
   fireEvent.change(screen.getByLabelText('Ответ на GAP-001'), { target: { value: 'Электронная почта, повтор через час.' } });
   close();
   await new Promise(raf);
-  fireEvent.click(screen.getByRole('button', { name: 'Вопросы' }));
+  fireEvent.click(screen.getByRole('button', { name: /^Вопросы(?: |$)/ }));
   expect(screen.getAllByRole('article').filter((node) => node.id === 'record-GAP-001')).toHaveLength(1);
   open();
   expect(screen.getByLabelText('Ответ на GAP-001')).toHaveValue('Электронная почта, повтор через час.');
@@ -55,7 +55,7 @@ test('embedded FR edits survive back and close, and global save includes hidden 
 
 test('closing restores the registry filter, selection and focus without saving', async () => {
   const { save } = setup();
-  fireEvent.click(screen.getByRole('button', { name: /^FR ·/ }));
+  fireEvent.change(screen.getByRole('combobox', { name: 'Тип требований' }), { target: { value: 'FR' } });
   fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'FR-004' } });
   const trigger = screen.getByRole('button', { name: 'Разобрать вопрос' }); trigger.focus(); open();
   fireEvent.keyDown(screen.getByRole('dialog').querySelector('aside'), { key: 'Escape' });
@@ -87,17 +87,17 @@ test('missing references block completion while a partial AI answer retains its 
 test('global validation reveals an invalid hidden NFR inside the current question workspace', async () => {
   const registry = sharedQuestionFixture(); registry.groups.NFR = [{ ...registry.groups.FR[0], id: 'NFR-001', category: 'Производительность' }];
   const { save } = setup({ registry });
-  fireEvent.click(screen.getByRole('button', { name: /^NFR ·/ }));
+  fireEvent.change(screen.getByRole('combobox', { name: 'Тип требований' }), { target: { value: 'NFR' } });
   fireEvent.click(screen.getByRole('button', { name: 'Редактировать', exact: true }));
   fireEvent.change(screen.getByLabelText('Категория NFR-001'), { target: { value: '' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Вопросы' })); open();
+  fireEvent.click(screen.getByRole('button', { name: /^Вопросы(?: |$)/ })); open();
   fireEvent.click(screen.getByRole('button', { name: 'Сохранить требования' }));
   await waitFor(() => expect(within(screen.getByRole('dialog')).getByLabelText('Категория NFR-001')).toHaveFocus());
   expect(within(screen.getByRole('dialog')).getByRole('alert')).toHaveTextContent('Категория'); expect(save).not.toHaveBeenCalled();
 });
 
 test('queue origin safely falls back after its question disappears and closure does not save', async () => {
-  setup(); fireEvent.click(screen.getByRole('button', { name: 'Вопросы' })); open();
+  setup(); fireEvent.click(screen.getByRole('button', { name: /^Вопросы(?: |$)/ })); open();
   fireEvent.click(screen.getByRole('button', { name: 'Снять с рассмотрения…' }));
   fireEvent.change(screen.getByLabelText('Причина решения'), { target: { value: 'Решение не входит в текущий объём' } });
   fireEvent.click(screen.getByRole('button', { name: 'Подтвердить решение' })); close();
@@ -164,7 +164,7 @@ test('manual save status distinguishes a saved baseline from an initial version 
   setup(); open();
   expect(screen.getByText('Все изменения сохранены в версии требований')).toBeVisible();
   fireEvent.change(screen.getByLabelText('Ответ на GAP-001'), { target: { value: 'Новый ответ' } });
-  expect(screen.getByText('Есть несохранённые изменения')).toBeVisible();
+  expect(within(screen.getByRole('dialog')).getByText('Есть несохранённые изменения')).toBeVisible();
   cleanup();
   setup({ baseVersionId: null }); open();
   expect(screen.getByText('Версия требований ещё не сохранена')).toBeVisible();

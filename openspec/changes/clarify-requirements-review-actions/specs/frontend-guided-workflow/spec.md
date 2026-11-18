@@ -1,0 +1,89 @@
+## MODIFIED Requirements
+
+### Requirement: Requirements-focused review stage
+
+After a successful decomposition, the frontend SHALL make the generated requirements the dominant content. The original business context SHALL remain accessible in a compact disclosure. The compact review header SHALL group version status, saving, direct finalization and secondary actions near the title. Direct finalization SHALL validate and persist the current requirements before opening the final stage.
+
+#### Scenario: User enters requirements review
+
+- **WHEN** the first review opens after decomposition
+- **THEN** the page states that the working version has yet to be saved and shows «Сохранить рабочую версию» with the outlined «Создать финальную версию» action beside it
+
+#### Scenario: User creates a final version directly
+
+- **WHEN** the user selects «Создать финальную версию»
+- **THEN** the workspace validates the current requirements and asks for existing acknowledgement of open issues when applicable before creating the version
+
+#### Scenario: User needs to change context
+
+- **WHEN** the user opens the compact source disclosure
+- **THEN** the original context and existing edit controls are accessible without losing the review draft
+
+#### Scenario: User reviews generated requirements
+
+- **WHEN** editable requirements are displayed
+- **THEN** the header groups saving, finalization and additional actions above the registry
+
+#### Scenario: Reviewed version has not been saved
+
+- **WHEN** the current requirements have no persisted working version
+- **THEN** export formats are unavailable and the optional research action explicitly includes saving
+
+#### Scenario: Reviewed version is ready to finish
+
+- **WHEN** a working version is saved with no pending edits and no active or completed research for that version takes priority
+- **THEN** «Создать финальную версию» is primary and optional research is reachable from «Ещё»
+
+### Requirement: Clear action and visual hierarchy
+
+The compact review SHALL show at most one emphasized action for the current state. Saving takes priority while there is no saved version or when edits are pending. For a clean working version, creating the final version is primary unless opening active or completed research takes priority. The step indicator SHALL visibly label research as optional or skipped. The «Ещё» disclosure SHALL group research launch and available saved-version export formats. Active-job and conflict guards SHALL continue to apply.
+
+#### Scenario: Requirements contain unsaved changes
+
+- **WHEN** the working version has pending edits
+- **THEN** the header announces unsaved changes and prioritizes «Сохранить изменения»
+
+#### Scenario: Reviewed requirements are saved
+
+- **WHEN** the current working version has been persisted with no edits pending
+- **THEN** the status identifies the version as saved without implying that all requirements are complete
+
+#### Scenario: User chooses AI research from a draft
+
+- **WHEN** the user selects «Сохранить и запустить AI-исследование»
+- **THEN** research starts only after the current working version is saved successfully and is linked to that saved version
+
+#### Scenario: User opens additional actions
+
+- **WHEN** a working version exists and the user opens «Ещё»
+- **THEN** available research actions and saved-version export formats are reachable, and exporting while edits are pending uses the existing version selection confirmation
+
+#### Scenario: User opens completed research
+
+- **WHEN** research for the clean working version has succeeded
+- **THEN** «Посмотреть предложения AI» is the primary action and rerunning research remains a secondary choice
+
+#### Scenario: Linked AI research is starting or active
+
+- **WHEN** research is starting, already active, or blocked by a version conflict
+- **THEN** the workspace prevents another launch and communicates the current state
+
+#### Scenario: Job admission limit rejects linked research
+
+- **WHEN** the server rejects linked research because the active-job limit was reached
+- **THEN** the interface restores eligible actions and explains the limit in Russian
+
+#### Scenario: User scans requirement items
+
+- **WHEN** no editor or add composer is open
+- **THEN** requirement wording stays prominent and item actions remain reachable from the selected requirement
+
+#### Scenario: Compact BABOK registry contains open issues
+
+- **WHEN** the review has open questions
+- **THEN** their count appears on the «Вопросы» tab and selecting it opens the existing question queue while retaining review drafts
+
+#### Scenario: User filters the compact BABOK registry
+
+- **WHEN** the user changes the requirement type
+- **THEN** a single selector offers all full type names including empty categories and combines with the existing search and clarification filter

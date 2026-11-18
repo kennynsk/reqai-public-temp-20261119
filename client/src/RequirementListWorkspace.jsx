@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { Search } from 'lucide-react';
+import RequirementTypeFilter from './RequirementTypeFilter.jsx';
 import { babokTypeAccent } from './requirements-review-presentation.js';
 
 const headingSeparator = 'shadow-[0_1px_0_0_theme(colors.slate.200),0_3px_10px_-4px_rgb(15_23_42/0.15)]';
@@ -9,7 +10,6 @@ export default function RequirementListWorkspace({
   onFiltersChange, qualityLabels, drafts, composerMenu, composer, renderDetail,
 }) {
   const filtered = typeFilter !== 'all' || query.trim() || needsClarification;
-  const options = [['all', 'Все типы'], ...columns];
   const total = columns.reduce((sum, [type]) => sum + (groups[type]?.length || 0), 0);
   const reviewed = columns.reduce((sum, [type]) => sum + (groups[type] || []).filter((item) => item.quality === 'Готово').length, 0);
   const listRef = useRef(null);
@@ -20,29 +20,15 @@ export default function RequirementListWorkspace({
   };
   const [scrolled, setScrolled] = useState(false);
   return <section aria-label="Реестр требований: список и детали" className="space-y-3">
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
-    <div role="group" aria-label="Типы требований" className="hidden flex-wrap gap-2 lg:flex">
-      {options.map(([type, label]) => <button key={type} type="button" aria-pressed={typeFilter === type}
-        aria-label={type === 'all' ? label : `${type} · ${label} · ${groups[type]?.length || 0}`}
-        title={label} onClick={() => onFiltersChange({ type })}
-        className={`min-h-9 rounded-lg border px-3 py-2 text-sm font-semibold focus-visible:ring-2 focus-visible:ring-indigo-500 ${typeFilter === type ? 'border-indigo-600 bg-indigo-600 text-white' : !(groups[type]?.length || 0) ? 'border-transparent bg-transparent text-slate-600 hover:bg-slate-50' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}>
-        {type === 'all' ? 'Все типы' : <><span aria-hidden="true" className={`mr-1.5 inline-block h-1.5 w-1.5 rounded-full ${typeFilter === type ? 'bg-white' : (groups[type]?.length || 0) ? babokTypeAccent(type).dot : 'bg-slate-300'}`} />{type} · {groups[type]?.length || 0}</>}
-      </button>)}
-    </div>
-    <label className="w-full text-sm font-semibold text-slate-700 lg:hidden">Тип требований
-      <select value={typeFilter} onChange={(event) => onFiltersChange({ type: event.target.value })} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3">
-        {options.map(([type, label]) => <option key={type} value={type}>{label}{type === 'all' ? '' : ` · ${groups[type]?.length || 0}`}</option>)}
-      </select>
-    </label>
-    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-4 gap-y-2">
-      <label className="relative w-full min-w-48 flex-1 lg:max-w-xs">
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+      <label className="relative w-full min-w-0 sm:max-w-xs">
         <span className="sr-only">Поиск требований</span><Search aria-hidden="true" className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-slate-400" />
         <input type="search" value={query} onChange={(event) => onFiltersChange({ query: event.target.value })} placeholder="ID или формулировка" className="min-h-10 w-full rounded-lg border border-slate-300 bg-white py-2 pl-9 pr-3 text-sm" />
       </label>
-      <label className="flex min-h-10 items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={needsClarification} onChange={(event) => onFiltersChange({ needsClarification: event.target.checked })} />Нужно уточнить</label>
+      <RequirementTypeFilter columns={columns} groups={groups} value={typeFilter} onChange={(type) => onFiltersChange({ type })}>
+        <label className="flex min-h-10 items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={needsClarification} onChange={(event) => onFiltersChange({ needsClarification: event.target.checked })} />Нужно уточнить</label>
+      </RequirementTypeFilter>
     </div>
-    </div>
-    {typeFilter !== 'all' && <p className="text-sm font-semibold text-slate-600">{columns.find(([type]) => type === typeFilter)?.[1]}</p>}
     {composer}
     <div className="grid min-w-0 items-start gap-4 lg:grid-cols-[minmax(17.5rem,20rem)_minmax(0,1fr)]">
       <nav ref={listRef} tabIndex={-1} aria-label="Список требований" className="reqai-requirement-selector min-w-0 rounded-2xl border border-slate-200 bg-white px-2 pb-2" onScroll={(event) => setScrolled(event.currentTarget.scrollTop > 2)}>

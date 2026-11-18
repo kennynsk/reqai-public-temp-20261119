@@ -1,7 +1,9 @@
 import { cloneElement, useContext } from 'react';
+import VersionExport from './VersionExport.jsx';
 import { ResultExportContext } from './result-export-context.js';
 
-export function ResultExportAction({ placement } = {}) {
+export function ResultExportAction({ placement, triggerLabel, children } = {}) {
   const action = useContext(ResultExportContext);
-  return action ? cloneElement(action, { placement }) : null;
+  if (action) return cloneElement(action, { placement, triggerLabel, children });
+  return children ? <VersionExport triggerLabel={triggerLabel}>{children}</VersionExport> : null;
 }

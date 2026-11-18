@@ -29,7 +29,7 @@ export function researchPresentation({ childId, child, versionId, submitting = f
   };
   const status = submitting ? 'Запускаем AI-исследование…' : childId
     ? `${previous ? 'Исследование предыдущей версии · ' : ''}${labels[child?.status] || 'Статус AI-исследования недоступен'}${current ? ' · для этой версии' : ''}` : '';
-  return { active, previous, current, status, openPrimary: Boolean(childId && (active || (current && child?.status === 'SUCCEEDED'))), openLabel: child?.status === 'SUCCEEDED' ? 'Посмотреть результаты AI' : 'Открыть AI-исследование' };
+  return { active, previous, current, status, openPrimary: Boolean(childId && (active || (current && child?.status === 'SUCCEEDED'))), openLabel: child?.status === 'SUCCEEDED' ? 'Посмотреть предложения AI' : 'Открыть AI-исследование' };
 }
 
 export function reviewPrimary({ dirty, saved, busy, research, submitting, conflict }) {

@@ -381,7 +381,7 @@ describe('AsyncJobWorkspace presentational branches', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Действия для BT-1' }));
     fireEvent.click(screen.getByRole('button', { name: 'Редактировать' }));
     fireEvent.change(screen.getByRole('textbox', { name: 'Текст требования BT-1' }), { target: { value: '   ' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Сохранить требования' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить рабочую версию' }));
     expect(screen.getByRole('alert')).toHaveTextContent('Введите формулировку требования');
     fireEvent.click(screen.getByRole('button', { name: 'Отмена' }));
     const business = screen.getByRole('region', { name: 'Бизнес-требования' });
@@ -393,9 +393,10 @@ describe('AsyncJobWorkspace presentational branches', () => {
     const functional = screen.getByRole('region', { name: 'Функциональные требования' });
     fireEvent.click(within(functional).getByRole('button', { name: 'Добавить требование' }));
     fireEvent.change(within(functional).getByRole('textbox', { name: 'Новое требование: Функциональные требования' }), { target: { value: 'Черновая функция' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Сохранить требования' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить рабочую версию' }));
     expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ baseVersionId: null, requirements: expect.objectContaining({ business: expect.arrayContaining([expect.objectContaining({ text: 'Новая цель' })]), functional: expect.arrayContaining([expect.objectContaining({ text: 'Черновая функция' })]) }) }));
-    expect(screen.getByRole('button', { name: 'Улучшить требования с помощью AI' })).toBeEnabled();
+    screen.getByRole('button', { name: 'Ещё ▾' }).parentElement.open = true;
+    expect(screen.getByRole('button', { name: 'Сохранить и запустить AI-исследование' })).toBeEnabled();
     expect(onStartResearch).not.toHaveBeenCalled();
   });
 
@@ -436,10 +437,11 @@ describe('AsyncJobWorkspace presentational branches', () => {
     const onDirtyChange = vi.fn();
     const latestVersion = { versionId: 'registry-v1', registry, decisions: {}, createdAt: new Date().toISOString() };
     render(<BabokRegistryResult value={registry} latestVersion={latestVersion} onSave={onSave} onStartResearch={onStartResearch} onDirtyChange={onDirtyChange} />);
-    expect(screen.getByRole('status', { name: '' })).toHaveTextContent(/^Сохранено ·/);
-    fireEvent.click(screen.getByRole('button', { name: 'Улучшить требования с помощью AI' }));
+    expect(screen.getByRole('status', { name: '' })).toHaveTextContent(/^Рабочая версия сохранена ·/);
+    screen.getByRole('button', { name: 'Ещё ▾' }).parentElement.open = true;
+    fireEvent.click(screen.getByRole('button', { name: 'Запустить AI-исследование' }));
     expect(onStartResearch).toHaveBeenCalledWith({ requirementsVersionId: 'registry-v1' });
-    fireEvent.click(screen.getByRole('button', { name: 'Перейти к финальной версии' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Создать финальную версию' }));
     expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ baseVersionId: 'registry-v1', decisions: { skippedResearch: true } }));
 
     fireEvent.click(screen.getByRole('button', { name: /^Выбрать FR-001:/ }));
@@ -450,7 +452,7 @@ describe('AsyncJobWorkspace presentational branches', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Выбрать BR-001:/ }));
     fireEvent.click(within(document.getElementById('record-BR-001')).getByRole('link', { name: 'BR-001' }));
     await waitFor(() => expect(document.getElementById('record-BR-001')).toHaveFocus());
-    fireEvent.click(screen.getByRole('button', { name: 'Все типы' }));
+    fireEvent.change(screen.getByRole('combobox', { name: 'Тип требований' }), { target: { value: 'all' } });
     const clarification = screen.getByRole('checkbox', { name: 'Нужно уточнить' });
     fireEvent.click(clarification);
     expect(screen.getByRole('heading', { name: 'Нет требований' })).toBeInTheDocument();
@@ -465,7 +467,7 @@ describe('AsyncJobWorkspace presentational branches', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Отменить удаление' }));
     expect(screen.getByRole('button', { name: /^Выбрать BR-001:/ })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: /^SR ·/ }));
+    fireEvent.change(screen.getByRole('combobox', { name: 'Тип требований' }), { target: { value: 'SR' } });
     fireEvent.click(screen.getByText('Добавить требование', { selector: 'summary' }));
     fireEvent.click(screen.getByRole('button', { name: 'Требования заинтересованных сторон', exact: true }));
     fireEvent.change(await screen.findByRole('textbox', { name: 'Новое требование: SR' }), { target: { value: 'Черновая роль' } });
@@ -501,7 +503,7 @@ describe('AsyncJobWorkspace presentational branches', () => {
     const business = screen.getByLabelText('Детали требования BR-001');
     expect(within(business).getByRole('link', { name: 'BR-001' })).toHaveAttribute('href', '#record-BR-001');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Вопросы' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Вопросы(?: |$)/ }));
     const questions = screen.getByRole('region', { name: 'Вопросы для уточнения' });
     fireEvent.click(within(questions).getAllByRole('button', { name: 'BR-001' })[0]);
     expect(await screen.findByRole('dialog', { name: /Бизнес-требование · BR-001/ })).toHaveTextContent('Сократить конфликты бронирования.');
@@ -519,7 +521,8 @@ describe('AsyncJobWorkspace presentational branches', () => {
     render(<DecompositionResult value={{ mode: 'DECOMPOSITION', requirements }} latestVersion={{ versionId: 'legacy-v1', requirements, decisions: {}, createdAt: new Date().toISOString() }} onSave={vi.fn()} onStartResearch={onStartResearch} onDirtyChange={vi.fn()} />);
     fireEvent.change(screen.getByRole('combobox', { name: 'Тип требований' }), { target: { value: 'functional' } });
     expect(screen.getByRole('combobox', { name: 'Тип требований' })).toHaveValue('functional');
-    fireEvent.click(screen.getByRole('button', { name: 'Улучшить требования с помощью AI' }));
+    screen.getByRole('button', { name: 'Ещё ▾' }).parentElement.open = true;
+    fireEvent.click(screen.getByRole('button', { name: 'Запустить AI-исследование' }));
     expect(onStartResearch).toHaveBeenCalledWith({ requirementsVersionId: 'legacy-v1' });
   });
 
