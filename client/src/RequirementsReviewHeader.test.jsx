@@ -32,38 +32,37 @@ test('dirty changes keep downstream actions enabled and route them through save'
   header({ childId: 'child', child: { status: 'SUCCEEDED', inputArtifactId: 'v1' } }, { dirty: true, onSave: save, onResearch: repeat, onFinal: finalize });
   expect(screen.getByText('В черновике есть несохранённые изменения')).toHaveAttribute('role', 'status');
   const saveButton = screen.getByRole('button', { name: 'Сохранить черновик' });
-  expect(saveButton).toHaveClass('bg-indigo-600');
+  expect(saveButton).not.toHaveClass('bg-indigo-600');
   const finalizeButton = screen.getByRole('button', { name: 'Завершить подготовку' });
   expect(finalizeButton).toBeEnabled();
   fireEvent.click(finalizeButton);
   expect(finalize).toHaveBeenCalledOnce();
-  screen.getByRole('button', { name: 'Ещё ▾' }).parentElement.open = true;
-  fireEvent.click(screen.getByRole('button', { name: 'Сохранить и запустить AI-исследование' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Запустить AI-исследование' }));
   await waitFor(() => expect(repeat).toHaveBeenCalledWith('v2'));
   expect(save).toHaveBeenCalledOnce();
 });
 
-test('first review prioritizes saving and blocks research if saving fails', async () => {
+test('first review promotes research and blocks its launch if saving fails', async () => {
   const save = vi.fn().mockResolvedValue(null);
   const research = vi.fn();
   header({}, { version: null, onSave: save, onResearch: research });
   expect(screen.getByRole('status')).toHaveTextContent('Черновик ещё не сохранён');
-  expect(screen.getByRole('button', { name: 'Сохранить черновик' })).toHaveClass('bg-indigo-600');
+  expect(screen.getByRole('button', { name: 'Сохранить черновик' })).toBeEnabled();
+  const launch = screen.getByRole('button', { name: 'Запустить AI-исследование' });
+  expect(launch).toHaveClass('bg-indigo-600');
+  expect(launch).toHaveAccessibleDescription('Черновик сохранится перед запуском.');
   expect(screen.getByRole('button', { name: 'Завершить подготовку' })).toHaveClass('border-slate-300');
-  const disclosure = screen.getByRole('button', { name: 'Ещё ▾' }).parentElement;
-  disclosure.open = true;
-  expect(screen.queryByRole('button', { name: 'Скачать DOCX' })).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: 'Сохранить и запустить AI-исследование' }));
+  expect(screen.queryByRole('button', { name: 'Ещё ▾' })).not.toBeInTheDocument();
+  fireEvent.click(launch);
   await save.mock.results[0].value;
   expect(research).not.toHaveBeenCalled();
-  expect(disclosure).not.toHaveAttribute('open');
 });
 
-test('a clean saved version shows a saved chip with timestamp and final as primary', () => {
+test('a clean saved version shows a saved chip with timestamp and research as primary', () => {
   header({});
   expect(screen.getByText(/Черновик сохранён · /)).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /Сохранить/ })).not.toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'Завершить подготовку' })).toHaveClass('bg-indigo-600');
+  expect(screen.getByRole('button', { name: 'Запустить AI-исследование' })).toHaveClass('bg-indigo-600');
   expect(screen.getByRole('button', { name: 'Завершить подготовку' })).toBeEnabled();
 });
 
@@ -111,6 +110,5 @@ test('a remote-version conflict blocks saving and downstream actions without dis
   expect(screen.getByRole('button', { name: 'Сохранить черновик' })).toBeDisabled();
   expect(screen.getByRole('button', { name: 'Сохранить черновик' })).not.toHaveClass('bg-indigo-600');
   expect(screen.getByRole('button', { name: 'Завершить подготовку' })).toBeDisabled();
-  screen.getByRole('button', { name: 'Ещё ▾' }).parentElement.open = true;
-  expect(screen.getByRole('button', { name: 'Сохранить и запустить AI-исследование' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Запустить AI-исследование' })).toBeDisabled();
 });

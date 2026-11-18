@@ -32,10 +32,11 @@ export function researchPresentation({ childId, child, versionId, submitting = f
   return { active, previous, current, status, openPrimary: Boolean(childId && (active || (current && child?.status === 'SUCCEEDED'))), openLabel: child?.status === 'SUCCEEDED' ? 'Посмотреть предложения AI' : 'Открыть AI-исследование' };
 }
 
-export function reviewPrimary({ dirty, saved, busy, research, submitting, conflict }) {
+export function reviewPrimary({ needsSave, busy, research, submitting, conflict, canLaunch }) {
   if (conflict) return 'conflict';
   if (submitting && !research.openPrimary) return 'starting';
-  if (busy || dirty || !saved) return 'save';
-  if (research.openPrimary) return 'open';
-  return 'final';
+  if (busy) return 'save';
+  if (research.openPrimary && (research.active || !needsSave)) return 'open';
+  if (canLaunch) return 'research';
+  return needsSave ? 'save' : 'final';
 }

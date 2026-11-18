@@ -221,7 +221,7 @@ function WorkflowStepper({ currentStage = 1, completedStage = 0, skippedStages =
   const stages = [
     ['Контекст', 'Опишите бизнес-задачу'],
     ['Требования', 'Проверьте декомпозицию'],
-    ['AI-исследование', 'Необязательный шаг'],
+    ['AI-исследование', 'Проверьте предложения AI'],
     ['Финальная версия', 'Сохраните результат'],
   ];
   const completedConnectorCount = Math.min(stages.length - 1, Math.max(0, completedStage));
@@ -251,8 +251,8 @@ function WorkflowStepper({ currentStage = 1, completedStage = 0, skippedStages =
             <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${circleTone}`}>{complete && !isCurrent ? <Check className="h-3.5 w-3.5" /> : number}</span>
             <span className="min-w-0 max-w-full">
               <span className={`${compact ? "sr-only sm:not-sr-only sm:bg-[var(--reqai-canvas)]" : "hidden sm:block sm:bg-[var(--reqai-canvas)]"} truncate text-xs font-semibold leading-4 ${labelTone}`}>{title}</span>
-              {number === 3
-                ? <span className="block text-[11px] leading-4 text-slate-600">{skipped ? 'Пропущено' : 'По желанию'}</span>
+              {skipped
+                ? <span className="block text-[11px] leading-4 text-slate-600">Пропущено</span>
                 : <span className="sr-only">{subtitle}</span>}
             </span>
           </li>;
@@ -956,7 +956,7 @@ function BabokRegistryResult({ value, latestVersion, onSave, onStartResearch, on
       {pendingDeletion && <ReviewDialog label="Удаление требования" onClose={() => setPendingDeletion(null)}><h2 className="text-lg font-bold">Удалить {pendingDeletion.id}?</h2><p className="my-3">Связанные записи: {pendingDeletion.affectedIds.join(', ') || 'нет'}. Связей в схеме: {pendingDeletion.links}. Ссылки на удалённое требование будут убраны. До сохранения удаление можно отменить.</p><div className="flex gap-3"><button className="rounded-lg border p-3" onClick={() => setPendingDeletion(null)}>Не удалять</button><button className="rounded-lg bg-red-700 text-white p-3" onClick={confirmDeletion}>Подтвердить удаление</button></div></ReviewDialog>}
       {lastDeletion && <p role="status" className="rounded-xl bg-amber-50 p-3">Удалено {lastDeletion.id}. <button className="font-semibold text-indigo-700 underline p-2" onClick={undoDeletion}>Отменить удаление</button></p>}
       {validationError && <p role="alert" className="text-sm text-red-700">{validationError.id}: {validationError.message}</p>}
-      {compact && !finalMode ? <RequirementsReviewHeader version={latestVersion} dirty={hasUnsavedChanges} busy={busy} researchBusy={researchBusy} reopenWarning={cascadeReopenedIds} onSave={() => saveRegistry()} onResearch={(savedVersionId) => onStartResearch?.({ requirementsVersionId: savedVersionId })} onFinal={() => saveRegistry({ ...review.state.decisions, skippedResearch: true })} /> : <>
+      {compact && !finalMode ? <RequirementsReviewHeader version={latestVersion} dirty={hasUnsavedChanges} busy={busy} researchBusy={researchBusy} reopenWarning={cascadeReopenedIds} onSave={() => saveRegistry()} onResearch={onStartResearch && ((savedVersionId) => onStartResearch({ requirementsVersionId: savedVersionId }))} onFinal={() => saveRegistry({ ...review.state.decisions, skippedResearch: true })} /> : <>
       <div className="rounded-xl border border-slate-200 bg-white p-4 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex items-center gap-3 min-w-0">
           {hasSavedVersion && !hasUnsavedChanges && <span className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0"><Check className="w-4 h-4" /></span>}
@@ -1067,7 +1067,7 @@ function DecompositionResult({ value, latestVersion, onSave, onStartResearch, on
     <ReviewDraftProvider review={review} submit={saveReview} busy={busy}><div className="space-y-3">
       <LegacyDeletionNotice deletion={deletion} />
       {validationError && <p role="alert">{validationError.id}: {validationError.message}</p>}
-      <RequirementsReviewHeader version={latestVersion} dirty={hasUnsavedChanges} busy={busy} researchBusy={researchBusy} onSave={() => saveReview()} onResearch={(savedVersionId) => onStartResearch({ requirementsVersionId: savedVersionId })} onFinal={() => saveReview({ ...review.state.decisions, skippedResearch: true })} />
+      <RequirementsReviewHeader version={latestVersion} dirty={hasUnsavedChanges} busy={busy} researchBusy={researchBusy} onSave={() => saveReview()} onResearch={onStartResearch && ((savedVersionId) => onStartResearch({ requirementsVersionId: savedVersionId }))} onFinal={() => saveReview({ ...review.state.decisions, skippedResearch: true })} />
       <RequirementTypeFilter columns={REQUIREMENT_COLUMNS} groups={requirements} value={typeFilter} onChange={setTypeFilter}><RequirementComposerMenu columns={REQUIREMENT_COLUMNS} onChoose={setTypeFilter} /></RequirementTypeFilter>
       {Object.values(requirements).every((items) => !items.length) && <p className="text-sm text-slate-600">Требований пока нет. Выберите тип, чтобы добавить требование.</p>}
       <div aria-label="Категории требований" className="grid gap-4 grid-cols-1">

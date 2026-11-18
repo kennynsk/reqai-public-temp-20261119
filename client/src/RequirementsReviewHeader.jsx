@@ -10,30 +10,35 @@ export default function RequirementsReviewHeader({ version, dirty, busy, researc
   const saved = Boolean(version?.versionId);
   const needsSave = !saved || dirty;
   const research = researchPresentation({ ...context, versionId: version?.versionId });
-  const primary = reviewPrimary({ dirty, saved, busy, research, submitting: context.submitting, conflict: context.conflict });
+  const canLaunch = Boolean(onResearch && !research.active);
+  const repeatInMenu = canLaunch && research.openPrimary && !needsSave;
+  const primary = reviewPrimary({ needsSave, busy, research, submitting: context.submitting, conflict: context.conflict, canLaunch });
   const gateBlocked = Boolean(context.conflict || busy || researchBusy || research.active);
   const gateHint = context.conflict ? 'Разрешите конфликт версий' : busy ? 'Подождите завершения операции' : researchBusy || research.active ? 'Дождитесь завершения AI-исследования' : '';
   const savedAt = formatRuDateTime(version?.createdAt);
   const versionStatus = !saved ? 'Черновик ещё не сохранён' : dirty ? 'В черновике есть несохранённые изменения' : `Черновик сохранён${savedAt ? ` · ${savedAt}` : ''}`;
   const buttonClass = (key) => `min-h-10 rounded-lg border px-4 py-2 text-sm font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:cursor-not-allowed disabled:opacity-50 ${primary === key ? 'border-transparent bg-indigo-600 text-white hover:bg-indigo-700' : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-100'}`;
+  const launchHintId = `${statusId}-launch`;
 
-  async function startResearch(event) {
-    const menu = event.currentTarget.closest('details');
-    menu.open = false;
-    menu.querySelector('summary').focus();
+  async function startResearch() {
     const savedVersion = needsSave ? await onSave() : version;
     if (savedVersion?.versionId) onResearch(savedVersion.versionId);
   }
 
-  const researchAction = !research.active && onResearch && <button
+  const repeatAction = repeatInMenu && <button
     type="button"
     className="flex items-center gap-2 rounded-lg px-3 py-2.5 text-left font-semibold text-slate-700 hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-indigo-500 disabled:opacity-50"
     aria-describedby={statusId}
     disabled={gateBlocked}
-    onClick={startResearch}
+    onClick={(event) => {
+      const menu = event.currentTarget.closest('details');
+      menu.open = false;
+      menu.querySelector('summary').focus();
+      startResearch();
+    }}
   >
     <Sparkles aria-hidden="true" className="h-4 w-4 shrink-0" />
-    {needsSave ? 'Сохранить и запустить AI-исследование' : research.current ? 'Запустить AI-исследование повторно' : 'Запустить AI-исследование'}
+    Запустить AI-исследование повторно
   </button>;
 
   return <header className="space-y-2" aria-label="Работа с требованиями">
@@ -41,15 +46,19 @@ export default function RequirementsReviewHeader({ version, dirty, busy, researc
       <div>
         <h1 className="text-2xl font-bold text-slate-900">Требования</h1>
         <p id={statusId} role="status" className="mt-1 text-sm text-slate-600">{gateHint || versionStatus}</p>
+        {(needsSave || (busy && !context.submitting)) && <button type="button" className={`mt-2 ${buttonClass('save')}`} disabled={busy || Boolean(context.conflict)} onClick={onSave}>
+          {busy ? <><Loader2 aria-hidden="true" className="mr-2 inline h-4 w-4 animate-spin" />Сохраняем…</> : 'Сохранить черновик'}
+        </button>}
       </div>
-      <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto" aria-label="Действия с требованиями">
-        {busy && !context.submitting
-          ? <button type="button" disabled className={buttonClass('save')}><Loader2 aria-hidden="true" className="mr-2 inline h-4 w-4 animate-spin" />Сохраняем…</button>
-          : needsSave && <button type="button" className={buttonClass('save')} disabled={Boolean(context.conflict)} onClick={onSave}>Сохранить черновик</button>}
-        {context.submitting && !context.childId && <button type="button" disabled className={buttonClass('starting')}><Loader2 aria-hidden="true" className="mr-2 inline h-4 w-4 animate-spin" />Запускаем AI-исследование…</button>}
-        {context.childId && <button type="button" className={buttonClass('open')} disabled={busy} onClick={context.onOpenResearch}>{research.openLabel}</button>}
-        <button type="button" className={buttonClass('final')} aria-describedby={statusId} disabled={gateBlocked} onClick={onFinal}>Завершить подготовку</button>
-        {(saved || researchAction) && <ResultExportAction triggerLabel="Ещё">{researchAction}</ResultExportAction>}
+      <div className="space-y-1">
+        <div className="flex flex-wrap items-center gap-2" aria-label="Действия с требованиями">
+          {canLaunch && !repeatInMenu && <button type="button" className={buttonClass('research')} aria-describedby={needsSave && !gateBlocked ? launchHintId : statusId} disabled={gateBlocked} onClick={startResearch}>Запустить AI-исследование</button>}
+          {context.submitting && !context.childId && <button type="button" disabled className={buttonClass('starting')}><Loader2 aria-hidden="true" className="mr-2 inline h-4 w-4 animate-spin" />Запускаем AI-исследование…</button>}
+          {context.childId && <button type="button" className={buttonClass('open')} disabled={busy} onClick={context.onOpenResearch}>{research.openLabel}</button>}
+          <button type="button" className={buttonClass('final')} aria-describedby={statusId} disabled={gateBlocked} onClick={onFinal}>Завершить подготовку</button>
+          {saved && <ResultExportAction triggerLabel="Ещё">{repeatAction}</ResultExportAction>}
+        </div>
+        {canLaunch && needsSave && !gateBlocked && <p id={launchHintId} className="text-xs text-slate-600">Черновик сохранится перед запуском.</p>}
       </div>
     </div>
     {context.source}

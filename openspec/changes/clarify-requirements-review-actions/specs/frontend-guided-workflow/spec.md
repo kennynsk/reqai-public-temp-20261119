@@ -7,7 +7,7 @@ After a successful decomposition, the frontend SHALL make the generated requirem
 #### Scenario: User enters requirements review
 
 - **WHEN** the first review opens after decomposition
-- **THEN** the page shows «Черновик ещё не сохранён» and shows «Сохранить черновик» with the outlined «Завершить подготовку» action beside it
+- **THEN** the page shows «Черновик ещё не сохранён» beside the draft action and offers «Запустить AI-исследование» as the primary action with «Завершить подготовку» beside it
 
 #### Scenario: User creates a final version directly
 
@@ -27,21 +27,21 @@ After a successful decomposition, the frontend SHALL make the generated requirem
 #### Scenario: Reviewed version has not been saved
 
 - **WHEN** the current requirements have no persisted working version
-- **THEN** export formats are unavailable and the optional research action explicitly includes saving
+- **THEN** export formats are unavailable and the header states that the draft will be saved before research starts
 
 #### Scenario: Reviewed version is ready to finish
 
 - **WHEN** a working version is saved with no pending edits and no active or completed research for that version takes priority
-- **THEN** «Завершить подготовку» is primary and optional research is reachable from «Ещё»
+- **THEN** «Запустить AI-исследование» is primary and «Завершить подготовку» remains visible next to it
 
 ### Requirement: Clear action and visual hierarchy
 
-The compact review SHALL show at most one emphasized action for the current state. Saving takes priority while there is no saved version or when edits are pending. For a clean working version, creating the final version is primary unless opening active or completed research takes priority. The step indicator SHALL visibly label research as optional or skipped. The «Ещё» disclosure SHALL group research launch and available saved-version export formats. Active-job and conflict guards SHALL continue to apply.
+The compact review SHALL show at most one emphasized action for the current state. Starting research SHALL be primary when available, with opening active research or completed research for the clean version taking priority. The draft action SHALL stay near the draft status and direct finalization SHALL remain available beside the research action subject to existing guards. The step indicator SHALL label research «Пропущено» after direct finalization. The «Ещё» disclosure SHALL group saved-version export formats and the repeat action for completed research for the clean version. Active-job and conflict guards SHALL continue to apply.
 
 #### Scenario: Requirements contain unsaved changes
 
 - **WHEN** the working version has pending edits
-- **THEN** the header shows «В черновике есть несохранённые изменения» and prioritizes «Сохранить черновик»
+- **THEN** the header shows «В черновике есть несохранённые изменения» with «Сохранить черновик» next to the status
 
 #### Scenario: Reviewed requirements are saved
 
@@ -50,13 +50,13 @@ The compact review SHALL show at most one emphasized action for the current stat
 
 #### Scenario: User chooses AI research from a draft
 
-- **WHEN** the user selects «Сохранить и запустить AI-исследование»
+- **WHEN** the user selects «Запустить AI-исследование»
 - **THEN** research starts only after the current working version is saved successfully and is linked to that saved version
 
 #### Scenario: User opens additional actions
 
 - **WHEN** a working version exists and the user opens «Ещё»
-- **THEN** available research actions and saved-version export formats are reachable, and exporting while edits are pending uses the existing version selection confirmation
+- **THEN** saved-version export formats are reachable, and exporting while edits are pending uses the existing version selection confirmation
 
 #### Scenario: User opens completed research
 

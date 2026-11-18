@@ -6,6 +6,7 @@
 - [x] 1.4 Show only links absent from the tree in the browser and verify both layouts.
 - [x] 1.5 Release the revised BABOK evidence rule, separate inferred links from completeness, and verify question and source access.
 - [x] 1.6 Use draft terminology for the save action and status, and name the finalization action «Завершить подготовку».
+- [x] 1.7 Show the research launch as the next action and keep direct finalization visible.
 
 ## 2. Verification
 

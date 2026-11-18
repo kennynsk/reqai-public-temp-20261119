@@ -395,8 +395,7 @@ describe('AsyncJobWorkspace presentational branches', () => {
     fireEvent.change(within(functional).getByRole('textbox', { name: 'Новое требование: Функциональные требования' }), { target: { value: 'Черновая функция' } });
     fireEvent.click(screen.getByRole('button', { name: 'Сохранить черновик' }));
     expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ baseVersionId: null, requirements: expect.objectContaining({ business: expect.arrayContaining([expect.objectContaining({ text: 'Новая цель' })]), functional: expect.arrayContaining([expect.objectContaining({ text: 'Черновая функция' })]) }) }));
-    screen.getByRole('button', { name: 'Ещё ▾' }).parentElement.open = true;
-    expect(screen.getByRole('button', { name: 'Сохранить и запустить AI-исследование' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Запустить AI-исследование' })).toBeEnabled();
     expect(onStartResearch).not.toHaveBeenCalled();
   });
 
@@ -438,7 +437,6 @@ describe('AsyncJobWorkspace presentational branches', () => {
     const latestVersion = { versionId: 'registry-v1', registry, decisions: {}, createdAt: new Date().toISOString() };
     render(<BabokRegistryResult value={registry} latestVersion={latestVersion} onSave={onSave} onStartResearch={onStartResearch} onDirtyChange={onDirtyChange} />);
     expect(screen.getByRole('status', { name: '' })).toHaveTextContent(/^Черновик сохранён ·/);
-    screen.getByRole('button', { name: 'Ещё ▾' }).parentElement.open = true;
     fireEvent.click(screen.getByRole('button', { name: 'Запустить AI-исследование' }));
     expect(onStartResearch).toHaveBeenCalledWith({ requirementsVersionId: 'registry-v1' });
     fireEvent.click(screen.getByRole('button', { name: 'Завершить подготовку' }));
@@ -521,7 +519,6 @@ describe('AsyncJobWorkspace presentational branches', () => {
     render(<DecompositionResult value={{ mode: 'DECOMPOSITION', requirements }} latestVersion={{ versionId: 'legacy-v1', requirements, decisions: {}, createdAt: new Date().toISOString() }} onSave={vi.fn()} onStartResearch={onStartResearch} onDirtyChange={vi.fn()} />);
     fireEvent.change(screen.getByRole('combobox', { name: 'Тип требований' }), { target: { value: 'functional' } });
     expect(screen.getByRole('combobox', { name: 'Тип требований' })).toHaveValue('functional');
-    screen.getByRole('button', { name: 'Ещё ▾' }).parentElement.open = true;
     fireEvent.click(screen.getByRole('button', { name: 'Запустить AI-исследование' }));
     expect(onStartResearch).toHaveBeenCalledWith({ requirementsVersionId: 'legacy-v1' });
   });

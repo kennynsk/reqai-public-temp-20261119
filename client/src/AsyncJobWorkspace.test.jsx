@@ -220,8 +220,7 @@ test('labels pending edits and makes saving explicit before AI research', async 
   await openSavedRoomReview();
   expect(screen.getByRole('button', { name: 'Сохранить черновик' })).toBeInTheDocument();
   expect(screen.queryByText(/^Черновик сохранён ·/)).not.toBeInTheDocument();
-  screen.getByRole('button', { name: 'Ещё ▾' }).parentElement.open = true;
-  expect(screen.getByRole('button', { name: 'Сохранить и запустить AI-исследование' })).toBeEnabled();
+  expect(screen.getByRole('button', { name: 'Запустить AI-исследование' })).toBeEnabled();
   expect(screen.getByRole('button', { name: 'Завершить подготовку' })).toBeEnabled();
   expect(screen.getByRole('button', { name: 'Сохранить черновик' })).toBeEnabled();
 });
@@ -406,7 +405,7 @@ test('shows the guided workflow and hides expert settings by default', async () 
   const steps = screen.getByRole('list', { name: 'Этапы подготовки требований' });
   expect(within(steps).getByText('Контекст')).toBeInTheDocument();
   expect(within(steps).getByText('AI-исследование')).toBeInTheDocument();
-  expect(screen.getByText('По желанию')).toBeInTheDocument();
+  expect(within(steps).queryByText('По желанию')).not.toBeInTheDocument();
   expectBusinessStage(1);
   expect(screen.getByText('Настройки AI')).toBeInTheDocument();
   expect(screen.getByRole('combobox', { name: 'Модель', hidden: true })).not.toBeVisible();
@@ -628,7 +627,7 @@ test('does not expose retired standalone launchers', async () => {
   expect(screen.getByRole('button', { name: 'Декомпозировать требования' })).toBeInTheDocument();
 });
 
-test('saves reviewed decomposition and starts linked research inside requirements workspace', async () => {
+test('launching research from the requirements workspace saves pending edits before starting the job', async () => {
   const content = JSON.stringify({ mode: 'DECOMPOSITION', decomposition: [{ content: {
     business: [{ id: 'BT-1', text: 'Снизить срок обработки' }], functional: [{ id: 'FT-1', text: 'Автоматизировать проверку' }], nonfunctional: [],
   } }] });
@@ -652,8 +651,7 @@ test('saves reviewed decomposition and starts linked research inside requirement
   expect(screen.queryByText('Результат задачи')).not.toBeInTheDocument();
   fireEvent.click(contextSummary);
   expect(screen.getByRole('textbox', { name: 'Бизнес-контекст' })).toBeVisible();
-  screen.getByRole('button', { name: 'Ещё ▾' }).parentElement.open = true;
-  const researchButton = screen.getByRole('button', { name: 'Сохранить и запустить AI-исследование' });
+  const researchButton = screen.getByRole('button', { name: 'Запустить AI-исследование' });
   expect(researchButton).toBeEnabled();
   expect(researchButton.closest('header')).toHaveAttribute('aria-label', 'Работа с требованиями');
   expect(screen.queryByRole('tablist', { name: 'Категории требований' })).not.toBeInTheDocument();
@@ -672,19 +670,20 @@ test('saves reviewed decomposition and starts linked research inside requirement
   fireEvent.click(within(businessColumn).getByRole('button', { name: 'Редактировать' }));
   fireEvent.change(screen.getByLabelText('Текст требования BT-1'), { target: { value: 'Снизить срок обработки до одного дня' } });
   fireEvent.click(screen.getByRole('button', { name: 'Готово' }));
-  expect(screen.getByRole('button', { name: 'Сохранить черновик' })).toHaveClass('bg-indigo-600');
-  expect(researchButton).not.toHaveClass('bg-emerald-600');
-  fireEvent.click(screen.getByRole('button', { name: 'Сохранить черновик' }));
-  expect(await screen.findByText(/Черновик сохранён ·/)).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Сохранить черновик' })).not.toHaveClass('bg-indigo-600');
+  expect(researchButton).toHaveClass('bg-indigo-600');
   fireEvent.click(screen.getByLabelText('Настройки AI'));
   fireEvent.click(screen.getByRole('switch', { name: 'Независимая проверка (критик)' }));
-  screen.getByRole('button', { name: 'Ещё ▾' }).parentElement.open = true;
+  expect(mocks.saveRequirementsVersion).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: 'Запустить AI-исследование' }));
   await waitFor(() => expect(mocks.researchRequirements).toHaveBeenCalledWith('version-1', { model: 'GC-Max', temperature: 0.2, reasoning: 'disabled', criticEnabled: false }));
   expect(await screen.findByRole('heading', { name: 'AI-исследование требований' })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Отменить' })).toBeInTheDocument();
   expect(mocks.researchRequirements).toHaveBeenCalledTimes(1);
   expect(mocks.saveRequirementsVersion).toHaveBeenCalledTimes(1);
+  expect(mocks.saveRequirementsVersion).toHaveBeenCalledWith(expect.objectContaining({
+    requirements: expect.objectContaining({ business: [expect.objectContaining({ text: 'Снизить срок обработки до одного дня' })] }),
+  }));
   expect(screen.getByRole('button', { name: 'Подготовка требований' })).toHaveAttribute('aria-current', 'page');
 });
 
@@ -973,13 +972,11 @@ test('localizes an active-job admission rejection and restores the linked resear
 
   render(<AsyncJobWorkspace />);
   await selectHistoryEntry('Подготовка требований');
-  (await screen.findByRole('button', { name: 'Ещё ▾' })).parentElement.open = true;
   const researchButton = await screen.findByRole('button', { name: 'Запустить AI-исследование' });
   fireEvent.click(researchButton);
 
   expect(await screen.findByText('Другая задача уже выполняется. Дождитесь её завершения и попробуйте снова.')).toBeInTheDocument();
   expect(screen.queryByText(/USER_ACTIVE_JOB_LIMIT|Active job limit reached for user/)).not.toBeInTheDocument();
-  screen.getByRole('button', { name: 'Ещё ▾' }).parentElement.open = true;
   expect(screen.getByRole('button', { name: 'Запустить AI-исследование' })).toBeEnabled();
   expect(mocks.researchRequirements).toHaveBeenCalledTimes(1);
 });
