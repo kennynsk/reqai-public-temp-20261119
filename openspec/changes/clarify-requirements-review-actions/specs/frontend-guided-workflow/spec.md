@@ -122,8 +122,8 @@ The linked-research screen SHALL expose direct navigation to the parent requirem
 
 #### Scenario: User returns from linked research
 
-- **WHEN** the user selects «К требованиям» while viewing linked research
-- **THEN** the workspace uses the parent requirements task route and applies the existing unsaved-changes confirmation if applicable
+- **WHEN** the user selects «Вернуться в реестр требований» while viewing linked research
+- **THEN** the workspace opens the registry of the parent requirements task and applies the existing unsaved-changes confirmation if applicable
 
 #### Scenario: User is ready to finalize research results
 

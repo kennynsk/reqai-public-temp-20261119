@@ -792,9 +792,10 @@ test('keeps the selected parent on a linked research event and follows only an e
   expect(subscriptions[0].signal.aborted).toBe(true);
   expect(subscriptions[1].signal.aborted).toBe(true);
   expect(subscriptions[2].signal.aborted).toBe(false);
-  fireEvent.click(screen.getByRole('button', { name: 'К требованиям' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Вернуться в реестр требований' }));
   await waitFor(() => expectBusinessStage(2));
   expect(window.location.pathname).toBe('/tasks/parent-job');
+  expect(await screen.findByRole('region', { name: 'Бизнес-требования' })).toHaveTextContent('Цель');
 });
 
 test('loads the job from a direct permanent URL and ignores conflicting legacy selection', async () => {
@@ -1086,7 +1087,7 @@ test('restores the original business task for a directly opened linked research 
   expect(screen.getByText('Результаты AI-исследования')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Принять улучшение: Система должна напоминать руководителю о заявке' })).toHaveAttribute('aria-pressed', 'true');
 
-  fireEvent.click(screen.getByRole('button', { name: 'К требованиям' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Вернуться в реестр требований' }));
   const confirmation = screen.getByRole('dialog', { name: 'Несохранённые изменения' });
   expect(within(confirmation).getByRole('button', { name: 'Сохранить финальную версию и перейти' })).toBeEnabled();
   fireEvent.click(within(confirmation).getByRole('button', { name: 'Остаться' }));
