@@ -40,7 +40,7 @@ export default function ResearchInsightWorkspace({
     categoryMeta,
     enhancements: getEnhancements(insight),
     fallbackId: `insight-${index + 1}`,
-  })), [categoryMeta, getEnhancements, insights]);
+  })).sort((a, b) => Number(b.enhancements.length > 0) - Number(a.enhancements.length > 0)), [categoryMeta, getEnhancements, insights]);
   const [activeFilter, setActiveFilter] = useReviewUiState('researchCategory', 'all');
   const [selectedInsightId, setSelectedInsightId] = useReviewUiState('researchSelection', () => presentations[0]?.id || null);
   const [decisionFilter, setDecisionFilter] = useReviewUiState('researchDecision', 'all');
@@ -115,6 +115,7 @@ export default function ResearchInsightWorkspace({
                       <span className="shrink-0 text-xs font-bold text-slate-500">{applicabilityLabel(insight.applicability)}{insight.applicability != null ? ' · AI' : ''}</span>
                     </span>
                     <span className="reqai-title-clamp mt-1 text-sm font-semibold leading-5 text-slate-900">{insight.title}</span>
+                    {insight.enhancements.length > 0 && <span className="mt-1 block text-xs font-medium text-indigo-700">Предложения: {insight.enhancements.length}</span>}
                   </span>
                 </div>
               </button>;
@@ -153,7 +154,10 @@ export default function ResearchInsightWorkspace({
             <div className="border-t border-slate-200 px-4 pb-4">{renderEvidence(selected)}</div>
           </details>}
 
-          {selected.enhancements.length === 0 && <p className="mt-5 border-t border-slate-100 pt-5 text-sm text-slate-500">В этом результате AI не предложил готовых требований для добавления в реестр.</p>}
+          {selected.enhancements.length === 0 && <div className="mt-5 space-y-1 border-t border-slate-100 pt-5 text-sm text-slate-600">
+            <p className="font-semibold">Аналитический вывод</p>
+            {selected.noEnhancementReason && <p>{selected.noEnhancementReason}</p>}
+          </div>}
           {selected.enhancements.length > 0 && <div className="mt-5 space-y-3 border-t border-slate-100 pt-5">
             <div><h3 className="text-base font-bold text-slate-900">Предлагаемые изменения</h3><p className="mt-1 text-sm text-slate-500">Проверьте новые требования и изменения существующих перед применением к черновику.</p></div>
             {selected.enhancements.filter((item) => decisionFilter === 'all' || (decisions[item.key] || 'pending') === decisionFilter).map((enhancement, index) => renderEnhancement(enhancement, selected, index))}

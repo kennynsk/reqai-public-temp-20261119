@@ -1105,7 +1105,7 @@ test('does not turn historical insight summaries into requirements', async () =>
   await selectHistoryEntry('AI-исследование требований');
   const insightCards = await screen.findByRole('region', { name: 'Результаты AI-исследования: список и детали' });
   expect(within(insightCards).getByText('Обработка может занимать больше допустимого времени.')).toBeVisible();
-  expect(within(insightCards).getByText('В этом результате AI не предложил готовых требований для добавления в реестр.')).toBeVisible();
+  expect(within(insightCards).getByText('Аналитический вывод')).toBeVisible();
   expect(within(insightCards).queryByRole('button', { name: /Принять улучшение:/ })).not.toBeInTheDocument();
 });
 

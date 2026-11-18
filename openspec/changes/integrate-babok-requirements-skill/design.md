@@ -138,6 +138,8 @@ requirements автоматически.
 
 ### 7. Research compatibility через target-type registry
 
+Профиль исследования 2.16.0 требует объяснить вывод без предложений и проверяет, что применимое изменение из текста оформлено предложением. Используется существующий контракт результата с полем noEnhancementReason для аналитических выводов.
+
 Linked research получает immutable BABOK version как input. `relatedTo` и
 enhancements валидируются по полному набору BABOK IDs и сохраняют target type
 в decision lineage. Legacy research results продолжают использовать старые

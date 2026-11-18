@@ -144,6 +144,7 @@ export function buildInsightPresentation(insight, { categoryMeta = {}, enhanceme
     title: textValue(raw.title) || 'Без названия',
     summary: textValue(raw.summary).replace(/^Знания модели\s*\(без внешней проверки\)\s*:\s*/iu, ''),
     detail: textValue(raw.detail),
+    noEnhancementReason: textValue(raw.noEnhancementReason),
     applicability: normalizeApplicability(raw.applicability),
     sourceTypes: idList(raw.source_types),
     relatedTo: idList(raw.relatedTo),

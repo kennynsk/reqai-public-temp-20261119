@@ -21,6 +21,7 @@
 - [x] 3.2 Preserve immutable base-version links and manual decision metadata for BABOK review and subsequent revisions.
 - [x] 3.3 Validate linked research inputs against a saved BABOK version and expose the complete BABOK identifier set to research activities.
 - [x] 3.4 Adapt the requirements-insights contract and normalization to preserve BABOK `relatedTo` identifiers and enhancement target types while retaining legacy research compatibility.
+- [x] 3.5 Qualify research proposal coverage and explain findings without proposals in profile 2.16.0.
 
 ## 4. Frontend BABOK review workflow
 

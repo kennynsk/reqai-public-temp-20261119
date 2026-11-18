@@ -369,6 +369,44 @@ test('a repaired research response still passes semantic audit before publicatio
   assert.equal(h.saved[0].insights.length, 5);
 });
 
+test('actionable research repairs unexplained findings and converts a narrative change into a proposal', async () => {
+  const draft = fiveDirections();
+  for (const insight of draft.insights) {
+    insight.enhancements = [];
+    insight.noEnhancementReason = 'Нужно подтвердить, будет ли эта возможность входить в объём работ.';
+  }
+  const trend = draft.insights[0];
+  const { noEnhancementReason, ...trendWithoutReason } = trend;
+  const improved = { ...trendWithoutReason, enhancements: [corrected] };
+  const h = harness('RESEARCH', (request) => {
+    const prompt = request.messages.at(-1).content;
+    if (request.stepId === 'requirements-insights') return { insights: [trendWithoutReason, ...draft.insights.slice(1)] };
+    if (request.stepId === 'requirements-insights:repair') {
+      assert.match(prompt, /needs a non-empty noEnhancementReason/);
+      return draft;
+    }
+    if (request.stepId.includes(':semantic-repair:')) {
+      assert.match(prompt, /MISSING_REQUIREMENT_PROPOSAL/);
+      return { baseRevision: prompt.match(/"baseRevision":"([a-f0-9]{16})"/)[1], insights: [improved] };
+    }
+    const firstAudit = request.stepId.endsWith(':audit:0');
+    const narrative = JSON.parse(prompt.split('narrativeCandidates:\n')[1]);
+    return {
+      ...compactChecks(request, firstAudit ? [] : [{ key: `${trend.id}:0`, type: 'BR', record: corrected }], 'RESEARCH'),
+      narrativeRevision: narrative.revision,
+      insightChecks: narrative.records.map(({ key }) => ({
+        key, factsSupported: true, hypothesesLabelled: true, answersPreserved: true,
+        issues: firstAudit && key === trend.id ? ['MISSING_REQUIREMENT_PROPOSAL'] : [],
+      })),
+    };
+  }, '2.16.0');
+  await h.handlers.generateRequirementsInsights(h.input);
+  assert.deepEqual(h.saved[0].insights[0].enhancements, [corrected]);
+  assert.equal(h.saved[0].insights[0].noEnhancementReason, undefined);
+  assert.equal(h.saved[0].insights[1].noEnhancementReason, noEnhancementReason);
+  assert.equal(h.saved[0].semanticValidation.status, 'PASSED');
+});
+
 test('research without the critic still repairs malformed JSON before saving all five directions', async () => {
   const h = harness('RESEARCH', (request) => request.stepId.endsWith(':repair') ? fiveDirections() : '{"insights":[', '2.15.0');
   h.input.configurationSnapshot.criticEnabled = false;

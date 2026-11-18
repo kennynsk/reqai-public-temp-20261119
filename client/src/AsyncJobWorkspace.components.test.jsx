@@ -821,6 +821,6 @@ describe('AsyncJobWorkspace presentational branches', () => {
   const value = { mode: 'REQUIREMENTS_INSIGHTS', baseRegistry: registry, insights: [{ id: 'analysis-only', category: 'trends', title: 'Отраслевая практика', summary: 'Банки консолидируют программы', enhancements }] };
   render(<SessionContext.Provider value={{ view: 'insights', requestView: vi.fn() }}><BabokRequirementsInsightsResult value={value} latestVersion={{ registry, decisions: {} }} onSaveFinal={vi.fn()} onDirtyChange={vi.fn()} /></SessionContext.Provider>);
   expect(screen.getByText('Банки консолидируют программы')).toBeVisible();
-  expect(screen.getByText('В этом результате AI не предложил готовых требований для добавления в реестр.')).toBeVisible();
+  expect(screen.getByText('Аналитический вывод')).toBeVisible();
   expect(screen.queryByRole('button', { name: /Принять улучшение:/ })).not.toBeInTheDocument();
 });

@@ -41,6 +41,18 @@ function renderWorkspace(insights) {
   />);
 }
 
+test('opens proposals before analytical findings and shows the explanation of an empty proposal list', () => {
+  renderWorkspace([
+    { id: 'trend', category: 'trends', title: 'Обзор практики', enhancements: [], noEnhancementReason: 'Сначала нужно согласовать канал уведомлений.' },
+    { id: 'risk', category: 'risks', title: 'Повторная отправка', enhancements: [{ text: 'Повторить отправку после восстановления канала.' }] },
+  ]);
+  expect(screen.getByRole('heading', { name: 'Повторная отправка' })).toBeVisible();
+  expect(screen.getByText('Предложения: 1')).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: /Обзор практики/ }));
+  expect(screen.getByText('Аналитический вывод')).toBeVisible();
+  expect(screen.getByText('Сначала нужно согласовать канал уведомлений.')).toBeVisible();
+});
+
 test('keeps the selected result detail complete while filtering the split view', () => {
   const insights = [
     {

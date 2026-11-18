@@ -129,3 +129,9 @@ The linked-research screen SHALL expose direct navigation to the parent requirem
 
 - **WHEN** linked research results are visible
 - **THEN** the action for saving or opening the final version is available at the top and uses the existing save and acknowledgement flow
+
+#### Scenario: Some research findings have concrete requirement changes
+
+- **WHEN** linked research contains both proposals and findings without proposals
+- **THEN** the interface lists findings with proposals first and selects one by default
+- **AND** it labels findings without proposals «Аналитический вывод» and shows the explanation when available

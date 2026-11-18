@@ -228,6 +228,19 @@ the resulting decision lineage.
 - **THEN** the child research job is linked to that exact version and every
   returned relationship or enhancement identifies its BABOK target type
 
+#### Scenario: Research recommends a concrete requirement change
+
+- **WHEN** a finding recommends new behavior, a quality criterion or a measurable change to an existing business goal
+- **THEN** the research output contains a structured add or replace proposal for review
+- **AND** the independent semantic audit requests repair if that proposal appears only in the narrative
+
+#### Scenario: A finding needs no requirement change yet
+
+- **WHEN** a finding is already covered or depends on a decision that prevents a concrete proposal
+- **THEN** an empty proposal array is allowed with a specific explanation
+- **AND** new research results with an unexplained empty proposal array trigger structured response repair
+
+
 ### Requirement: Backward-compatible historical results
 
 Completed results created before the BABOK profile release SHALL remain
