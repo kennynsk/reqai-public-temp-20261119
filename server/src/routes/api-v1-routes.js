@@ -17,7 +17,7 @@ function asyncRoute(handler) {
 }
 
 function requireUuid(value, field = 'jobId') {
-  if (!UUID_PATTERN.test(value || '')) throw badRequest('VALIDATION_ERROR', `${field} must be a UUID`, { field });
+  if (typeof value !== 'string' || !UUID_PATTERN.test(value)) throw badRequest('VALIDATION_ERROR', `${field} must be a UUID`, { field });
   return value;
 }
 
@@ -129,6 +129,7 @@ export function createApiV1Router({ config, services = {} }) {
       q: req.query.q,
       groupBy: req.query.groupBy,
       type: req.query.type,
+      parentJobId: req.query.parentJobId === undefined ? undefined : requireUuid(req.query.parentJobId, 'parentJobId'),
     }));
   }));
 

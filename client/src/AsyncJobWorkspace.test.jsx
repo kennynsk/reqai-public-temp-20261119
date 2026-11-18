@@ -723,10 +723,43 @@ test('finishes requirements without AI research and switches category layout', a
   expect(await screen.findByRole('heading', { name: 'Финальная версия требований' })).toBeInTheDocument();
   expect(screen.queryByText('AI-исследование пропущено. Итоговые формулировки можно редактировать вручную.')).not.toBeInTheDocument();
   expectBusinessStage(4);
-  expect(screen.getByText('Пропущено')).toBeInTheDocument();
+  expect(await screen.findByText('Пропущено')).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'К результатам AI-исследования' })).not.toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Добавить AI-исследование' })).toBeInTheDocument();
   expect(screen.getByLabelText('Финальные требования по категориям')).toHaveClass('grid-cols-1');
+});
+
+test.each([
+  ['final-v1', 'Посмотреть предложения AI'],
+  ['draft-v1', 'AI-исследование предыдущей версии'],
+])('restores completed research of %s when a newer attempt was cancelled', async (versionId, openLabel) => {
+  const parent = { jobId: 'parent-job', type: 'DECOMPOSITION', mode: 'DECOMPOSITION', status: 'SUCCEEDED', outcome: 'COMPLETE' };
+  const research = { parentJobId: parent.jobId, type: 'RESEARCH', mode: 'REQUIREMENTS_INSIGHTS' };
+  const completed = { ...research, jobId: 'completed-research', status: 'SUCCEEDED', inputArtifactId: versionId };
+  const cancelled = { ...research, jobId: 'cancelled-research', status: 'CANCELLED', inputArtifactId: 'final-v1' };
+  const registry = makeBabokRegistry();
+  window.history.replaceState({}, '', '/tasks/parent-job');
+  mocks.listJobs.mockImplementation(async ({ parentJobId, status }) => ({
+    items: parentJobId === parent.jobId ? [status === 'SUCCEEDED' ? completed : cancelled] : [],
+  }));
+  mocks.getJob.mockImplementation(async (id) => ({ [parent.jobId]: parent, [completed.jobId]: completed, [cancelled.jobId]: cancelled })[id]);
+  mocks.getResult.mockImplementation(async (id) => ({ jobId: id, resultArtifactId: 'result', ...(id === parent.jobId ? parent : completed) }));
+  mocks.getResultContent.mockImplementation(async (id) => JSON.stringify(id === parent.jobId ? registry : {
+    mode: 'REQUIREMENTS_INSIGHTS', inputRequirementsVersionId: versionId, baseRegistry: registry, baseDecisions: {}, agentInsights: [],
+  }));
+  mocks.listRequirementsVersions.mockImplementation(async (id) => ({ items: id === parent.jobId ? [{ versionId: 'final-v1' }] : [] }));
+  mocks.getRequirementsVersion.mockResolvedValue({ versionId: 'final-v1', sourceJobId: parent.jobId, registry, decisions: { skippedResearch: true } });
+
+  render(<AsyncJobWorkspace />);
+  const open = await screen.findByRole('button', { name: openLabel });
+  expectBusinessStage(4);
+  expect(screen.getByText('Есть результаты')).toBeInTheDocument();
+  expect(screen.queryByText('Пропущено')).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Добавить AI-исследование' })).not.toBeInTheDocument();
+  expect(Boolean(screen.queryByRole('button', { name: 'Исследовать эту версию' }))).toBe(versionId !== 'final-v1');
+  fireEvent.click(open);
+  await waitFor(() => expect(window.location.pathname).toBe('/tasks/completed-research'));
+  expect(mocks.researchRequirements).not.toHaveBeenCalled();
 });
 
 test('receives remote versions on a completed job without overwriting local unsaved edits', async () => {
@@ -768,9 +801,14 @@ test('keeps the selected parent on a linked research event and follows only an e
   let onEvent;
   const subscriptions = [];
   localStorage.setItem('reqai.viewedJob', 'parent-job');
-  mocks.listJobs.mockResolvedValue({ items: [], nextCursor: null });
+  const running = { jobId: 'research-job', parentJobId: 'parent-job', type: 'RESEARCH', mode: 'REQUIREMENTS_INSIGHTS', status: 'RUNNING', progress: 20 };
+  let linkedStarted = false;
+  mocks.listJobs.mockImplementation(async ({ parentJobId, status }) => ({
+    items: linkedStarted && parentJobId === 'parent-job' && !status ? [running] : [],
+    nextCursor: null,
+  }));
   mocks.getJob.mockImplementation(async (id) => id === 'research-job'
-    ? { jobId: 'research-job', parentJobId: 'parent-job', type: 'RESEARCH', mode: 'REQUIREMENTS_INSIGHTS', status: 'RUNNING', progress: 20 }
+    ? running
     : { jobId: 'parent-job', type: 'DECOMPOSITION', mode: 'DECOMPOSITION', status: 'SUCCEEDED', outcome: 'COMPLETE', progress: 100 });
   mocks.getResult.mockResolvedValue({ jobId: 'parent-job', type: 'DECOMPOSITION', outcome: 'COMPLETE', resultArtifactId: 'artifact-parent', modelAttempts: [] });
   mocks.getResultContent.mockResolvedValue(JSON.stringify({ mode: 'DECOMPOSITION', decomposition: [{ content: requirementsValue }] }));
@@ -781,6 +819,7 @@ test('keeps the selected parent on a linked research event and follows only an e
   await act(() => onEvent({ eventType: 'requirements.version-created', jobId: 'another-job' }));
   expect(mocks.listRequirementsVersions).toHaveBeenCalledTimes(1);
 
+  linkedStarted = true;
   await act(() => onEvent({ eventType: 'linked-research.created', jobId: 'parent-job', linkedJobId: 'research-job' }));
   expect(window.location.pathname).toBe('/tasks/parent-job');
   expect(screen.getByText('Цель')).toBeInTheDocument();

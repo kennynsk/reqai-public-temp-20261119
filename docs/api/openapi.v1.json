@@ -68,13 +68,15 @@
           { "name": "status", "in": "query", "schema": { "$ref": "#/components/schemas/JobStatus" } },
           {"name":"q","in":"query","schema":{"type":"string","maxLength":200}},
           {"name":"groupBy","in":"query","schema":{"type":"string","enum":["workflow"]}},
-          {"name":"type","in":"query","schema":{"$ref":"#/components/schemas/JobType"}}
+          {"name":"type","in":"query","schema":{"$ref":"#/components/schemas/JobType"}},
+          { "name": "parentJobId", "in": "query", "description": "Return direct child jobs in the ungrouped list.", "schema": { "type": "string", "format": "uuid" } }
         ],
         "responses": {
           "200": {
             "description": "Tenant and user scoped job history",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JobPage" } } }
           },
+          "400": { "$ref": "#/components/responses/BadRequest" },
           "401": { "$ref": "#/components/responses/Unauthorized" }
         }
       }

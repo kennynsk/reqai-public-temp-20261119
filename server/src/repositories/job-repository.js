@@ -38,7 +38,7 @@ export class JobRepository {
     });
   }
 
-  async listVisible({ tenantId, ownerUserId = null, status = null, beforeCreatedAt = null, beforeId = null, limit = 20, q = '', type = null }) {
+  async listVisible({ tenantId, ownerUserId = null, status = null, beforeCreatedAt = null, beforeId = null, limit = 20, q = '', type = null, parentJobId = null }) {
     return withTenantTransaction(this.pool, tenantId, async (client) => {
       const result = await client.query(
         `SELECT * FROM ${this.schema}.jobs
@@ -48,9 +48,10 @@ export class JobRepository {
            AND ($4::timestamptz IS NULL OR (created_at, id) < ($4, $5::uuid))
            AND ($7='' OR strpos(lower(COALESCE(title,'') || ' ' || search_summary),lower($7))>0)
            AND ($8::text IS NULL OR type=$8)
+           AND ($9::uuid IS NULL OR parent_job_id=$9)
          ORDER BY created_at DESC, id DESC
          LIMIT $6`,
-        [tenantId, ownerUserId, status, beforeCreatedAt, beforeId, Math.min(Math.max(limit, 1), 100) + 1, q, type],
+        [tenantId, ownerUserId, status, beforeCreatedAt, beforeId, Math.min(Math.max(limit, 1), 100) + 1, q, type, parentJobId],
       );
       return result.rows;
     });

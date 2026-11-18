@@ -54,7 +54,7 @@ export default function RequirementsReviewHeader({ version, dirty, busy, researc
         <div className="flex flex-wrap items-center gap-2" aria-label="Действия с требованиями">
           {canLaunch && !repeatInMenu && <button type="button" className={buttonClass('research')} aria-describedby={needsSave && !gateBlocked ? launchHintId : statusId} disabled={gateBlocked} onClick={startResearch}>Запустить AI-исследование</button>}
           {context.submitting && !context.childId && <button type="button" disabled className={buttonClass('starting')}><Loader2 aria-hidden="true" className="mr-2 inline h-4 w-4 animate-spin" />Запускаем AI-исследование…</button>}
-          {context.childId && <button type="button" className={buttonClass('open')} disabled={busy} onClick={context.onOpenResearch}>{research.openLabel}</button>}
+          {context.childId && <button type="button" className={buttonClass('open')} disabled={busy} onClick={() => context.onOpenResearch()}>{research.openLabel}</button>}
           <button type="button" className={buttonClass('final')} aria-describedby={statusId} disabled={gateBlocked} onClick={onFinal}>Завершить подготовку</button>
           {saved && <ResultExportAction triggerLabel="Ещё">{repeatAction}</ResultExportAction>}
         </div>

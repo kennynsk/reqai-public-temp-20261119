@@ -62,17 +62,20 @@ export function createJobQueryService({ jobRepository, auditRepository, config }
   }
 
   return {
-    async list({ auth, cursor, limit = 20, status, q, groupBy, type }) {
+    async list({ auth, cursor, limit = 20, status, q, groupBy, type, parentJobId }) {
       requireRepository();
       if (q !== undefined && (typeof q !== 'string' || q.length > 200)) throw new ApiError({ status: 400, code: 'VALIDATION_ERROR', message: 'q must contain at most 200 characters' });
       if (groupBy !== undefined && groupBy !== 'workflow') throw new ApiError({ status: 400, code: 'VALIDATION_ERROR', message: 'groupBy must be workflow' });
+      if (parentJobId && groupBy) throw new ApiError({ status: 400, code: 'VALIDATION_ERROR', message: 'parentJobId requires an ungrouped job list' });
       if (type !== undefined && !['DECOMPOSITION', 'RESEARCH'].includes(type)) throw new ApiError({ status: 400, code: 'VALIDATION_ERROR', message: 'type is invalid' });
       if (status && !JOB_STATUSES.has(status)) throw new ApiError({ status: 400, code: 'VALIDATION_ERROR', message: 'status is invalid' });
       const parsedLimit = Number(limit);
       if (!Number.isInteger(parsedLimit) || parsedLimit < 1 || parsedLimit > 100) {
         throw new ApiError({ status: 400, code: 'VALIDATION_ERROR', message: 'limit must be an integer from 1 to 100' });
       }
-      const queryKey = groupBy || q || type ? JSON.stringify([groupBy || null, q?.trim() || '', type || null, status || null]) : undefined;
+      const queryKey = groupBy || q || type || parentJobId
+        ? JSON.stringify([groupBy || null, q?.trim() || '', type || null, status || null, ...(parentJobId ? [parentJobId] : [])])
+        : undefined;
       const filters = {
         tenantId: auth.tenantId,
         ownerUserId: ownerScope(auth),
@@ -80,6 +83,7 @@ export function createJobQueryService({ jobRepository, auditRepository, config }
         limit: parsedLimit,
         ...(q !== undefined ? { q: q.trim() } : {}),
         ...(type ? { type } : {}),
+        ...(parentJobId ? { parentJobId } : {}),
         ...decodeCursor(cursor, queryKey),
       };
       const grouped = groupBy === 'workflow' ? await jobRepository.listWorkflows(filters) : null;

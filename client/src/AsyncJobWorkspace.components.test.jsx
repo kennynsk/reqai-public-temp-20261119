@@ -72,7 +72,7 @@ function babokRecord(type = 'NFR', overrides = {}) {
 
 describe('AsyncJobWorkspace presentational branches', () => {
   test('renders compact and desktop workflow states, including skipped stages', () => {
-    render(<WorkflowStepper currentStage={4} completedStage={2} skippedStages={[3]} />);
+    render(<WorkflowStepper currentStage={4} completedStage={2} researchStatus="Пропущено" />);
     const workflow = screen.getByRole('region', { name: 'Прогресс подготовки требований' });
     expect(within(workflow).getByText('Этап 4 из 4')).toBeInTheDocument();
     expect(within(workflow).getAllByText('Пропущено').length).toBeGreaterThan(0);
@@ -83,7 +83,7 @@ describe('AsyncJobWorkspace presentational branches', () => {
     expect(screen.getByText('Этап 99 из 4')).toBeInTheDocument();
     expect(screen.getByText('Опишите бизнес-задачу')).toBeInTheDocument();
     cleanup();
-    render(<WorkflowStepper currentStage={3} completedStage={1} skippedStages={[3]} />);
+    render(<WorkflowStepper currentStage={3} completedStage={1} researchStatus="Пропущено" />);
     expect(screen.getAllByText('Пропущено').length).toBeGreaterThan(0);
   });
 

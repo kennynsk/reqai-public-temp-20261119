@@ -217,7 +217,26 @@ function jobIdFromPath(pathname = window.location.pathname) {
   return match ? decodeURIComponent(match[1]) : null;
 }
 
-function WorkflowStepper({ currentStage = 1, completedStage = 0, skippedStages = [], compact = false }) {
+function FinalResearchActions({ versionId, disabled, onStart }) {
+  const { child, completedResearch, researchLookupState, onOpenResearch } = useContext(RequirementsReviewContext);
+  const active = researchPresentation({ child }).active;
+  const previous = completedResearch && completedResearch.inputArtifactId !== versionId;
+  const actionClass = 'min-h-10 rounded-lg border px-4 py-2 text-sm font-semibold focus-visible:ring-2 focus-visible:ring-indigo-500 disabled:opacity-50';
+  return <>
+    {completedResearch && <button type="button" className={`${actionClass} border-indigo-200 text-indigo-700 hover:bg-indigo-50`} onClick={() => onOpenResearch(completedResearch.jobId)}>
+      {previous ? 'AI-исследование предыдущей версии' : 'Посмотреть предложения AI'}
+    </button>}
+    {active && <button type="button" className={`${actionClass} border-slate-200 text-slate-700 hover:bg-slate-50`} onClick={() => onOpenResearch(child.jobId)}>Открыть текущее AI-исследование</button>}
+    {researchLookupState === 'error' && <p role="status" className="text-xs text-slate-600">Не удалось проверить статус AI-исследования. Обновите страницу.</p>}
+    {(!researchLookupState || researchLookupState === 'ready') && !active && (!completedResearch || previous) &&
+      <button type="button" className={`${actionClass} flex items-center gap-2 border-slate-200 text-slate-700 hover:bg-slate-50`} disabled={disabled} onClick={() => onStart({ requirementsVersionId: versionId })}>
+        <Sparkles aria-hidden="true" className="h-4 w-4 shrink-0" />
+        {previous ? 'Исследовать эту версию' : 'Добавить AI-исследование'}
+      </button>}
+  </>;
+}
+
+function WorkflowStepper({ currentStage = 1, completedStage = 0, researchStatus, compact = false }) {
   const stages = [
     ['Контекст', 'Опишите бизнес-задачу'],
     ['Требования', 'Проверьте декомпозицию'],
@@ -238,8 +257,8 @@ function WorkflowStepper({ currentStage = 1, completedStage = 0, skippedStages =
         {completedConnectorCount > 0 && <li aria-hidden="true" className="pointer-events-none absolute left-[12.5%] top-3 hidden h-px bg-emerald-300 md:block" style={{ width: `${(completedConnectorCount / (stages.length - 1)) * 75}%` }} />}
         {stages.map(([title, subtitle], index) => {
           const number = index + 1;
-          const skipped = skippedStages.includes(number);
-          const complete = number <= completedStage && !skipped;
+          const stageStatus = number === 3 ? researchStatus : null;
+          const complete = number <= completedStage && (!stageStatus || stageStatus === 'Есть результаты');
           const isCurrent = number === currentStage;
           const circleTone = isCurrent
             ? 'bg-indigo-600 text-white ring-2 ring-indigo-50'
@@ -251,8 +270,8 @@ function WorkflowStepper({ currentStage = 1, completedStage = 0, skippedStages =
             <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${circleTone}`}>{complete && !isCurrent ? <Check className="h-3.5 w-3.5" /> : number}</span>
             <span className="min-w-0 max-w-full">
               <span className={`${compact ? "sr-only sm:not-sr-only sm:bg-[var(--reqai-canvas)]" : "hidden sm:block sm:bg-[var(--reqai-canvas)]"} truncate text-xs font-semibold leading-4 ${labelTone}`}>{title}</span>
-              {skipped
-                ? <span className="block text-[11px] leading-4 text-slate-600">Пропущено</span>
+              {stageStatus
+                ? <span className="block text-[11px] leading-4 text-slate-600">{stageStatus}</span>
                 : <span className="sr-only">{subtitle}</span>}
             </span>
           </li>;
@@ -971,7 +990,7 @@ function BabokRegistryResult({ value, latestVersion, onSave, onStartResearch, on
             <button aria-label={researchBusy ? 'AI-исследование выполняется…' : 'Улучшить требования с помощью AI'} aria-describedby="babok-save-status" title={!hasSavedVersion || hasUnsavedChanges ? 'Сначала сохраните текущую версию требований' : researchBusy ? 'Дождитесь завершения текущего AI-исследования' : 'Необязательный следующий шаг'} disabled={busy || researchBusy || !hasSavedVersion || hasUnsavedChanges} onClick={() => onStartResearch?.({ requirementsVersionId: latestVersion.versionId })} className="h-10 shrink-0 whitespace-nowrap px-4 py-2 border border-indigo-200 bg-white text-indigo-700 text-sm font-semibold rounded-lg hover:bg-indigo-50 disabled:border-slate-200 disabled:text-slate-600 disabled:bg-slate-100 flex items-center justify-center gap-2">{researchBusy ? <><Loader2 className="w-4 h-4 animate-spin" />AI-исследование выполняется…</> : <><Sparkles className="w-4 h-4" />Улучшить с AI</>}</button>
             <button aria-label="Перейти к финальной версии" aria-describedby="babok-save-status" title={!hasSavedVersion || hasUnsavedChanges ? 'Сначала сохраните текущую версию требований' : 'Пропустить необязательное AI-исследование'} disabled={busy || researchBusy || !hasSavedVersion || hasUnsavedChanges} onClick={() => saveRegistry({ ...(latestVersion?.decisions || {}), skippedResearch: true })} className="h-10 shrink-0 whitespace-nowrap px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed">К финальной версии</button>
           </>}
-          {finalMode && onStartResearch && <button disabled={busy || researchBusy || hasUnsavedChanges} onClick={() => onStartResearch({ requirementsVersionId: latestVersion.versionId })} className="h-10 shrink-0 whitespace-nowrap px-4 py-2 border border-indigo-200 rounded-lg text-sm font-semibold text-indigo-700 hover:bg-indigo-50 disabled:bg-slate-100 disabled:text-slate-600 flex items-center justify-center gap-2">{researchBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}Добавить AI-исследование</button>}
+          {finalMode && onStartResearch && <FinalResearchActions versionId={latestVersion.versionId} disabled={busy || researchBusy || hasUnsavedChanges} onStart={onStartResearch} />}
         </>}</div>
       </div></>}
       {compact && !finalMode && coverage.incomplete && !openQuestionCount && <RequirementsReadiness coverage={coverage} onQuestions={() => setReviewSection('questions')} onLinks={() => setReviewSection('links')} />}
@@ -1321,7 +1340,7 @@ function FinalRequirementsEditor({ latestVersion, onSave, onShowInsights, onShow
             {!hasUnsavedChanges && <ResultExportAction />}
             {saveInitialVersion && !hasUnsavedChanges && <button disabled={busy} onClick={saveReview} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white disabled:bg-slate-300">Сохранить финальную версию</button>}
             {onShowInsights && <button onClick={onShowInsights} className="px-4 py-2 border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-2"><ArrowLeft className="w-4 h-4" />К результатам AI-исследования</button>}
-            {researchSkipped && onStartResearch && <button disabled={busy || researchBusy || hasUnsavedChanges} onClick={() => onStartResearch({ requirementsVersionId: latestVersion.versionId })} className="px-4 py-2 border border-indigo-200 rounded-lg text-sm font-semibold text-indigo-700 hover:bg-indigo-50 disabled:bg-slate-100 disabled:text-slate-600 flex items-center gap-2">{researchBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}Добавить AI-исследование</button>}
+            {researchSkipped && onStartResearch && <FinalResearchActions versionId={latestVersion.versionId} disabled={busy || researchBusy || hasUnsavedChanges} onStart={onStartResearch} />}
           </div>
         </div>
       </div>
@@ -1773,8 +1792,9 @@ export default function AsyncJobWorkspace() {
   const saveRequestRef = useRef(null);
   const saveInFlightRef = useRef(false);
   const [pendingNavigation, setPendingNavigation] = useState(null);
-  const [linkedChildId, setLinkedChildId] = useState(null);
   const [linkedChild, setLinkedChild] = useState(null);
+  const [completedResearch, setCompletedResearch] = useState(null);
+  const [researchLookupState, setResearchLookupState] = useState('loading');
   const [rebasePreview, setRebasePreview] = useState(null);
   const [restoredReviewState, setRestoredReviewState] = useState(null);
   const loadedResultJobIdRef = useRef(null);
@@ -1797,17 +1817,21 @@ export default function AsyncJobWorkspace() {
   const [sseObservations, setSseObservations] = useState([]);
   const debugTriggerRef = useRef(null);
   const routeJobIdRef = useRef(routeJobId);
-  const jobId = job?.jobId;
+  const { jobId, type: jobType } = job || {};
   const parsedResult = safeJson(resultContent);
   const legacyJob = Boolean(job && RETIRED_MODES.has(job.mode));
   const decompositionReady = Boolean(result && !legacyJob && (job?.type === 'DECOMPOSITION' || parsedResult?.mode === 'DECOMPOSITION'));
   const linkedResearch = job?.mode === 'REQUIREMENTS_INSIGHTS' || parsedResult?.mode === 'REQUIREMENTS_INSIGHTS';
   const activeLinkedResearch = Boolean(job?.type === 'RESEARCH' && job?.mode === 'REQUIREMENTS_INSIGHTS' && !TERMINAL.has(job.status));
-  const childResearchActive = researchPresentation({ childId: linkedChildId, child: linkedChild }).active;
+  const childResearchActive = researchPresentation({ child: linkedChild }).active;
+  const linkedChildId = childResearchActive ? linkedChild.jobId : null;
+  const reviewResearch = childResearchActive ? linkedChild : completedResearch || linkedChild;
   const linkedResearchBusy = linkedResearchSubmitting || activeLinkedResearch || childResearchActive;
   const linkedResearchComplete = linkedResearch && job?.status === 'SUCCEEDED';
   const finalVersionReady = linkedResearchComplete && requirementsVersions.some((item) => item.sourceJobId === result?.jobId);
   const directFinalReady = Boolean(decompositionReady && requirementsVersions[0]?.sourceJobId === result?.jobId && requirementsVersions[0]?.decisions?.skippedResearch);
+  const researchStatus = { loading: 'Статус уточняется', ready: 'Пропущено', error: 'Статус недоступен' }[researchLookupState];
+  const finalResearchStatus = directFinalReady && (completedResearch ? 'Есть результаты' : childResearchActive ? 'Выполняется' : researchStatus);
   const currentStage = linkedResearch && activeReviewView && activeReviewView !== 'final' ? 3 : finalVersionReady || directFinalReady ? 4 : linkedResearch ? 3 : decompositionReady ? 2 : 1;
   const researchParentId = linkedResearch && currentStage === 3 ? job?.parentJobId : null;
   const completedStage = finalVersionReady || directFinalReady ? 4 : linkedResearchComplete ? 3 : linkedResearch ? 2 : decompositionReady ? 1 : 0;
@@ -2026,7 +2050,7 @@ export default function AsyncJobWorkspace() {
 
   useEffect(() => {
     routeJobIdRef.current = routeJobId;
-    setLinkedChildId(null); setLinkedChild(null);
+    setLinkedChild(null); setCompletedResearch(null); setResearchLookupState('loading');
     setActiveReviewView(null);
     setRestoredReviewState(null); setRebasePreview(null);
     setDebugOpen(false); setSseObservations([]); setRouteUnavailable(false); setError('');
@@ -2081,6 +2105,28 @@ export default function AsyncJobWorkspace() {
   useEffect(() => {
     if (!jobId) return undefined;
     const controller = new AbortController();
+    let linkedLookup = 0;
+    const reconcileLinkedResearch = async () => {
+      const request = ++linkedLookup;
+      const isCurrent = () => !controller.signal.aborted && routeJobIdRef.current === jobId && request === linkedLookup;
+      const query = { parentJobId: jobId, type: 'RESEARCH', limit: 1 };
+      try {
+        const [attempts, results] = await Promise.all([
+          enterpriseApi.listJobs(query, { signal: controller.signal }),
+          enterpriseApi.listJobs({ ...query, status: 'SUCCEEDED' }, { signal: controller.signal }),
+        ]);
+        if (!isCurrent()) return;
+        const isLinked = (item) => item.parentJobId === jobId && item.mode === 'REQUIREMENTS_INSIGHTS';
+        const latest = attempts.items.find(isLinked) ?? null;
+        const completed = latest?.status === 'SUCCEEDED' ? latest : results.items.find(isLinked) ?? null;
+        setLinkedChild((current) => current?.jobId === latest?.jobId ? current : latest);
+        setCompletedResearch((current) => current && (!completed || current.createdAt > completed.createdAt) ? current : completed);
+        setResearchLookupState('ready');
+      } catch {
+        if (isCurrent()) setResearchLookupState('error');
+      }
+    };
+    if (jobType === 'DECOMPOSITION') void reconcileLinkedResearch();
     subscribeJobEvents(jobId, { signal: controller.signal, onObservation: (observation) => {
       if (routeJobIdRef.current !== jobId) return;
       setSseObservations((current) => [...current.slice(-99), observation]);
@@ -2097,9 +2143,8 @@ export default function AsyncJobWorkspace() {
         }
         return;
       }
-      if (event.eventType === 'linked-research.created' && event.linkedJobId) {
-        setLinkedChildId(event.linkedJobId);
-        setLinkedChild({ jobId: event.linkedJobId, parentJobId: jobId, inputArtifactId: event.requirementsVersionId });
+      if (event.eventType === 'linked-research.created' && event.linkedJobId && jobType === 'DECOMPOSITION') {
+        await reconcileLinkedResearch();
         return;
       }
       const next = event.job || await enterpriseApi.getJob(jobId);
@@ -2111,13 +2156,17 @@ export default function AsyncJobWorkspace() {
       }
     } });
     return () => controller.abort();
-  }, [jobId, loadRequirementsVersions, loadResult, navigate, refresh]);
+  }, [jobId, jobType, loadRequirementsVersions, loadResult, navigate, refresh, routeRetry]);
 
   useEffect(() => {
     if (!linkedChildId || !jobId) return undefined;
     const controller = new AbortController();
     const accept = (child) => {
-      if (!controller.signal.aborted && routeJobIdRef.current === jobId && child?.jobId === linkedChildId && child.parentJobId === jobId) setLinkedChild(child);
+      if (controller.signal.aborted || routeJobIdRef.current !== jobId || child?.jobId !== linkedChildId || child.parentJobId !== jobId) return;
+      setLinkedChild((current) => current?.jobId === linkedChildId ? child : current);
+      if (child.status === 'SUCCEEDED') {
+        setCompletedResearch((current) => !current || child.createdAt >= current.createdAt ? child : current);
+      }
     };
     enterpriseApi.getJob(linkedChildId, { signal: controller.signal }).then(accept).catch(() => {});
     subscribeJobEvents(linkedChildId, { signal: controller.signal, onEvent: async (event) => {
@@ -2413,7 +2462,7 @@ export default function AsyncJobWorkspace() {
         <main className={`max-w-7xl mx-auto px-4 ${compactReview ? "py-4" : "py-6"}`}>
           {job && <section aria-label="Название задачи" className={compactReview ? "mb-2" : "mb-4"}><TaskTitle key={job.jobId} job={job} result={result} onUpdated={(metadata) => { setJob((current) => current && [current.jobId, current.metadataJobId].includes(metadata.jobId) ? ({ ...current, title: metadata.title, metadataRevision: metadata.metadataRevision }) : current); setHistoryRefreshKey((key) => key + 1); }} /></section>}
           {job && hasContextDraft && <button onClick={() => navigate(null)} className="mb-4 p-2 border rounded-lg text-sm text-indigo-700">К черновику новой задачи</button>}
-          {(contextComplete || linkedResearch) && <WorkflowStepper compact={compactReview} currentStage={currentStage} completedStage={completedStage} skippedStages={directFinalReady ? [3] : []} />}
+          {(contextComplete || linkedResearch) && <WorkflowStepper compact={compactReview} currentStage={currentStage} completedStage={completedStage} researchStatus={finalResearchStatus} />}
           {researchParentId && <button type="button" disabled={versionBusy} onClick={() => load(researchParentId)} className="mb-3 inline-flex min-h-10 items-center gap-2 rounded-lg border border-indigo-200 bg-white px-4 text-left text-sm font-semibold text-indigo-700 hover:bg-indigo-50 focus-visible:ring-2 focus-visible:ring-indigo-500 disabled:opacity-50">
             <ArrowLeft aria-hidden="true" className="h-4 w-4 shrink-0" />
             Вернуться в реестр требований
@@ -2429,18 +2478,18 @@ export default function AsyncJobWorkspace() {
             </OriginalBusinessContext>
           </section> : linkedResearch || directFinalReady ? null : <>
             <div className="mb-6"><h1 className="text-balance text-2xl md:text-3xl font-bold text-slate-900">Подготовка требований</h1></div>
-            <WorkflowStepper currentStage={currentStage} completedStage={completedStage} skippedStages={directFinalReady ? [3] : []} />
+            <WorkflowStepper currentStage={currentStage} completedStage={completedStage} researchStatus={finalResearchStatus} />
             <BusinessContextInputCard open={contextFormOpen} onOpenChange={setContextFormOpen} running={decompositionInProgress} summary={file?.name || requirements.trim()}>
               {contextFormBody}
             </BusinessContextInputCard>
           </>}
           {error && <div role="alert" className="mb-6 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg p-3 whitespace-pre-wrap">{error}</div>}
           <div className="space-y-6">
-            {linkedChildId && !compactReview && <section role="status" className="rounded-xl border border-indigo-200 bg-indigo-50 p-4"><p>Для этих требований запущено AI-исследование. Исходная версия остаётся открытой.</p><button className="px-3 py-2 font-semibold text-indigo-700" onClick={() => load(linkedChildId)}>Открыть AI-исследование</button></section>}
+            {reviewResearch && !compactReview && !directFinalReady && <section role="status" className="rounded-xl border border-indigo-200 bg-indigo-50 p-4"><p>{researchPresentation({ childId: reviewResearch.jobId, child: reviewResearch }).status}</p><button className="px-3 py-2 font-semibold text-indigo-700" onClick={() => load(reviewResearch.jobId)}>{researchPresentation({ child: reviewResearch }).openLabel}</button></section>}
             {remoteRequirementsVersions && <section role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-4 flex items-center justify-between gap-4 flex-wrap"><div><p className="text-sm font-semibold text-amber-900">Доступна новая сохранённая версия</p><p className="text-xs text-amber-700 mt-1">Она создана в другом клиенте. Текущие несохранённые изменения оставлены без изменений.</p></div><button onClick={loadRemoteRequirementsVersion} className={compactReview ? "px-4 py-2 rounded-lg bg-indigo-600 text-sm font-semibold text-white hover:bg-indigo-700" : "px-4 py-2 rounded-lg border border-amber-300 bg-white text-sm font-semibold text-amber-800 hover:bg-amber-100"}>Загрузить новую версию</button></section>}
             {progressingJob && !activeLinkedResearch && <ActiveJobPanel job={job} onCancel={cancelActiveJob} onBackground={continueInBackground} />}
             <JobStateCard job={job} onCancel={cancelActiveJob} onRetry={linkedResearch && job?.inputArtifactId ? retryResearch : undefined} retryBusy={researchRetryBusy} />
-            {result && identityReady && <RequirementsReviewContext.Provider value={{ conflict: Boolean(remoteRequirementsVersions), saveError: error, onCompareVersions: loadRemoteRequirementsVersion, childId: linkedChildId, child: linkedChild, submitting: linkedResearchSubmitting, onOpenResearch: () => load(linkedChildId), source: compactReview ? <OriginalBusinessContext compact value={requirements} loading={businessContextLoading} editable><h2 className="text-lg font-bold">Изменить бизнес-задачу</h2><p className="mb-4 text-sm text-slate-600">После изменений запустите декомпозицию повторно.</p>{contextFormBody}</OriginalBusinessContext> : null }}><ResultExportContext.Provider value={<VersionExport key={`${result.jobId}:${authEpoch}`} version={requirementsVersions[0]} isDirty={() => editorDirtyRef.current} onSave={() => editorControllerRef.current?.save?.()} />}><ResultPanel reservedIds={requirementsVersions.flatMap((version) => Object.values(version.registry?.groups || version.requirements || {}).filter(Array.isArray).flat().map((record) => record.id))} editorEpoch={editorEpoch} activeReviewView={activeReviewView} requestReviewView={requestReviewView} restoredReviewState={restoredReviewState} compareRecovery={compareRecovery} restoreRecovery={restoreRecovery} actorScope={actorScope} registerEditor={registerEditor} result={result} resultContent={resultContent} latestVersion={requirementsVersions[0] || null} businessContext={requirements} businessContextLoading={businessContextLoading} onSaveRequirements={saveRequirementsVersion} onStartResearch={startResearchFromDecomposition} onSaveFinal={saveRequirementsVersion} onDirtyChange={handleEditorDirty} busy={versionBusy} researchBusy={linkedResearchBusy} discussionEnabled={inputCapabilities.discussionAvailable !== false} /></ResultExportContext.Provider></RequirementsReviewContext.Provider>}
+            {result && identityReady && <RequirementsReviewContext.Provider value={{ conflict: Boolean(remoteRequirementsVersions), saveError: error, onCompareVersions: loadRemoteRequirementsVersion, childId: reviewResearch?.jobId, child: reviewResearch, completedResearch, researchLookupState, submitting: linkedResearchSubmitting, onOpenResearch: (id = reviewResearch?.jobId) => load(id), source: compactReview ? <OriginalBusinessContext compact value={requirements} loading={businessContextLoading} editable><h2 className="text-lg font-bold">Изменить бизнес-задачу</h2><p className="mb-4 text-sm text-slate-600">После изменений запустите декомпозицию повторно.</p>{contextFormBody}</OriginalBusinessContext> : null }}><ResultExportContext.Provider value={<VersionExport key={`${result.jobId}:${authEpoch}`} version={requirementsVersions[0]} isDirty={() => editorDirtyRef.current} onSave={() => editorControllerRef.current?.save?.()} />}><ResultPanel reservedIds={requirementsVersions.flatMap((version) => Object.values(version.registry?.groups || version.requirements || {}).filter(Array.isArray).flat().map((record) => record.id))} editorEpoch={editorEpoch} activeReviewView={activeReviewView} requestReviewView={requestReviewView} restoredReviewState={restoredReviewState} compareRecovery={compareRecovery} restoreRecovery={restoreRecovery} actorScope={actorScope} registerEditor={registerEditor} result={result} resultContent={resultContent} latestVersion={requirementsVersions[0] || null} businessContext={requirements} businessContextLoading={businessContextLoading} onSaveRequirements={saveRequirementsVersion} onStartResearch={startResearchFromDecomposition} onSaveFinal={saveRequirementsVersion} onDirtyChange={handleEditorDirty} busy={versionBusy} researchBusy={linkedResearchBusy} discussionEnabled={inputCapabilities.discussionAvailable !== false} /></ResultExportContext.Provider></RequirementsReviewContext.Provider>}
           </div>
         </main>
       )}

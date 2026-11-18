@@ -14,6 +14,7 @@ Make the next action legible while preserving the current draft, linked research
 - Build the browser's «Связи вне дерева» list from the edges actually rendered in the tree. Distinguish relations and statuses between the same endpoints. Preserve the export's existing traceability presentation.
 
 - Reuse guarded job navigation for the return from research to the parent requirements task. Place direct links to the source context and frozen requirements below the research results and move the finalization control and selected count to the results header.
+- Read the latest completed linked research from the persisted job list using the parent task and success filters. Keep its navigation available independently of the current attempt and leave the saved final version's decisions intact.
 
 ## Risks and Trade-offs
 

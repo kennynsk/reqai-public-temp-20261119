@@ -8,6 +8,7 @@
 - [x] 1.6 Use draft terminology for the save action and status, and name the finalization action «Завершить подготовку».
 - [x] 1.7 Show the research launch as the next action and keep direct finalization visible.
 - [x] 1.8 Expose stage navigation and finalization on the linked research screen.
+- [x] 1.9 Restore access to completed linked research from a directly finalized task after a later attempt is cancelled.
 
 ## 2. Verification
 

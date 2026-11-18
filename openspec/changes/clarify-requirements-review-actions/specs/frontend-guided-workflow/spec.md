@@ -36,7 +36,7 @@ After a successful decomposition, the frontend SHALL make the generated requirem
 
 ### Requirement: Clear action and visual hierarchy
 
-The compact review SHALL show at most one emphasized action for the current state. Starting research SHALL be primary when available, with opening active research or completed research for the clean version taking priority. The draft action SHALL stay near the draft status and direct finalization SHALL remain available beside the research action subject to existing guards. The step indicator SHALL label research «Пропущено» after direct finalization. The «Ещё» disclosure SHALL group saved-version export formats and the repeat action for completed research for the clean version. Active-job and conflict guards SHALL continue to apply.
+The compact review SHALL show at most one emphasized action for the current state. Starting research SHALL be primary when available, with opening active research or completed research for the clean version taking priority. The draft action SHALL stay near the draft status and direct finalization SHALL remain available beside the research action subject to existing guards. The step indicator SHALL label research «Пропущено» after direct finalization if no linked research is active or completed. The «Ещё» disclosure SHALL group saved-version export formats and the repeat action for completed research for the clean version. Active-job and conflict guards SHALL continue to apply.
 
 #### Scenario: Requirements contain unsaved changes
 
@@ -62,6 +62,12 @@ The compact review SHALL show at most one emphasized action for the current stat
 
 - **WHEN** research for the clean working version has succeeded
 - **THEN** «Посмотреть предложения AI» is the primary action and rerunning research remains a secondary choice
+
+#### Scenario: A later research attempt is cancelled after direct finalization
+
+- **WHEN** the directly finalized task has a completed linked research and a later attempt is cancelled
+- **THEN** reopening the task offers direct access to the completed result and the progress indicator shows «Есть результаты»
+- **AND** a result based on a previous requirements version is labeled accordingly
 
 #### Scenario: Linked AI research is starting or active
 

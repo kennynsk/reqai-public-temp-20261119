@@ -56,6 +56,15 @@ test('ordinary user history is owner-scoped and privileged history is tenant-sco
   assert.equal(calls[1].ownerUserId, null);
 });
 
+test('child history combines parent, status and owner filters', async () => {
+  const { calls, service } = setup();
+  const auth = { tenantId: 'tenant-a', userId: 'user-a', roles: ['user'] };
+  const parentJobId = '00000000-0000-4000-8000-000000000003';
+  await service.list({ auth, parentJobId, type: 'RESEARCH', status: 'SUCCEEDED', limit: 1 });
+  assert.deepEqual(calls[0], { tenantId: 'tenant-a', ownerUserId: 'user-a', parentJobId, type: 'RESEARCH', status: 'SUCCEEDED', limit: 1 });
+  await assert.rejects(service.list({ auth, parentJobId, groupBy: 'workflow' }), { code: 'VALIDATION_ERROR' });
+});
+
 test('REST reconciliation exposes the latest milestone and execution timestamps', async () => {
   const { service } = setup();
   const job = await service.get({ auth: { tenantId: 'tenant-a', userId: 'user-a', roles: ['user'] }, jobId: row.id });
