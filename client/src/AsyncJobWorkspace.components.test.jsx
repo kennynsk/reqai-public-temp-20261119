@@ -153,14 +153,14 @@ describe('AsyncJobWorkspace presentational branches', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Отклонить улучшение: Новая проверка' }));
     fireEvent.click(screen.getByRole('button', { name: 'Удалить принятое требование' }));
     expect(screen.getByText('Выбрано улучшений: 0')).toBeInTheDocument();
-    fireEvent.click(screen.getByText('Исходные данные'));
+    fireEvent.click(screen.getByText('Материалы исследования'));
     fireEvent.click(screen.getByRole('button', { name: 'Бизнес-задача' }));
     expect(callbacks.requestView).toHaveBeenCalledWith('context', { preserveDraft: true });
     rerender(<SessionContext.Provider value={{ view: 'context', requestView: callbacks.requestView }}><RequirementsInsightsResult value={value} latestVersion={latestVersion} businessContext="Контекст" onSaveFinal={callbacks.save} onDirtyChange={callbacks.dirty} /></SessionContext.Provider>);
     expect(screen.getByRole('region', { name: 'Текст исходной бизнес-задачи' })).toHaveTextContent('Контекст');
     fireEvent.click(screen.getByRole('button', { name: 'Назад' }));
     rerender(<SessionContext.Provider value={{ view: 'insights', requestView: callbacks.requestView }}><RequirementsInsightsResult value={value} latestVersion={latestVersion} businessContext="Контекст" onSaveFinal={callbacks.save} onDirtyChange={callbacks.dirty} /></SessionContext.Provider>);
-    fireEvent.click(screen.getByText('Исходные данные'));
+    fireEvent.click(screen.getByText('Материалы исследования'));
     fireEvent.click(screen.getByRole('button', { name: 'Требования для AI' }));
     expect(callbacks.requestView).toHaveBeenCalledWith('source', { preserveDraft: true });
     rerender(<SessionContext.Provider value={{ view: 'source', requestView: callbacks.requestView }}><RequirementsInsightsResult value={value} latestVersion={latestVersion} businessContext="Контекст" onSaveFinal={callbacks.save} onDirtyChange={callbacks.dirty} /></SessionContext.Provider>);
@@ -542,7 +542,7 @@ describe('AsyncJobWorkspace presentational branches', () => {
     const callbacks = { context: vi.fn(), requirements: vi.fn(), layout: vi.fn(), open: vi.fn() };
     render(<div><SourceBusinessContextSnapshot value="" loading onBack={callbacks.context} /><SourceDataMenu onShowContext={callbacks.context} onShowRequirements={callbacks.requirements} /><OriginalBusinessContext value="" loading editable><span>Редактор</span></OriginalBusinessContext><BusinessContextInputCard open={false} onOpenChange={callbacks.open} running summary="Краткая задача"><span>Форма</span></BusinessContextInputCard><RequirementsLayoutToggle layout="rows" onChange={callbacks.layout} /></div>);
     expect(screen.getByRole('region', { name: 'Текст исходной бизнес-задачи' })).toHaveTextContent('Загружаем исходный контекст');
-    fireEvent.click(screen.getByText('Исходные данные'));
+    fireEvent.click(screen.getByText('Материалы исследования'));
     fireEvent.click(screen.getByRole('button', { name: 'Бизнес-задача' }));
     fireEvent.click(screen.getByLabelText('Исходный бизнес-контекст'));
     expect(screen.getByText('Редактор')).toBeInTheDocument();

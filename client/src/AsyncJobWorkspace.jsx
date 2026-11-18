@@ -1194,12 +1194,28 @@ function SourceBusinessContextSnapshot({ value, loading = false, onBack }) {
 
 function SourceDataMenu({ onShowContext, onShowRequirements }) {
   return <details className="relative group">
-    <summary className="list-none cursor-pointer px-4 py-2 border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-2">Исходные данные<ChevronDown className="w-4 h-4 group-open:hidden" /><ChevronUp className="w-4 h-4 hidden group-open:block" /></summary>
-    <div className="absolute right-0 top-full mt-2 w-64 rounded-xl border border-slate-200 bg-white shadow-xl p-2 z-40">
+    <summary className="list-none cursor-pointer px-4 py-2 border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-2">Материалы исследования<ChevronDown className="w-4 h-4 group-open:hidden" /><ChevronUp className="w-4 h-4 hidden group-open:block" /></summary>
+    <div className="absolute left-0 top-full z-40 mt-2 w-64 max-w-[calc(100vw-3rem)] rounded-xl border border-slate-200 bg-white p-2 shadow-xl sm:left-auto sm:right-0">
       <button onClick={onShowContext} className="w-full text-left px-3 py-2.5 rounded-lg text-sm text-slate-700 hover:bg-slate-50">Бизнес-задача</button>
       <button onClick={onShowRequirements} className="w-full text-left px-3 py-2.5 rounded-lg text-sm text-slate-700 hover:bg-slate-50">Требования для AI</button>
     </div>
   </details>;
+}
+
+function ResearchResultsHeader({ acceptedCount, busy, onSave, saveLabel, onShowContext, onShowRequirements }) {
+  return <header className="flex flex-wrap items-start justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-5">
+    <div>
+      <h1 className="text-xl font-bold text-slate-900">Результаты AI-исследования</h1>
+      <p className="mt-2 text-sm text-slate-600">Выберите полезные улучшения для финальной версии требований.</p>
+    </div>
+    <div className="space-y-2">
+      <div className="flex flex-col items-start gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+        <button type="button" disabled={busy} onClick={onSave} className="min-h-10 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:bg-slate-300">{saveLabel}</button>
+        <SourceDataMenu onShowContext={onShowContext} onShowRequirements={onShowRequirements} />
+      </div>
+      <p className="text-sm text-slate-600">Выбрано улучшений: {acceptedCount}</p>
+    </div>
+  </header>;
 }
 
 function OriginalBusinessContext({ value, loading = false, editable = false, compact = false, children }) {
@@ -1415,9 +1431,10 @@ function BabokRequirementsInsightsResult({ value, latestVersion, businessContext
   const finalVersionSaved = !review.dirty && Boolean(latestVersion?.versionId) && sameKeys(acceptedKeys, savedAcceptedKeys) && sameKeys(rejectedKeys, savedRejectedKeys);
   return (
     <ReviewDraftProvider review={review} submit={saveInsights} busy={busy}><section className="space-y-5">
-      <div className="bg-white rounded-2xl shadow-xs border border-gray-200 p-5">
-        <div className="flex items-start justify-between gap-4 flex-wrap"><div><div className="flex items-center gap-2"><Sparkles className="w-5 h-5 text-indigo-500" /><h1 className="text-xl font-bold text-gray-900">Результаты AI-исследования</h1></div><p className="text-sm text-gray-500 mt-2">Выберите полезные улучшения для финальной версии требований.</p></div><SourceDataMenu onShowContext={() => setActiveView('context')} onShowRequirements={() => setActiveView('source')} /></div>
-      </div>
+      <ResearchResultsHeader acceptedCount={acceptedKeys.length} busy={busy}
+        onSave={() => finalVersionSaved ? setActiveView('final') : saveInsights()}
+        saveLabel={finalVersionSaved ? 'К финальным требованиям' : latestVersion ? 'Сохранить новую редакцию' : 'Сохранить финальную версию'}
+        onShowContext={() => setActiveView('context')} onShowRequirements={() => setActiveView('source')} />
       <ResearchInsightWorkspace
         insights={insights}
         categoryMeta={INSIGHT_CATEGORY_META}
@@ -1427,10 +1444,6 @@ function BabokRequirementsInsightsResult({ value, latestVersion, businessContext
         renderEvidence={(insight) => <ResearchEvidence insight={insight} />}
         renderEnhancement={(enhancement, insight) => <ProposalReview key={enhancement.key} enhancement={{ ...enhancement, insightTitle: insight.title, rationale: enhancement.rationale || insight.rationale }} decision={decisions[enhancement.key]}>{(onDecision) => <InsightEnhancementDecisionRow enhancement={enhancement} decision={decisions[enhancement.key]} onDecision={onDecision} />}</ProposalReview>}
         decisions={decisions}
-        selectedCount={acceptedKeys.length}
-        saveDisabled={busy}
-        onSave={() => finalVersionSaved ? setActiveView('final') : saveInsights()}
-        saveLabel={finalVersionSaved ? 'К финальным требованиям' : latestVersion ? 'Сохранить новую редакцию' : 'Сохранить финальную версию'}
       />
     </section></ReviewDraftProvider>
   );
@@ -1494,9 +1507,10 @@ function RequirementsInsightsResult({ value, latestVersion, businessContext, bus
   const finalVersionSaved = !review.dirty && Boolean(latestVersion?.versionId) && sameKeys(acceptedKeys, savedAcceptedKeys) && sameKeys(rejectedKeys, savedRejectedKeys);
   return (
     <ReviewDraftProvider review={review} submit={saveInsights} busy={busy}><section className="space-y-5">
-      <div className="bg-white rounded-2xl shadow-xs border border-gray-200 p-5">
-        <div className="flex items-start justify-between gap-4 flex-wrap"><div><div className="flex items-center gap-2"><Sparkles className="w-5 h-5 text-indigo-500" /><h1 className="text-xl font-bold text-gray-900">Результаты AI-исследования</h1></div><p className="text-sm text-gray-500 mt-2">Выберите полезные улучшения для финальной версии требований.</p></div><SourceDataMenu onShowContext={() => setActiveView('context')} onShowRequirements={() => setActiveView('source')} /></div>
-      </div>
+      <ResearchResultsHeader acceptedCount={acceptedKeys.length} busy={busy}
+        onSave={() => finalVersionSaved ? setActiveView('final') : saveInsights()}
+        saveLabel={finalVersionSaved ? 'К финальным требованиям' : latestVersion ? 'Сохранить новую редакцию' : 'Сохранить финальную версию'}
+        onShowContext={() => setActiveView('context')} onShowRequirements={() => setActiveView('source')} />
       <ResearchInsightWorkspace
         insights={insights}
         categoryMeta={INSIGHT_CATEGORY_META}
@@ -1506,10 +1520,6 @@ function RequirementsInsightsResult({ value, latestVersion, businessContext, bus
         renderEvidence={(insight) => <ResearchEvidence insight={insight} />}
         renderEnhancement={(enhancement, insight) => <ProposalReview key={enhancement.key} enhancement={{ ...enhancement, insightTitle: insight.title, rationale: enhancement.rationale || insight.rationale }} decision={decisions[enhancement.key]}>{(onDecision) => <InsightEnhancementDecisionRow enhancement={enhancement} decision={decisions[enhancement.key]} onDecision={onDecision} />}</ProposalReview>}
         decisions={decisions}
-        selectedCount={acceptedKeys.length}
-        saveDisabled={busy}
-        onSave={() => finalVersionSaved ? setActiveView('final') : saveInsights()}
-        saveLabel={finalVersionSaved ? 'К финальным требованиям' : latestVersion ? 'Сохранить новую редакцию' : 'Сохранить финальную версию'}
       />
     </section></ReviewDraftProvider>
   );
@@ -1794,6 +1804,7 @@ export default function AsyncJobWorkspace() {
   const finalVersionReady = linkedResearchComplete && requirementsVersions.some((item) => item.sourceJobId === result?.jobId);
   const directFinalReady = Boolean(decompositionReady && requirementsVersions[0]?.sourceJobId === result?.jobId && requirementsVersions[0]?.decisions?.skippedResearch);
   const currentStage = linkedResearch && activeReviewView && activeReviewView !== 'final' ? 3 : finalVersionReady || directFinalReady ? 4 : linkedResearch ? 3 : decompositionReady ? 2 : 1;
+  const researchParentId = linkedResearch && currentStage === 3 ? job?.parentJobId : null;
   const completedStage = finalVersionReady || directFinalReady ? 4 : linkedResearchComplete ? 3 : linkedResearch ? 2 : decompositionReady ? 1 : 0;
   const handleEditorDirty = useCallback((dirty) => { editorDirtyRef.current = dirty; }, []);
 
@@ -2357,7 +2368,8 @@ export default function AsyncJobWorkspace() {
   return (
     <div className="reqai-workspace min-h-screen bg-[var(--reqai-canvas)]">
       {finalReviewPrompt && <ReviewDialog label="Открытые вопросы перед финализацией" onClose={() => { finalReviewPrompt.resolve(false); setFinalReviewPrompt(null); }}><h2 className="font-bold text-lg">В документе остаются вопросы</h2><p className="text-sm my-3">Сохранение финальной версии не означает, что все требования согласованы. Подтвердите, что сохраняете перечисленные вопросы открытыми. Они войдут в экспорт.</p><ul className="space-y-2">{finalReviewPrompt.issues.map((issue) => <li key={issue.id} className="rounded-lg border border-amber-200 p-3 text-sm">{issue.id}: {issue.text}</li>)}</ul><div className="flex gap-2 mt-4 flex-wrap"><button onClick={() => { finalReviewPrompt.resolve(false); setFinalReviewPrompt(null); }} className="p-3 rounded-lg border">Вернуться к проверке</button><button onClick={() => { finalReviewPrompt.resolve(true); setFinalReviewPrompt(null); }} className="p-3 rounded-lg bg-indigo-600 text-white">Сохранить с открытыми вопросами</button></div></ReviewDialog>}
-      {pendingNavigation && !finalReviewPrompt && <UnsavedNavigationDialog busy={versionBusy} onSave={() => resolveNavigation(true)} onDiscard={() => resolveNavigation(false)} onStay={() => setPendingNavigation(null)} />}
+      {pendingNavigation && !finalReviewPrompt && <UnsavedNavigationDialog busy={versionBusy} onSave={() => resolveNavigation(true)} onDiscard={() => resolveNavigation(false)} onStay={() => setPendingNavigation(null)}
+        saveLabel={researchParentId && pendingNavigation.id === researchParentId ? 'Сохранить финальную версию и перейти' : undefined} />}
       {rebasePreview && <ReviewDialog label="Сравнение версий" onClose={() => setRebasePreview(null)}><ReviewConflict preview={rebasePreview} onClose={() => setRebasePreview(null)} onApply={applyRemoteReview} /></ReviewDialog>}
       <nav className="bg-white/95 backdrop-blur-sm border-b border-[var(--reqai-line)] sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4">
@@ -2397,6 +2409,7 @@ export default function AsyncJobWorkspace() {
           {job && <section aria-label="Название задачи" className={compactReview ? "mb-2" : "mb-4"}><TaskTitle key={job.jobId} job={job} result={result} onUpdated={(metadata) => { setJob((current) => current && [current.jobId, current.metadataJobId].includes(metadata.jobId) ? ({ ...current, title: metadata.title, metadataRevision: metadata.metadataRevision }) : current); setHistoryRefreshKey((key) => key + 1); }} /></section>}
           {job && hasContextDraft && <button onClick={() => navigate(null)} className="mb-4 p-2 border rounded-lg text-sm text-indigo-700">К черновику новой задачи</button>}
           {(contextComplete || linkedResearch) && <WorkflowStepper compact={compactReview} currentStage={currentStage} completedStage={completedStage} skippedStages={directFinalReady ? [3] : []} />}
+          {researchParentId && <button type="button" disabled={versionBusy} onClick={() => load(researchParentId)} className="mb-3 inline-flex min-h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-indigo-500 disabled:opacity-50"><ArrowLeft aria-hidden="true" className="h-4 w-4" />К требованиям</button>}
           {showReadOnlyBusinessContext && <section className="bg-white rounded-2xl border border-slate-200 mb-5 overflow-hidden"><OriginalBusinessContext compact value={requirements} loading={businessContextLoading} /></section>}
           {activeLinkedResearch && !contextComplete ? <div className="mb-5"><ActiveJobPanel job={job} onCancel={cancelActiveJob} onBackground={continueInBackground} /></div> : contextComplete && !directFinalReady ? compactReview ? null : <section className="bg-white rounded-2xl border border-slate-200 mb-5 overflow-hidden">
             <OriginalBusinessContext value={requirements} loading={businessContextLoading} editable>
@@ -2419,7 +2432,6 @@ export default function AsyncJobWorkspace() {
             {remoteRequirementsVersions && <section role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-4 flex items-center justify-between gap-4 flex-wrap"><div><p className="text-sm font-semibold text-amber-900">Доступна новая сохранённая версия</p><p className="text-xs text-amber-700 mt-1">Она создана в другом клиенте. Текущие несохранённые изменения оставлены без изменений.</p></div><button onClick={loadRemoteRequirementsVersion} className={compactReview ? "px-4 py-2 rounded-lg bg-indigo-600 text-sm font-semibold text-white hover:bg-indigo-700" : "px-4 py-2 rounded-lg border border-amber-300 bg-white text-sm font-semibold text-amber-800 hover:bg-amber-100"}>Загрузить новую версию</button></section>}
             {progressingJob && !activeLinkedResearch && <ActiveJobPanel job={job} onCancel={cancelActiveJob} onBackground={continueInBackground} />}
             <JobStateCard job={job} onCancel={cancelActiveJob} onRetry={linkedResearch && job?.inputArtifactId ? retryResearch : undefined} retryBusy={researchRetryBusy} />
-            {linkedResearch && job?.status === 'FAILED' && job.parentJobId && <button type="button" className="rounded-lg border px-4 py-2 text-sm font-semibold text-indigo-700" onClick={() => load(job.parentJobId)}>Вернуться к сохранённым требованиям</button>}
             {result && identityReady && <RequirementsReviewContext.Provider value={{ conflict: Boolean(remoteRequirementsVersions), saveError: error, onCompareVersions: loadRemoteRequirementsVersion, childId: linkedChildId, child: linkedChild, submitting: linkedResearchSubmitting, onOpenResearch: () => load(linkedChildId), source: compactReview ? <OriginalBusinessContext compact value={requirements} loading={businessContextLoading} editable><h2 className="text-lg font-bold">Изменить бизнес-задачу</h2><p className="mb-4 text-sm text-slate-600">После изменений запустите декомпозицию повторно.</p>{contextFormBody}</OriginalBusinessContext> : null }}><ResultExportContext.Provider value={<VersionExport key={`${result.jobId}:${authEpoch}`} version={requirementsVersions[0]} isDirty={() => editorDirtyRef.current} onSave={() => editorControllerRef.current?.save?.()} />}><ResultPanel reservedIds={requirementsVersions.flatMap((version) => Object.values(version.registry?.groups || version.requirements || {}).filter(Array.isArray).flat().map((record) => record.id))} editorEpoch={editorEpoch} activeReviewView={activeReviewView} requestReviewView={requestReviewView} restoredReviewState={restoredReviewState} compareRecovery={compareRecovery} restoreRecovery={restoreRecovery} actorScope={actorScope} registerEditor={registerEditor} result={result} resultContent={resultContent} latestVersion={requirementsVersions[0] || null} businessContext={requirements} businessContextLoading={businessContextLoading} onSaveRequirements={saveRequirementsVersion} onStartResearch={startResearchFromDecomposition} onSaveFinal={saveRequirementsVersion} onDirtyChange={handleEditorDirty} busy={versionBusy} researchBusy={linkedResearchBusy} discussionEnabled={inputCapabilities.discussionAvailable !== false} /></ResultExportContext.Provider></RequirementsReviewContext.Provider>}
           </div>
         </main>
@@ -2493,7 +2505,7 @@ export {
 };
 /* eslint-enable react-refresh/only-export-components */
 
-function UnsavedNavigationDialog({ busy, onSave, onDiscard, onStay }) {
+function UnsavedNavigationDialog({ busy, onSave, onDiscard, onStay, saveLabel = 'Сохранить и перейти' }) {
   const dialog = useRef(null);
   useEffect(() => {
     const previous = document.activeElement;
@@ -2508,7 +2520,7 @@ function UnsavedNavigationDialog({ busy, onSave, onDiscard, onStay }) {
       if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
       if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
     }
-  }}><h2 className="font-bold text-lg">Есть несохранённые изменения</h2><p className="my-3 text-slate-600">Сохраните их перед переходом или явно откажитесь от правок.</p><div className="flex gap-2 flex-wrap"><button disabled={busy} onClick={onStay} className="px-4 py-2 rounded-lg border">Остаться</button><button disabled={busy} onClick={onSave} className="px-4 py-2 rounded-lg bg-indigo-600 text-white">Сохранить и перейти</button><button disabled={busy} onClick={onDiscard} className="px-4 py-2 rounded-lg text-red-700">Отбросить и перейти</button></div></section></div>;
+  }}><h2 className="font-bold text-lg">Есть несохранённые изменения</h2><p className="my-3 text-slate-600">Сохраните их перед переходом или явно откажитесь от правок.</p><div className="flex gap-2 flex-wrap"><button disabled={busy} onClick={onStay} className="px-4 py-2 rounded-lg border">Остаться</button><button disabled={busy} onClick={onSave} className="px-4 py-2 rounded-lg bg-indigo-600 text-white">{saveLabel}</button><button disabled={busy} onClick={onDiscard} className="px-4 py-2 rounded-lg text-red-700">Отбросить и перейти</button></div></section></div>;
 }
 
 function ResultPanel({ result, resultContent, latestVersion, businessContext, businessContextLoading, onSaveRequirements, onStartResearch, onSaveFinal, onDirtyChange, busy, researchBusy = false, actorScope, registerEditor, reservedIds, restoredReviewState, compareRecovery, restoreRecovery, editorEpoch, activeReviewView, requestReviewView, discussionEnabled = true }) {

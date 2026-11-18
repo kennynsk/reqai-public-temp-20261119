@@ -34,11 +34,7 @@ export default function ResearchInsightWorkspace({
   getEnhancements,
   renderEvidence,
   renderEnhancement,
-  selectedCount = 0,
   decisions = {},
-  onSave,
-  saveDisabled = false,
-  saveLabel = 'Сохранить финальную версию',
 }) {
   const presentations = useMemo(() => insights.map((insight, index) => buildInsightPresentation(insight, {
     categoryMeta,
@@ -167,10 +163,6 @@ export default function ResearchInsightWorkspace({
         </article>}
       </div>
 
-      <div className="reqai-research-save flex items-center justify-between gap-4 border-t border-slate-200 pt-4 flex-wrap">
-        <p className="font-semibold text-slate-900">Выбрано улучшений: {selectedCount}</p>
-        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto"><button type="button" disabled={saveDisabled} onClick={onSave} className="w-full rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-300 sm:w-auto">{saveLabel}</button></div>
-      </div>
     </section>
   </RequirementPreviewProvider>;
 }

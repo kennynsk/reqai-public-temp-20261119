@@ -38,8 +38,6 @@ function renderWorkspace(insights) {
     categoryMeta={categoryMeta}
     getEnhancements={(insight) => insight.enhancements}
     renderEnhancement={(enhancement) => <p key={enhancement.key}>{enhancement.text}</p>}
-    selectedCount={1}
-    onSave={() => {}}
   />);
 }
 
@@ -93,8 +91,6 @@ test('shows the empty state when the active filter no longer has results', () =>
     categoryMeta={categoryMeta}
     getEnhancements={(insight) => insight.enhancements}
     renderEnhancement={(enhancement) => <p key={enhancement.key}>{enhancement.text}</p>}
-    selectedCount={0}
-    onSave={() => {}}
   />);
 
   expect(screen.getByRole('article', { name: 'Пустой результат фильтра' })).toHaveTextContent('Нет результатов по выбранным фильтрам');

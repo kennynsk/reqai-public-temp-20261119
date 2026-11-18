@@ -113,3 +113,19 @@ The compact review SHALL show at most one emphasized action for the current stat
 
 - **WHEN** a proposed connection depends on a choice of scope or behavior absent from the source
 - **THEN** the method captures the decision as a linked gap and question, and review exposes the open gap from the relevant record
+
+## ADDED Requirements
+
+### Requirement: Direct navigation from linked research
+
+The linked-research screen SHALL expose direct navigation to the parent requirements task above the research content when the parent is known. The results header SHALL expose the current finalization action and number of accepted improvements. Source snapshots SHALL remain available through «Материалы исследования».
+
+#### Scenario: User returns from linked research
+
+- **WHEN** the user selects «К требованиям» while viewing linked research
+- **THEN** the workspace uses the parent requirements task route and applies the existing unsaved-changes confirmation if applicable
+
+#### Scenario: User is ready to finalize research results
+
+- **WHEN** linked research results are visible
+- **THEN** the action for saving or opening the final version is available at the top and uses the existing save and acknowledgement flow
