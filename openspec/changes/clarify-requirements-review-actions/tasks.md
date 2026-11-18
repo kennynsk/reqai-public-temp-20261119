@@ -2,6 +2,7 @@
 
 - [x] 1.1 Update the action hierarchy, optional research marker and shared export disclosure.
 - [x] 1.2 Consolidate open question navigation and requirement type selection.
+- [x] 1.3 Keep one AI discussion entry point on each requirement card and verify the action menu.
 
 ## 2. Verification
 

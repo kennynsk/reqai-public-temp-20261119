@@ -43,7 +43,6 @@ import {
   List,
   Layers3,
   MoreHorizontal,
-  MessageCircle,
   Pencil,
   Plus,
   Settings2,
@@ -533,14 +532,11 @@ function BabokRequirementCard({ type, requirement, requirementIndex, onEdit, onD
         <div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-1">
         {onOpenQuestion && !editing && <button type="button" onClick={() => setEditing(true)} className="rounded-lg px-3 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-50">Редактировать</button>}
         {!editing && onDiscuss && <button type="button" onClick={() => onDiscuss(requirement.id)} className="min-h-9 shrink-0 rounded-lg px-3 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-50 focus-visible:ring-2 focus-visible:ring-indigo-500">Обсудить с AI</button>}
-        {!editing && (onDiscuss || !readOnly) && <details className="relative">
+        {!editing && !readOnly && <details className="relative">
           <summary role="button" aria-label={`Действия для ${requirement.id}`} title="Действия" className="list-none cursor-pointer rounded-lg p-1.5 text-slate-600 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-indigo-500"><MoreHorizontal className="w-5 h-5" /></summary>
           <div className="absolute right-0 top-full mt-1 z-20 w-44 rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg">
-            {onDiscuss && <button type="button" onClick={(event) => { onDiscuss(requirement.id); event.currentTarget.closest('details').removeAttribute('open'); }} className="w-full rounded-lg px-3 py-2 text-left text-sm text-indigo-700 hover:bg-indigo-50 flex items-center gap-2"><MessageCircle className="w-4 h-4" />{onOpenQuestion ? 'Обсудить требование с AI' : 'Обсудить с AI'}</button>}
-            {!readOnly && <>
             {!onOpenQuestion && <button onClick={(event) => { setEditing(true); event.currentTarget.closest('details').removeAttribute('open'); }} className="w-full rounded-lg px-3 py-2 text-left text-sm text-slate-600 hover:bg-slate-50 flex items-center gap-2"><Pencil className="w-4 h-4" />Редактировать</button>}
             <button onClick={onDelete} className="w-full rounded-lg px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"><Trash2 className="w-4 h-4" />Удалить</button>
-            </>}
           </div>
         </details>}
         </div>

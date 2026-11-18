@@ -78,6 +78,11 @@ The compact review SHALL show at most one emphasized action for the current stat
 - **WHEN** no editor or add composer is open
 - **THEN** requirement wording stays prominent and item actions remain reachable from the selected requirement
 
+#### Scenario: User opens the selected requirement's actions
+
+- **WHEN** AI discussion is available and the user opens the selected requirement's action menu
+- **THEN** «Обсудить с AI» remains a single action in the requirement header and deletion remains in the menu
+
 #### Scenario: Compact BABOK registry contains open issues
 
 - **WHEN** the review has open questions

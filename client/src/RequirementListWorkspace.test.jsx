@@ -216,7 +216,7 @@ test('initial record opens its detail and preserves read-only and final-editor c
 });
 
 
-test('selected record discussion keeps the original anchor and includes edits from another record', async () => {
+test('selected record has one discussion action that keeps its anchor and includes other edits', async () => {
   const get = vi.spyOn(enterpriseApi, 'getRequirementDiscussion').mockResolvedValue({ discussionId: 'discussion', messages: [] });
   vi.spyOn(enterpriseApi, 'subscribeRequirementDiscussionEvents').mockResolvedValue(undefined);
   const send = vi.spyOn(enterpriseApi, 'sendRequirementDiscussionMessage').mockResolvedValue({ messages: [] });
@@ -224,7 +224,11 @@ test('selected record discussion keeps the original anchor and includes edits fr
   fireEvent.click(within(detail()).getByRole('button', { name: 'Редактировать' }));
   fireEvent.change(screen.getByRole('textbox', { name: 'Текст требования BR-001' }), { target: { value: 'Уточнённая цель' } });
   select('FR-001');
-  fireEvent.click(within(detail()).getByRole('button', { name: 'Обсудить требование с AI' }));
+  const card = within(detail());
+  fireEvent.click(card.getByRole('button', { name: 'Действия для FR-001' }));
+  expect(card.getByRole('button', { name: 'Удалить' })).toBeVisible();
+  expect(card.getAllByRole('button', { name: /^Обсудить .*AI$/ })).toHaveLength(1);
+  fireEvent.click(card.getByRole('button', { name: 'Обсудить с AI' }));
   await waitFor(() => expect(get).toHaveBeenCalledWith('rooms', 'FR-001', expect.any(Object)));
   fireEvent.change(screen.getByRole('textbox', { name: 'Сообщение для FR-001' }), { target: { value: 'Как уточнить?' } });
   fireEvent.click(screen.getByRole('button', { name: 'Отправить' }));
