@@ -50,33 +50,15 @@ independently reviewable requirement text.
 
 ### Requirement: Bounded model output and contract recovery
 
-The decomposition workflow SHALL snapshot a per-model output token budget and
-pass it to the provider for every extraction, repair and consolidation call.
-The default BABOK budget SHALL be `32 000` output tokens unless an explicitly
-configured model-specific value is lower or higher within the supported limit.
-
-Provider transport failures MAY use the existing bounded retry/fallback policy.
-Once a provider has returned a response, deterministic JSON or BABOK contract
-violations SHALL NOT trigger an automatic retry of the whole Temporal activity.
-The decomposition workflow MAY perform at most one separately traced repair
-pass using the original trusted context; a second invalid response SHALL mark
-the affected execution unit failed with a machine-readable reason code.
-Before validation, the application adapter MAY apply narrowly scoped,
-deterministic defaults to non-semantic fields when this does not invent a
-requirement, source citation or relationship. For example, an empty
-`context[].kind` SHALL be represented as `"контекст"` and the record quality
-lowered to `"Требует уточнения"`. An unknown or empty context quality SHALL use
-the same clarification value. Unknown context provenance SHALL use
-`"Предложено — требует подтверждения"`, and a missing context relationship list
-SHALL use `[]`. A context record MAY have `source: null` when it has no direct
-evidence; source remains mandatory for all confirmed requirement records. All
-other contract fields remain subject to the same validator.
+Decomposition SHALL snapshot and enforce per-model output budgets. Deterministic JSON or BABOK contract violations MUST NOT retry the full Temporal activity. The workflow MAY make one separately traced repair using trusted context. The adapter MAY apply narrow deterministic defaults to non-semantic fields without inventing requirements, citations or relationships.
 
 #### Scenario: Valid response completes within the output budget
 
 - **WHEN** the provider returns a valid BABOK JSON response within the configured
   budget
 - **THEN** the response is validated and persisted without an additional retry
+- **AND** every extraction, repair and consolidation call passes the snapshotted output budget to the provider
+- **AND** the BABOK default is `32 000` output tokens unless an explicitly configured per-model value is higher or lower within the supported limit
 
 #### Scenario: Contract violation is repaired once
 
@@ -85,6 +67,7 @@ other contract fields remain subject to the same validator.
 - **THEN** the workflow makes at most one separately traced repair call and
   persists the repaired response only after the same deterministic validator
   accepts it
+- **AND** the repair uses the original trusted context
 
 #### Scenario: Safe context default preserves a partial result
 
@@ -92,6 +75,7 @@ other contract fields remain subject to the same validator.
 - **THEN** the adapter applies the documented non-semantic default, marks that
   context record as requiring clarification, and does not issue a second model
   call solely for that omission
+- **AND** an empty `context[].kind` becomes `"контекст"` and its quality becomes `"Требует уточнения"`
 
 #### Scenario: Contract violation remains after repair
 
@@ -99,6 +83,15 @@ other contract fields remain subject to the same validator.
 - **THEN** the execution unit is marked failed with `OUTPUT_CONTRACT_VIOLATION`
   or a more specific contract reason and the workflow does not issue another
   automatic full extraction retry
+
+#### Scenario: Provider transport failure
+- **WHEN** the provider call fails at the transport layer
+- **THEN** the existing bounded retry and fallback policy may apply
+
+#### Scenario: Context fields lack supported values
+- **WHEN** a response has unknown or empty context quality, unknown provenance, missing relationships or a context record without direct evidence
+- **THEN** before validation, the adapter may use `"Требует уточнения"` for quality, `"Предложено — требует подтверждения"` for unknown provenance, `[]` for missing relationships and `source: null` for context with no direct evidence
+- **AND** confirmed requirements still require a source, and the same validator applies to every other contract field
 
 ### Requirement: Safe failure diagnostics
 

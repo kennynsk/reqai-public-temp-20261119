@@ -229,7 +229,7 @@ The system SHALL publish ordered durable lifecycle, linked-research and version 
 ## ADDED Requirements
 
 ### Requirement: Guided context and material input
-The context form SHALL offer a fixed-height free-form text field without prescribing the format of a business context; long content SHALL scroll instead of expanding the form automatically. File attachments SHALL begin as one compact disclosure, then reveal distinct primary, previous-requirements and reference-material roles with their limits and upload error states. The roles SHALL retain their meaning in submitted input. File attachment controls SHALL use the established application visual pattern with an icon and accessible native file inputs.
+The context form SHALL provide a fixed-height, free-form field with scrolling for long briefs. Attachments SHALL start in a compact disclosure and distinguish primary, previous-requirements and reference materials. The submitted input SHALL preserve each material role.
 
 #### Scenario: User enters a free-form brief
 - **WHEN** the user writes a business context in their own format
@@ -240,6 +240,7 @@ The context form SHALL offer a fixed-height free-form text field without prescri
 - **THEN** it displays one compact attachment action
 - **WHEN** the user opens that action
 - **THEN** they can select the primary, baseline or reference role before choosing a file
+- **AND** the expanded controls show role-specific limits and use the application’s established icon pattern and accessible native file inputs
 
 #### Scenario: Baseline and reference are attached
 - **WHEN** the user supplies previous requirements and a reference document

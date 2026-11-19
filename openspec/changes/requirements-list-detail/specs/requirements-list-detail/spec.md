@@ -5,7 +5,7 @@
 ## ADDED Requirements
 
 ### Requirement: Requirement list and selected detail
-The editable stage-two BABOK registry SHALL show type filters followed by a requirement selector and the complete details of exactly one selected requirement. Desktop viewports at or above 1024 CSS pixels SHALL place the selector to the left of the detail panel. Each selector entry SHALL expose its stable ID, type, wording excerpt and labelled quality; missing quality SHALL NOT imply readiness. The detail SHALL expose the complete wording, structured fields, provenance, original source, links, clarifications and existing record actions. Selection SHALL NOT mutate the registry.
+The editable stage-two BABOK registry SHALL place type filters above a requirement selector and the full detail of exactly one selected requirement. Each selector entry SHALL show its stable ID, type, wording excerpt and labelled quality. Missing quality MUST NOT imply readiness. Selection MUST NOT mutate the registry.
 
 #### Scenario: Registry opens
 - **WHEN** a nonempty BABOK registry opens without a requested record
@@ -14,10 +14,15 @@ The editable stage-two BABOK registry SHALL show type filters followed by a requ
 #### Scenario: User selects a requirement
 - **WHEN** the user activates an entry by pointer or keyboard
 - **THEN** the detail shows that entry, its selection is programmatically exposed, and edits and decisions are not saved or discarded by selection
+- **AND** detail includes the complete wording, structured fields, provenance, original source, links, clarifications and existing record actions
 
 #### Scenario: Missing or deleted selection
 - **WHEN** the selected record no longer belongs to the visible result set
 - **THEN** the first visible record is selected, or a labelled empty detail appears if the set is empty
+
+#### Scenario: Desktop selector sits beside requirement detail
+- **WHEN** the editable registry opens at or above 1024 CSS pixels
+- **THEN** the selector sits to the left of the detail panel
 
 ### Requirement: Combined search and filters
 The registry SHALL support a single selected type or all types, case-insensitive substring search over ID and wording, and the existing «Нужно уточнить» condition. Conditions SHALL combine by intersection without changing record order. Each type SHALL remain selectable with its full name and count, including zero-count types. Filter changes SHALL retain the selected record when it still matches. A clear-filter action SHALL restore all records without discarding drafts.
@@ -69,16 +74,27 @@ Navigation from requirement links, questions and validation SHALL reveal its int
 - **THEN** the existing questions section or analysis disclosure opens rather than a blank requirement detail
 
 ### Requirement: Responsive and keyboard usable composition
-The selector SHALL have a viewport-relative maximum height and internal vertical scrolling on desktop, with its heading remaining visible while the entries scroll. Scrolling the selector SHALL NOT move the adjacent detail panel. Below the desktop breakpoint the selector SHALL appear above the detail with a smaller bounded vertical scrolling area. Content and controls SHALL reflow without horizontal page overflow at 320, 390, 768, 1024 and 1440 CSS pixels and at 200 percent browser zoom. Search and filter controls SHALL have Russian accessible names, selection SHALL not be color-only and keyboard focus SHALL remain visible. Repeated total counts SHALL be avoided; the selector may show the number of matching records when conditions are active.
+The selector SHALL stay within a bounded scrolling area, with its heading visible while entries scroll on desktop. The composition SHALL reflow without horizontal page overflow and support keyboard use, including visible focus and selection cues beyond color.
 
 #### Scenario: Narrow screen
 - **WHEN** the registry is viewed on a 390 CSS pixel screen
 - **THEN** type controls wrap, search and add actions remain usable and the user can reach detail without scrolling through the entire selector
+- **AND** below the desktop breakpoint the selector sits above detail and uses a smaller bounded vertical scrolling area
 
 #### Scenario: Keyboard operation
 - **WHEN** the user navigates by Tab and activates selector entries and controls by keyboard
 - **THEN** focus follows visual reading order and all existing edit, delete, add, source and discussion actions remain reachable
+- **AND** search and filter controls have meaningful Russian accessible names, focus remains visible and selection can be understood without color
 
 #### Scenario: Long desktop requirement list
 - **WHEN** the registry contains more entries than fit within the selector height
 - **THEN** the user can scroll inside the selector to reach every entry while its heading and the adjacent detail remain in place
+- **AND** the maximum selector height is relative to the viewport
+
+#### Scenario: Registry reflows at supported widths and zoom
+- **WHEN** the registry is viewed at 320, 390, 768, 1024 or 1440 CSS pixels or at 200 percent browser zoom
+- **THEN** content and controls reflow without horizontal page overflow
+
+#### Scenario: Registry counts are visible with filters
+- **WHEN** the selector displays record counts
+- **THEN** total counts are not repeated, and a count of matching records may be shown when conditions are active

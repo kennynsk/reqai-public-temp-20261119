@@ -5,7 +5,7 @@ Make authorized business workflows recognizable and searchable across sessions w
 ## ADDED Requirements
 
 ### Requirement: Persistent human-readable workflow titles
-Each workflow SHALL display an editable title derived from context or the primary filename without an extra model call. The automatically generated title SHALL be a concise presentation value of at most 64 characters, normalized and trimmed at a word boundary, while a separate context excerpt MAY preserve additional identifying detail. User-edited trimmed titles SHALL be 1 to 120 characters. Changes SHALL persist server-side independently of immutable source artifacts; invalid changes SHALL be rejected. Older workflows without usable context SHALL receive a localized type-and-date fallback.
+Each workflow SHALL show an editable title derived from context or the primary filename without an extra model call. An automatic title SHALL be normalized and trimmed at a word boundary to at most 64 characters. The title SHALL persist server-side independently of immutable source artifacts. Invalid title changes SHALL be rejected.
 
 #### Scenario: Room-booking task is created
 - **WHEN** a task is submitted with a room-booking brief
@@ -14,14 +14,20 @@ Each workflow SHALL display an editable title derived from context or the primar
 #### Scenario: Long business brief becomes a history entry
 - **WHEN** the submitted context is longer than 64 characters or contains several sentences
 - **THEN** the automatic title ends at a word boundary within 64 characters, does not copy the entire brief, and history presents any additional excerpt separately without requiring the title to occupy more than two visual lines
+- **AND** the separate context excerpt may retain further identifying detail
 
 #### Scenario: Title is renamed and reopened elsewhere
 - **WHEN** the user renames a workflow and opens it in another authorized browser
 - **THEN** the saved title appears for the parent and research without changing job IDs or URLs
+- **AND** the application trims edited titles, accepts 1 to 120 characters after trimming and rejects values outside that range
 
 #### Scenario: Conflicting metadata edit occurs
 - **WHEN** two clients update a title using the same metadata revision
 - **THEN** the stale update is rejected with a recoverable conflict
+
+#### Scenario: Older workflow has no usable context
+- **WHEN** an older workflow has no usable context
+- **THEN** it displays a localized fallback using the task type and date
 
 ### Requirement: Searchable grouped workflow history
 History SHALL group decomposition, linked research and saved final versions under the existing parent workflow while retaining direct stage navigation. Search SHALL match authorized titles or summaries across full server-side history, not only the loaded page. Filters and pagination SHALL preserve the query and avoid duplicate or missing entries within a stable dataset.

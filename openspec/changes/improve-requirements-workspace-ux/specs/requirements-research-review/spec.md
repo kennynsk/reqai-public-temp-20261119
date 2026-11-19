@@ -5,7 +5,7 @@ Let users assess AI research with honest evidence labels and deliberately transf
 ## ADDED Requirements
 
 ### Requirement: Exact proposal preview before acceptance
-Acceptance SHALL require a review surface showing target type, related records, rationale, exact final wording and whether the operation adds or changes a requirement. Users SHALL be able to edit supported fields before confirmation. Existing target references MUST NOT be interpreted as permission to overwrite records. The exact comparison SHALL remain readable without clipped labels or per-character wrapping and SHALL adapt from a multi-column diff to grouped before/after fields when the available width is insufficient.
+Before acceptance, the review surface SHALL show the target type, related records, rationale, exact final wording and whether the operation adds or changes a requirement. Users SHALL be able to edit supported fields before confirming. Referencing an existing requirement MUST NOT authorize overwriting it.
 
 #### Scenario: Suggestion contains an instruction to the analyst
 - **WHEN** proposed text contains wording such as «Предложить уточнить…»
@@ -22,6 +22,7 @@ Acceptance SHALL require a review surface showing target type, related records, 
 #### Scenario: Proposal diff opens on a narrow viewport
 - **WHEN** proposal review opens at 390 CSS pixels wide or at 200 percent zoom
 - **THEN** each changed field presents its label, previous value and proposed value together in a readable vertical comparison, all text remains available without per-character wrapping, and cancel/confirm actions remain reachable within the dialog
+- **AND** the multi-column diff switches to grouped before/after fields whenever width is insufficient, with no clipped labels
 
 ### Requirement: Deterministic and reversible proposal decisions
 Saved decisions SHALL retain the original suggestion, edited wording, decision, affected IDs and research/base-version lineage. Repeated acceptance or saving SHALL NOT duplicate an enhancement. Reversing a saved decision SHALL preview its impact; manually changed records MUST NOT be silently deleted or reset.

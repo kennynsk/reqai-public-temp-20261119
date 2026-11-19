@@ -26,7 +26,7 @@ The stage-two requirements review SHALL prioritize reading and editing with a co
 ## ADDED Requirements
 
 ### Requirement: Skill-driven requirements review
-The BABOK workspace SHALL present the output of the existing skill decomposition and its built-in checks for further requirement editing and GAP decisions. Editable stage-two and final BABOK views SHALL NOT request a separate whole-registry manual completeness check or display an unchecked completeness status. It SHALL NOT add a separate coverage-check launch or claim semantic completeness from processing success. Source access, evidence, manual requirement creation, GAP handling and warnings for partial processing or unavailable materials SHALL remain available. Existing review metadata SHALL be preserved for compatibility; exports SHALL show recorded historical checks/omissions only when present, without adding an unchecked status to new documents.
+Editable stage-two and final BABOK views SHALL present the existing skill’s decomposition and checks for editing requirements and deciding GAPs. They MUST NOT require separate completeness review, expose a coverage-check launcher, show unchecked completeness or infer semantic completeness from successful processing.
 
 #### Scenario: Work with a decomposition
 - **WHEN** a user opens a saved BABOK decomposition or its editable final version
@@ -36,6 +36,14 @@ The BABOK workspace SHALL present the output of the existing skill decomposition
 - **WHEN** a saved version contains earlier manual review marks or omission notes
 - **THEN** those values survive subsequent edits under the existing versioning rules and remain available in the exported history
 
+#### Scenario: Version has no manual review history
+- **WHEN** a new version has no recorded manual checks or omissions and is exported
+- **THEN** the export includes only recorded review history and adds no unchecked completeness status
+
 #### Scenario: Limited source processing
 - **WHEN** processing is partial or an input material is unavailable
 - **THEN** the workspace still exposes that limitation without asking every user to manually compare the entire registry
+
+#### Scenario: User reviews or edits skill output
+- **WHEN** the user opens an editable BABOK review or final view
+- **THEN** source access, evidence, manual requirement creation and GAP handling remain available

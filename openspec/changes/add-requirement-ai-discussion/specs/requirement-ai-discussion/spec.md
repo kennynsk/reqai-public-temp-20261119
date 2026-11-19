@@ -98,7 +98,7 @@ The system SHALL record proposal identity and user acceptance when proposed chan
 - **THEN** those instructions do not execute and cannot bypass scope or acceptance controls
 
 ### Requirement: Per-requirement GAP resolution checklist
-The system SHALL present a shared, deduplicated checklist of every requirement linked to a GAP, through either direction of the relationship, excluding existing context and analysis records, in manual and AI-assisted review. Each item SHALL require explicit user confirmation of «Ответ учтён» or «Изменение не требуется»; the latter MUST include a reason. Accepting ordinary AI edits MUST NOT automatically confirm checklist items. A guided resolution package MAY include explicit confirmation of its displayed checklist as part of acceptance. Closing a GAP as resolved SHALL require a nonempty answer and current confirmations for all linked requirements. This behavior SHALL work with AI disabled.
+The system SHALL present one deduplicated GAP checklist in manual and AI-assisted review. Each linked requirement SHALL have an explicit «Ответ учтён» or «Изменение не требуется» confirmation. «Изменение не требуется» SHALL require a reason. Ordinary AI edits MUST NOT confirm checklist items. Resolution SHALL require a nonempty answer and current confirmations for all linked requirements.
 
 #### Scenario: GAP-002 affects two requirements
 - **WHEN** GAP-002 links SR-003 and FR-005 and the user confirms only SR-003
@@ -113,12 +113,22 @@ The system SHALL present a shared, deduplicated checklist of every requirement l
 - **WHEN** an AI package updating both linked requirements is accepted
 - **THEN** their updated text is available for review but checklist confirmation and GAP closure remain explicit user actions
 
+#### Scenario: Checklist membership is independent of link direction and AI
+- **WHEN** a GAP links to requirements through either direction and also references existing context or analysis records
+- **THEN** the same checklist lists each linked requirement once and excludes the context and analysis records
+- **AND** the checklist and its resolution rules remain available with AI disabled
+
+#### Scenario: Guided package includes checklist confirmation
+- **WHEN** a guided resolution package displays per-requirement confirmations for the user to review
+- **THEN** explicit acceptance may confirm the displayed checklist together with the package
+
 ### Requirement: Resolution confirmations track their basis
-The system SHALL bind each confirmation to the current GAP question, answer and checked requirement. Changing the question or answer SHALL invalidate all confirmations; changing a requirement SHALL invalidate its own confirmation. Added links SHALL require review and unresolved deleted references MUST NOT silently count as completed. A resolved GAP with invalidated confirmations SHALL return to answered or open state while retaining its prior resolution in history. Client and server SHALL enforce these rules and save confirmations with requirement changes atomically.
+The system SHALL bind each confirmation to the current GAP question, answer and requirement. A changed question or answer SHALL invalidate all confirmations. An edited requirement SHALL invalidate its own. A resolved GAP with invalid confirmations SHALL reopen as answered or open and retain its prior resolution in history. Client and server SHALL enforce these rules and save confirmations with changes atomically.
 
 #### Scenario: Answer changes after resolution
 - **WHEN** the answer to a resolved GAP-002 changes
 - **THEN** both SR-003 and FR-005 confirmations become pending and the GAP reopens with an explanation
+- **AND** the prior resolution remains in history
 
 #### Scenario: One requirement changes
 - **WHEN** FR-005 changes after its confirmation while SR-003 remains unchanged
@@ -127,6 +137,10 @@ The system SHALL bind each confirmation to the current GAP question, answer and 
 #### Scenario: Linked requirement disappears
 - **WHEN** a checked requirement is deleted but its GAP reference remains
 - **THEN** the unresolved reference blocks resolution until the user explicitly repairs the relationship
+
+#### Scenario: A requirement is newly linked
+- **WHEN** the GAP gains a new linked requirement
+- **THEN** the new requirement needs its own current confirmation before resolution
 
 ### Requirement: Resolution differs from dismissal and legacy closure
 The system SHALL distinguish checklist-based resolution from dismissing a question with a mandatory reason. A GAP with no linked requirements SHALL NOT qualify for automatic checklist completion. Previously closed GAPs without checklist data SHALL remain readable as legacy decisions and MUST NOT receive fabricated confirmations.
@@ -147,7 +161,7 @@ A GAP discussion SHALL offer a ready-to-send starting action and accept plain-la
 - **THEN** a prepared request starts the contextual analysis and the user can answer the next question in the same panel
 
 ### Requirement: Explicit guided resolution package
-A validated proposal MAY include a guided clarification with a summarized answer, per-requirement dispositions and reasons, remaining questions and server-captured record bases. The UI SHALL display this information with the before/after changes and label whether accepting it closes the selected GAP or leaves it open. Acceptance SHALL atomically apply the edits, answer and displayed confirmations to the shared draft; a complete package SHALL close only the selected GAP. Persistence SHALL remain a separate normal save. A no-edit package SHALL be allowed only with explicit no-change reasons. Ordinary proposals SHALL retain their existing behavior.
+A validated proposal MAY include a guided clarification. The UI SHALL show what acceptance applies and whether it closes the selected GAP. Acceptance SHALL atomically apply the answer, edits and displayed confirmations to the shared draft. A complete package SHALL close only the selected GAP. Persistence SHALL remain a separate normal save. Ordinary proposals SHALL retain their existing behavior.
 
 #### Scenario: Complete multi-requirement answer
 - **WHEN** the user accepts a current package covering every linked requirement with no remaining questions
@@ -171,3 +185,12 @@ A validated proposal MAY include a guided clarification with a summarized answer
 #### Scenario: Completing a saved partial clarification
 - **WHEN** the user explicitly accepts a fresh complete package after saving a partial answer
 - **THEN** the server SHALL validate the new answer, changes and dispositions together, refresh their confirmation bases, and allow a fully checked question to be saved as resolved
+
+#### Scenario: User previews a guided package
+- **WHEN** a validated proposal contains a guided clarification
+- **THEN** the before/after view shows the summarized answer, per-requirement dispositions and reasons, remaining questions and server-captured record bases
+- **AND** the acceptance action identifies whether it closes the selected GAP or leaves it open
+
+#### Scenario: A package proposes no edits
+- **WHEN** a guided clarification will apply an answer without editing requirements
+- **THEN** the package is allowed only if it includes explicit no-change reasons

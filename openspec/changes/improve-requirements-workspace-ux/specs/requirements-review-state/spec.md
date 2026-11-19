@@ -5,7 +5,7 @@ Protect requirement edits and review decisions throughout navigation, saving, re
 ## ADDED Requirements
 
 ### Requirement: Unified unsaved review state
-The workspace SHALL track unsaved text, structured fields, additions, removals, gap answers and improvement decisions as one review draft. Switching requirement type, layout, review section or opening source details SHALL preserve those changes. The workspace MUST NOT label a changed draft as saved, start research from it or navigate to a final version without saving it. An explicit Save final version action SHALL validate and persist pending research decisions and edits atomically before displaying completion.
+The workspace SHALL track changes to text, fields, additions, removals, GAP answers and improvement decisions in one draft. Switching type, layout or review section or opening source details SHALL retain the draft. Unsaved changes MUST NOT be marked saved, sent to research or used to navigate to a final version.
 
 #### Scenario: Changed card survives category switching
 - **WHEN** the user edits BR-001 without closing the card editor and switches BR to FR and back
@@ -18,6 +18,10 @@ The workspace SHALL track unsaved text, structured fields, additions, removals, 
 #### Scenario: User cancels one editing session
 - **WHEN** the user cancels editing a card
 - **THEN** only changes from that editing session are reverted and other pending edits remain intact
+
+#### Scenario: User saves the final version from a research draft
+- **WHEN** the user explicitly saves the final version with pending research decisions or edits
+- **THEN** the system validates and persists the decisions and edits atomically before showing completion
 
 ### Requirement: Atomic validated version save
 Global save SHALL include every valid pending field and review decision in one immutable version. Validation failure SHALL prevent submission and identify the invalid field. Save failure SHALL retain the draft. The new web client SHALL use replay-safe saves and an expected latest version precondition; a stale precondition MUST NOT silently supersede the current server revision. Existing clients omitting the optional fields SHALL remain supported.

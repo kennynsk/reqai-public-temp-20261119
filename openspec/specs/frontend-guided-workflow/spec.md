@@ -56,7 +56,7 @@ The frontend SHALL keep recommended model and generation settings out of the pri
 - **THEN** the selected values are used for the next eligible job and remain visibly reviewable before submission
 
 ### Requirement: Familiar linked-research result cards
-Completed `REQUIREMENTS_INSIGHTS` research SHALL open directly on the familiar filterable insight-card view instead of the standalone tabbed report shell. On desktop it SHALL show three parallel card columns. Every card SHALL expose a recognizable category icon and label, applicability as the familiar five-segment bar scale together with its exact percentage, title, summary, expandable detail, and any proposed requirement with explicit accept/reject actions. The applicability control SHALL expose its numeric value to assistive technology. The sticky final-save action and decision-lineage payload SHALL remain intact.
+Completed `REQUIREMENTS_INSIGHTS` research SHALL open directly in a filterable insight-card view in place of the standalone tabbed report shell. Desktop results SHALL use three parallel columns. The sticky final-save action and decision-lineage payload SHALL remain intact.
 
 #### Scenario: Applicability is readable visually and numerically
 
@@ -67,6 +67,7 @@ Completed `REQUIREMENTS_INSIGHTS` research SHALL open directly on the familiar f
 #### Scenario: Linked AI research result opens
 - **WHEN** a completed `REQUIREMENTS_INSIGHTS` job is selected or finishes
 - **THEN** the stage-one context form is not rendered above the result and the user immediately sees category filters followed by the insight-card grid
+- **AND** each insight card shows a recognizable category icon and label, its title and summary, and expandable detail
 
 #### Scenario: User reviews linked-research cards on desktop
 - **WHEN** the linked-research result is displayed at the desktop breakpoint
@@ -104,13 +105,12 @@ The frontend SHALL let users accept or reject each proposed requirement improvem
 - **THEN** only accepted improvements are added and accepted/rejected decision lineage is persisted through the existing requirements-version API
 
 ### Requirement: Requirements-focused review stage
-After a successful decomposition, the frontend SHALL make the generated requirements the dominant content. The completed business-context form SHALL collapse into a compact summary that can be expanded for editing or re-decomposition, and redundant completed-job presentation SHALL not separate the context summary from the requirements review.
-
-The requirements review SHALL expose a sticky responsive action area near its heading. It SHALL offer saving reviewed changes, SHALL expose «Улучшить требования с помощью AI» as an explicitly optional action, and SHALL offer a clear direct transition to the final version after a reviewed requirements version has been saved. These actions SHALL not be placed only after the final requirement card.
+After successful decomposition, the generated requirements SHALL dominate the review. The completed context form SHALL collapse into an expandable summary. A sticky, responsive action area near the heading SHALL expose saving, optional AI research and direct finalization. Research and finalization SHALL require a saved reviewed version.
 
 #### Scenario: User enters requirements review
 - **WHEN** decomposition completes successfully
 - **THEN** the full context textarea, upload control, AI settings, and decomposition action are collapsed into a compact completed-context summary and the requirements heading is visible immediately below it
+- **AND** the compact context summary leads directly into the review heading without a redundant completed-job presentation between them
 
 #### Scenario: User needs to change context
 - **WHEN** the user expands the completed-context summary
@@ -119,6 +119,7 @@ The requirements review SHALL expose a sticky responsive action area near its he
 #### Scenario: User reviews generated requirements
 - **WHEN** editable requirements are displayed
 - **THEN** save and optional-research actions are grouped near the review heading and remain reachable while scrolling
+- **AND** «Улучшить требования с помощью AI» is explicitly optional and the action area keeps a clear direct path to the final version for a saved review
 
 #### Scenario: Reviewed version has not been saved
 - **WHEN** the current requirements do not yet have a persisted reviewed version
@@ -144,9 +145,7 @@ The frontend SHALL expose job history from a dismissible side drawer with compac
 - **THEN** its durable state or result is restored and the drawer closes
 
 ### Requirement: Focused desktop requirements editor
-On desktop, the requirements review SHALL prioritize reading and editing requirements while retaining the compact persistent four-stage progress indicator and access to the source context.
-
-The editor SHALL let the user choose between three parallel category columns and a stacked row layout. Each category SHALL show its title, description, requirements, and add-requirement control. Item actions and add-requirement controls SHALL remain discoverable without being permanently expanded for every item and category. The selected layout SHALL persist locally and SHALL also apply to the final requirements editor.
+The desktop editor SHALL prioritize reading and editing requirements while retaining source access and the compact, persistent four-stage indicator. It SHALL offer three category columns and stacked rows. Each category SHALL expose its title, description, requirements and add control. The layout choice SHALL persist locally and apply to review and final editors.
 
 #### Scenario: User begins reviewing a decomposition
 - **WHEN** a completed decomposition is displayed on a desktop viewport
@@ -155,6 +154,7 @@ The editor SHALL let the user choose between three parallel category columns and
 #### Scenario: User reviews decomposed categories
 - **WHEN** the desktop requirements editor is displayed
 - **THEN** business, functional, and non-functional requirements are visible at the same time in three parallel columns and every requirement remains editable and removable
+- **AND** item and add actions are discoverable without permanently expanding them for every record and category
 
 #### Scenario: User switches to stacked rows
 - **WHEN** the user selects «Строки» in either the review or final editor
@@ -165,9 +165,7 @@ The editor SHALL let the user choose between three parallel category columns and
 - **THEN** the composer expands only in that column and can be dismissed without modifying requirements
 
 ### Requirement: Clear action and visual hierarchy
-The requirements review SHALL present one primary action for the current state. Saving changes SHALL be the primary editing action. Optional AI-assisted improvement SHALL become available after a reviewed version is saved and SHALL use secondary styling with explicit optional language. Green SHALL communicate success or completion and SHALL NOT style an optional next-step action.
-
-The primary workspace SHALL avoid nested bordered-card treatment for every structural level. Repeated edit and delete actions MAY be contextual or grouped, provided they remain keyboard accessible and have meaningful accessible names.
+The review SHALL present one primary action for its state, with saving primary during editing. Optional AI improvement SHALL be available after saving a reviewed version and SHALL use secondary styling and explicit optional language. Green SHALL indicate success or completion and MUST NOT style an optional next step.
 
 #### Scenario: Requirements contain unsaved changes
 - **WHEN** edited requirements differ from the persisted reviewed version
@@ -188,22 +186,27 @@ The primary workspace SHALL avoid nested bordered-card treatment for every struc
 #### Scenario: User scans requirement items
 - **WHEN** no item is being edited and no add composer is open
 - **THEN** structural borders and repeated controls do not compete visually with the requirement wording
+- **AND** the primary workspace avoids nested bordered cards at each structural level
+- **AND** contextual or grouped edit and delete actions remain keyboard accessible and have meaningful accessible names
 
 ### Requirement: Consistent product terminology
-User-facing copy SHALL use consistent Russian product language across the guided requirements workflow. The interface SHALL use «AI-исследование» or «Улучшить требования с помощью AI» according to context and SHALL use «Соответствие требованиям» instead of the English `compliance` label. It SHALL NOT present removed standalone research, comparison, agent, or prompt-testing terminology as available product actions. Raw technical terms MAY remain in technical details and retained historical metadata.
+The workflow SHALL use consistent Russian product language, including «AI-исследование» or «Улучшить требования с помощью AI» as appropriate and «Соответствие требованиям» for `compliance`. Removed standalone research, comparison, agent and prompt-testing terminology MUST NOT appear as available product actions.
 
 #### Scenario: User navigates between workflow and tools
 - **WHEN** headings, actions, stages, or requirement-type descriptions are displayed
 - **THEN** equivalent concepts use the same Russian terminology and capitalization and no removed tool is advertised
 
-### Requirement: User-facing status language
-The frontend SHALL display one localized primary status for each task and result. Raw lifecycle values, model attempts, provider metadata, and technical trace data SHALL appear only inside the separate optional Debug surface and SHALL NOT be rendered inline below the primary workflow.
+#### Scenario: Technical details or retained historical metadata are displayed
+- **WHEN** the user opens technical details or views retained historical metadata
+- **THEN** raw technical terms may appear in those surfaces
 
-For an active decomposition or research task, the frontend SHALL present progress messaging only once in the disabled primary action, with cancellation available beside it. A separate state card SHALL be reserved for failure, retry-wait, cancellation-requested, or cancelled states.
+### Requirement: User-facing status language
+The frontend SHALL show one localized primary status per task and result. Raw lifecycle values, model attempts, provider metadata and technical traces SHALL appear only in optional Debug. Active tasks SHALL show progress once with cancellation. Separate state cards SHALL be reserved for failure, retry-wait, cancellation-requested and cancelled states.
 
 #### Scenario: Job is actively running
 - **WHEN** a decomposition or research task is accepted, queued, or running
 - **THEN** the primary action shows a spinner and one localized activity label, cancellation remains available beside it, and no duplicate activity card is rendered below
+- **AND** the primary action is disabled while it shows that progress
 
 #### Scenario: Job enters an exceptional state
 - **WHEN** a task fails, waits for retry, has cancellation requested, or is cancelled
@@ -229,7 +232,7 @@ The workflow indicator, secondary navigation, history drawer, result sections, d
 - **THEN** focus is visible, controls are reachable in logical order, and drawers or section navigation can be operated without pointer input
 
 ### Requirement: Durable behavior compatibility
-The guided workflow SHALL preserve durable task submission, URL-based active-task restoration, cancellation, artifact download, requirements-version lineage, and completed-result restoration for supported decomposition and requirements-linked research. A final version SHALL remain manually editable. Each saved manual revision SHALL reference its immediate base version and preserve the decisions and research-enhancement lineage of the final version it revises. Retained jobs created with a removed legacy mode SHALL remain read-only and SHALL NOT expose controls that retry, clone, or restart that mode.
+The guided workflow SHALL preserve durable submission, URL-based restoration of active tasks and completed results, cancellation, artifact download and requirements-version lineage for supported decomposition and linked research. Final versions SHALL remain manually editable. Jobs in removed legacy modes SHALL remain read-only.
 
 #### Scenario: Page reloads during a job
 - **WHEN** the page reloads at `/tasks/{jobId}` while a decomposition or requirements-linked research task is active
@@ -242,14 +245,17 @@ The guided workflow SHALL preserve durable task submission, URL-based active-tas
 #### Scenario: User opens a retained legacy result
 - **WHEN** a retained history entry or task permalink references a removed standalone mode
 - **THEN** the frontend presents its canonical status, safe result metadata, diagnostics access when authorized, and artifact download without rendering a creation or retry control for that mode
+- **AND** retry, clone and restart controls are unavailable for the retired mode
 
 #### Scenario: User edits research-assisted final requirements
 - **WHEN** the user edits and saves a final version produced from AI-research decisions
 - **THEN** a new immutable requirements version is created from the current final version without losing accepted or rejected decision lineage
+- **AND** the saved revision references its immediate base version and preserves research-enhancement lineage
 
 #### Scenario: User edits a direct final version
 - **WHEN** the user skipped AI research and edits the final requirements
 - **THEN** a new immutable requirements version is created with the direct-final marker preserved and the final editor remains available after reload
+- **AND** the saved revision references the immediately preceding final version and preserves its recorded decisions
 
 ### Requirement: Cross-client realtime synchronization
 The system SHALL publish ordered durable events for job lifecycle changes, linked-research creation, and requirements-version creation. Every client currently viewing the affected workflow SHALL maintain an SSE subscription after job completion, resume from the last received sequence after a temporary disconnect, and reconcile authoritative job and requirements-version state without requiring a page reload.

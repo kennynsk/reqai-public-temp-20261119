@@ -78,13 +78,14 @@ The selected-insight detail SHALL preserve every user-relevant field supplied by
 - **AND** category filtering and detail review do not fail
 
 ### Requirement: Contextual requirement preview
-Requirement identifiers shown in `relatedTo` and `enhancements.targetIds` SHALL open an in-context, non-navigating preview instead of changing the workflow section. The preview SHALL resolve the identifier against the immutable requirements snapshot used by the research and SHALL show the record type, identifier, exact wording, quality, human-readable source information and its relationships when those values exist. Opening or closing a preview MUST NOT change filters, selected insight, proposal drafts or decisions.
+Identifiers in `relatedTo` and `enhancements.targetIds` SHALL open a non-navigating preview of the record from the immutable research input snapshot. Opening or closing the preview MUST NOT change filters, the selected insight, proposal drafts or decisions.
 
 #### Scenario: User previews a related requirement on desktop
 
 - **WHEN** the user activates a resolvable requirement identifier in selected-insight detail
 - **THEN** an anchored non-modal preview opens near the identifier without changing route or workflow view
 - **AND** it shows the requirement type, identifier, exact wording, quality, source and relationships available in the research input snapshot
+- **AND** source information is presented in human-readable form when available
 
 #### Scenario: User previews an affected requirement on a narrow viewport
 
