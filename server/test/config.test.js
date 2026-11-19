@@ -25,8 +25,8 @@ test('enterprise config parses documented defaults when async processing is disa
   assert.equal(config.jobs.inputMaxBytes, 104857600);
   assert.equal(config.jobMetadataBackfill.batchSize, 100);
   assert.equal(config.jobMetadataBackfill.intervalMs, 300000);
-  assert.equal(config.prompts.policy['requirements-decomposition'].active, '2.17.0');
-  assert.deepEqual(config.prompts.policy['requirements-decomposition'].released, ['1.0.0', '2.0.0', '2.1.0', '2.2.0', '2.3.0', '2.4.0', '2.5.0', '2.6.0', '2.7.0', '2.8.0', '2.9.0', '2.10.0', '2.11.0', '2.12.0', '2.13.0', '2.14.0', '2.15.0', '2.16.0', '2.17.0']);
+  assert.equal(config.prompts.policy['requirements-decomposition'].active, '2.18.0');
+  assert.deepEqual(config.prompts.policy['requirements-decomposition'].released, ['1.0.0', '2.0.0', '2.1.0', '2.2.0', '2.3.0', '2.4.0', '2.5.0', '2.6.0', '2.7.0', '2.8.0', '2.9.0', '2.10.0', '2.11.0', '2.12.0', '2.13.0', '2.14.0', '2.15.0', '2.16.0', '2.17.0', '2.18.0']);
   assert.equal(config.prompts.policy['requirements-insights'].active, '2.16.0');
   assert.equal(config.diagnostics.captureProtected, false);
   assert.equal(config.diagnostics.maxPageSize, 100);

@@ -62,7 +62,7 @@ import RequirementTypeNav from './RequirementTypeNav.jsx';
 import HistoryDrawer from './HistoryDrawer.jsx';
 import TaskTitle from './TaskTitle.jsx';
 import ContextInput from './ContextInput.jsx';
-import { openReviewItems, updateReviewMetadata } from './review-metadata.js';
+import { linkedRequirementIds, openReviewItems, updateReviewMetadata } from './review-metadata.js';
 import LegacyDeletionNotice from './LegacyDeletionNotice.jsx';
 import { useLegacyDeletion } from './use-legacy-deletion.js';
 import { ResultExportAction } from './ResultExportContext.jsx';
@@ -76,7 +76,7 @@ import { STRUCTURED_FIELDS, QUALITY_OPTIONS } from './review-fields.js';
 import { ReviewDraftProvider, ReviewSessionProvider } from './ReviewDraftProvider.jsx';
 import ResearchInsightWorkspace from './ResearchInsightWorkspace.jsx';
 import RequirementListWorkspace from './RequirementListWorkspace.jsx';
-import BabokRecoveryDraft from './BabokRecoveryDraft.jsx';
+import { projectBabokRecovery } from '../../server/src/services/babok-recovery-registry.js';
 import { filterRequirementList, selectedRequirementEntry } from './requirement-list.js';
 import { buildBabokRequirementIndex, buildLegacyRequirementIndex } from './research-review.js';
 import { RequirementPreviewProvider } from './RequirementPreview.jsx';
@@ -217,19 +217,20 @@ function jobIdFromPath(pathname = window.location.pathname) {
   return match ? decodeURIComponent(match[1]) : null;
 }
 
-function FinalResearchActions({ versionId, disabled, onStart }) {
+function FinalResearchActions({ version, disabled, onStart }) {
   const { child, completedResearch, researchLookupState, onOpenResearch } = useContext(RequirementsReviewContext);
+  const { versionId, researchJobId } = version;
   const active = researchPresentation({ child }).active;
-  const previous = completedResearch && completedResearch.inputArtifactId !== versionId;
+  const previous = completedResearch && completedResearch.inputArtifactId !== versionId && completedResearch.jobId !== researchJobId;
   const actionClass = 'min-h-10 rounded-lg border px-4 py-2 text-sm font-semibold focus-visible:ring-2 focus-visible:ring-indigo-500 disabled:opacity-50';
   return <>
-    {completedResearch && <button type="button" className={`${actionClass} border-indigo-200 text-indigo-700 hover:bg-indigo-50`} onClick={() => onOpenResearch(completedResearch.jobId)}>
-      {previous ? 'AI-исследование предыдущей версии' : 'Посмотреть предложения AI'}
+    {completedResearch && <button type="button" className={`${actionClass} border-indigo-200 text-indigo-700 hover:bg-indigo-50`} onClick={() => onOpenResearch(completedResearch.jobId, { finalResearch: previous ? 'previous' : 'current' })}>
+      {previous ? 'Результаты AI по предыдущей версии' : 'Посмотреть предложения AI'}
     </button>}
-    {active && <button type="button" className={`${actionClass} border-slate-200 text-slate-700 hover:bg-slate-50`} onClick={() => onOpenResearch(child.jobId)}>Открыть текущее AI-исследование</button>}
+    {active && <button type="button" className={`${actionClass} border-slate-200 text-slate-700 hover:bg-slate-50`} onClick={() => onOpenResearch(child.jobId, { finalResearch: child.inputArtifactId === versionId ? 'current' : 'previous' })}>Открыть текущее AI-исследование</button>}
     {researchLookupState === 'error' && <p role="status" className="text-xs text-slate-600">Не удалось проверить статус AI-исследования. Обновите страницу.</p>}
-    {(!researchLookupState || researchLookupState === 'ready') && !active && (!completedResearch || previous) &&
-      <button type="button" className={`${actionClass} flex items-center gap-2 border-slate-200 text-slate-700 hover:bg-slate-50`} disabled={disabled} onClick={() => onStart({ requirementsVersionId: versionId })}>
+    {!researchJobId && (!researchLookupState || researchLookupState === 'ready') && !active && (!completedResearch || previous) &&
+      <button type="button" className={`${actionClass} flex items-center gap-2 border-slate-200 text-slate-700 hover:bg-slate-50`} disabled={disabled} onClick={() => onStart({ requirementsVersionId: versionId, fromFinal: true })}>
         <Sparkles aria-hidden="true" className="h-4 w-4 shrink-0" />
         {previous ? 'Исследовать эту версию' : 'Добавить AI-исследование'}
       </button>}
@@ -252,9 +253,9 @@ function WorkflowStepper({ currentStage = 1, completedStage = 0, researchStatus,
         {currentStageTitle && <p className="text-sm font-semibold text-slate-900 sm:hidden">{currentStageTitle}</p>}
       </div>
       <ol aria-label="Этапы подготовки требований" className="relative grid min-w-0 flex-1 grid-cols-4 gap-0">
-        <li aria-hidden="true" className="pointer-events-none absolute left-[12.5%] right-[12.5%] top-3 h-px bg-slate-200" />
-        {completedConnectorCount > 0 && <li aria-hidden="true" className="pointer-events-none absolute left-[12.5%] top-3 h-px bg-emerald-300" style={{ width: `${(completedConnectorCount / (stages.length - 1)) * 75}%` }} />}
-        {completedConnectorCount > 0 && <li aria-hidden="true" className="pointer-events-none absolute left-[12.5%] top-3 hidden h-px bg-emerald-300 md:block" style={{ width: `${(completedConnectorCount / (stages.length - 1)) * 75}%` }} />}
+        <li aria-hidden="true" className="pointer-events-none absolute inset-x-[12.5%] top-3 h-px -translate-y-1/2 bg-slate-200">
+          <span className="block h-full bg-emerald-300" style={{ width: `${(completedConnectorCount / (stages.length - 1)) * 100}%` }} />
+        </li>
         {stages.map(([title, subtitle], index) => {
           const number = index + 1;
           const stageStatus = number === 3 ? researchStatus : null;
@@ -266,10 +267,10 @@ function WorkflowStepper({ currentStage = 1, completedStage = 0, researchStatus,
               ? 'bg-emerald-600 text-white'
               : 'bg-slate-100 text-slate-600 ring-1 ring-inset ring-slate-200';
           const labelTone = isCurrent ? 'text-indigo-900' : complete ? 'text-emerald-800' : 'text-slate-600';
-          return <li key={title} aria-current={isCurrent ? 'step' : undefined} className={compact ? "relative z-10 flex min-w-0 flex-col items-center gap-1 text-center sm:flex-row sm:justify-center sm:gap-2" : "relative z-10 flex min-w-0 flex-col items-center gap-1.5 text-center sm:flex-row sm:justify-center sm:gap-2"}>
+          return <li key={title} aria-current={isCurrent ? 'step' : undefined} className="relative z-10 flex min-w-0 flex-col items-center gap-1 text-center">
             <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${circleTone}`}>{complete && !isCurrent ? <Check className="h-3.5 w-3.5" /> : number}</span>
             <span className="min-w-0 max-w-full">
-              <span className={`${compact ? "sr-only sm:not-sr-only sm:bg-[var(--reqai-canvas)]" : "hidden sm:block sm:bg-[var(--reqai-canvas)]"} truncate text-xs font-semibold leading-4 ${labelTone}`}>{title}</span>
+              <span className={`${compact ? 'sr-only sm:not-sr-only' : 'hidden'} truncate text-xs font-semibold leading-4 sm:block ${labelTone}`}>{title}</span>
               {stageStatus
                 ? <span className="block text-[11px] leading-4 text-slate-600">{stageStatus}</span>
                 : <span className="sr-only">{subtitle}</span>}
@@ -691,10 +692,21 @@ function RequirementsLayoutToggle({ layout, onChange }) {
   </div>;
 }
 
-function BabokRegistryResult({ value, latestVersion, onSave, onStartResearch, onDirtyChange, busy, researchBusy, recoveryDraft = null, businessContext, finalVersion = false, saveInitialVersion = false, readOnly = false, title = null, onBack = null, initialRecordId = null, jobId = null, discussionEnabled = true }) {
+function BabokRegistryResult({ value, latestVersion, onSave, onStartResearch, onDirtyChange, busy, researchBusy, recoveryResult = null, finalVersion = false, saveInitialVersion = false, readOnly = false, title = null, onBack = null, initialRecordId = null, jobId = null, discussionEnabled = true }) {
   const recordTarget = initialRecordId || window.location.hash.match(/^#record-((?:BR|SR|FR|NFR|TR|CON|GAP|QUESTION)-[A-Za-z0-9-]+)$/)?.[1] || null;
-  const initialRegistry = babokRegistryFrom(value, latestVersion) || value;
-  const review = useReviewState(initialRegistry, latestVersion?.decisions || {}, { readOnly });
+  const baseline = babokRegistryFrom(value, latestVersion) || value;
+  const hasRecoveryDraft = isBabokTextDraft(recoveryResult?.recovery.draft);
+  const projection = useMemo(() => recoveryResult && projectBabokRecovery(recoveryResult, baseline, latestVersion?.decisions), [recoveryResult, baseline, latestVersion?.decisions]);
+  const initialRegistry = projection?.registry || baseline;
+  const initialDecisions = useMemo(() => hasRecoveryDraft && !latestVersion?.decisions?.skippedResearch
+    ? { ...latestVersion?.decisions, recoveryImported: true, recoveryTraceabilityImported: true }
+    : latestVersion?.decisions || {}, [hasRecoveryDraft, latestVersion?.decisions]);
+  const review = useReviewState(initialRegistry, initialDecisions, { readOnly, prepareRestoredState: (state) => {
+    if (!hasRecoveryDraft || latestVersion?.decisions?.skippedResearch || state.decisions?.recoveryTraceabilityImported || !isBabokRegistry(state.content)) return state;
+    const { registry } = projectBabokRecovery(recoveryResult, state.content, state.decisions, state.reservedIds);
+    const reservedIds = [...new Set([...(state.reservedIds || []), ...Object.values(registry.groups).flat().map(({ id }) => id)])];
+    return { ...state, content: registry, evidenceContent: registry, decisions: { ...state.decisions, recoveryImported: true, recoveryTraceabilityImported: true }, reservedIds };
+  } });
   const { content: registry, setContent: setRegistry } = review;
   const requirementIndex = useMemo(() => buildBabokRequirementIndex(registry, { requirementTypes: BABOK_REQUIREMENT_TYPES, analysisTypes: BABOK_ANALYSIS_TYPES }), [registry]);
   const [validationError, setValidationError] = useState(null);
@@ -710,6 +722,11 @@ function BabokRegistryResult({ value, latestVersion, onSave, onStartResearch, on
   const [needsClarification, setNeedsClarification] = useReviewUiState('registryNeedsClarification', false);
   const coverage = useMemo(() => decompositionCoverage(registry, review.state.decisions), [registry, review.state.decisions]);
   const openQuestionCount = coverage.openGaps.length;
+  const questionRequirementIds = useMemo(() => {
+    if (!recoveryResult) return undefined;
+    const openIds = new Set(coverage.openGaps.map(({ id }) => id));
+    return new Set(registry.analysis.GAP.filter(({ id }) => openIds.has(id)).flatMap((gap) => linkedRequirementIds(registry, gap)));
+  }, [coverage, recoveryResult, registry]);
   const [reviewSection, setReviewSection] = useReviewUiState('registrySection', /^(GAP|QUESTION)-/.test(recordTarget || '') ? 'questions' : 'requirements');
   const [discussionAnchor, setDiscussionAnchor] = useReviewUiState('discussionAnchor', null);
   const resolveQuestion = (id) => id?.startsWith('QUESTION-') ? registry.analysis.questions.find((item) => item.id === id)?.gapId || id : id;
@@ -751,13 +768,14 @@ function BabokRegistryResult({ value, latestVersion, onSave, onStartResearch, on
   }, []);
   const finalMode = finalVersion || latestVersion?.decisions?.skippedResearch;
   const hasSavedVersion = readOnly || Boolean(latestVersion?.versionId);
-  const baseline = latestVersion?.registry || value;
+  const recoveryNotice = recoveryResult && !finalMode;
   const hasUnsavedChanges = !readOnly && (review.dirty || !latestVersion?.versionId || JSON.stringify(registry) !== JSON.stringify(baseline));
-  const entries = filterRequirementList(BABOK_REQUIREMENT_COLUMNS, registry.groups, { type: typeFilter, query, needsClarification });
+  const questionFilter = recoveryNotice ? questionRequirementIds : undefined;
+  const entries = filterRequirementList(BABOK_REQUIREMENT_COLUMNS, registry.groups, { type: typeFilter, query, needsClarification, questionRequirementIds: questionFilter });
   const selectedEntry = selectedRequirementEntry(entries, selectedRecordId);
   function changeFilters(patch) {
     const next = { type: typeFilter, query, needsClarification, ...patch };
-    const nextEntries = filterRequirementList(BABOK_REQUIREMENT_COLUMNS, registry.groups, next);
+    const nextEntries = filterRequirementList(BABOK_REQUIREMENT_COLUMNS, registry.groups, { ...next, questionRequirementIds: questionFilter });
     setSelectedRecordId(selectedRequirementEntry(nextEntries, selectedEntry?.requirement.id)?.requirement.id || null);
     setTypeFilter(next.type); setQuery(next.query); setNeedsClarification(next.needsClarification);
   }
@@ -794,7 +812,7 @@ function BabokRegistryResult({ value, latestVersion, onSave, onStartResearch, on
     markEdited(id);
     setPendingDeletion(null);
     if (compact) {
-      const next = selectedRequirementEntry(filterRequirementList(BABOK_REQUIREMENT_COLUMNS, after.groups, { type: typeFilter, query, needsClarification }), selectedRecordId);
+      const next = selectedRequirementEntry(filterRequirementList(BABOK_REQUIREMENT_COLUMNS, after.groups, { type: typeFilter, query, needsClarification, questionRequirementIds: questionFilter }), selectedRecordId);
       requestAnimationFrame(() => (document.getElementById(`record-${next?.requirement.id}`) || document.querySelector('input[type="search"]'))?.focus());
     }
   }
@@ -809,17 +827,17 @@ function BabokRegistryResult({ value, latestVersion, onSave, onStartResearch, on
     setLastDeletion(null);
   }
 
-  function addRequirement(type, text, { targetIds = [], inQuestion = false, fields = {}, showAllTypes = false } = {}) {
+  function addRequirement(type, text, { targetIds = [] } = {}) {
     const id = stableBabokId(registry.groups[type], type, review.state.reservedIds);
-    if (!inQuestion) { setTypeFilter(showAllTypes ? 'all' : type); setReviewSection('requirements'); }
+    setTypeFilter(type); setReviewSection('requirements');
     setQuery(''); setNeedsClarification(false); setSelectedRecordId(id); setComposerType(null);
     markEdited(id);
     setRegistry((current) => {
       const actualId = stableBabokId(current.groups[type], type, review.state.reservedIds);
       const record = createBabokManualRecord(type, actualId, text, { sourceArtifactId: current.materials.primary.artifactId, targetIds });
-      return withBabokCounts({ ...current, groups: { ...current.groups, [type]: [...current.groups[type], { ...record, ...fields }] } });
+      return withBabokCounts({ ...current, groups: { ...current.groups, [type]: [...current.groups[type], record] } });
     });
-    if (compact && !inQuestion) requestAnimationFrame(() => { const target = document.getElementById(`record-${id}`); target?.focus(); target?.scrollIntoView?.({ block: 'nearest' }); });
+    if (compact) requestAnimationFrame(() => { const target = document.getElementById(`record-${id}`); target?.focus(); target?.scrollIntoView?.({ block: 'nearest' }); });
     return id;
   }
 
@@ -842,15 +860,10 @@ function BabokRegistryResult({ value, latestVersion, onSave, onStartResearch, on
       requestAnimationFrame(() => (document.querySelector(`[data-review-field="${assembled.error.id}:${assembled.error.field}"]`) || document.querySelector(`[aria-label="Текст требования ${assembled.error.id}"]`))?.focus());
       return;
     }
-    const originalRecords = new Map(BABOK_REQUIREMENT_TYPES.flatMap((type) => (baseline.groups || baseline)[type] || []).map((record) => [record.id, record]));
+    const originalRecords = new Map(BABOK_REQUIREMENT_TYPES.flatMap((type) => initialRegistry.groups[type]).map((record) => [record.id, record]));
     const savedRecords = BABOK_REQUIREMENT_TYPES.flatMap((type) => assembled.content.groups[type]);
     const draftIds = savedRecords.filter((record) => JSON.stringify(originalRecords.get(record.id)) !== JSON.stringify(record)).map((record) => record.id);
-    let savedDecisions = assembled.decisions;
-    if (recoveryDraft && savedDecisions.recoveryAdded) {
-      const ids = new Set(savedRecords.map((record) => record.id));
-      savedDecisions = { ...savedDecisions, recoveryAdded: Object.fromEntries(Object.entries(savedDecisions.recoveryAdded).filter(([, id]) => ids.has(id))) };
-    }
-    return onSave?.({ registry: assembled.content, baseVersionId: latestVersion?.versionId || null, decisions: savedDecisions, editedRecordIds: [...new Set([...editedRecordIds, ...draftIds])] });
+    return onSave?.({ registry: assembled.content, baseVersionId: latestVersion?.versionId || null, decisions: assembled.decisions, editedRecordIds: [...new Set([...editedRecordIds, ...draftIds])] });
   }
 
   const discussionContext = useMemo(() => {
@@ -962,24 +975,29 @@ function BabokRegistryResult({ value, latestVersion, onSave, onStartResearch, on
     return Object.keys(baseGaps).filter((id) => baseGaps[id]?.state === 'closed' && draftGaps[id] && draftGaps[id].state !== 'closed'
       && (draftGaps[id].stale || Object.values(draftChecks[id] || {}).some((entry) => entry.stale)));
   }, [latestVersion, review.state.decisions]);
+  const savedAndClean = hasSavedVersion && !hasUnsavedChanges && !busy && !readOnly && !saveInitialVersion;
   const statusText = readOnly
     ? 'Только чтение · источник AI-исследования'
-    : busy ? 'Сохраняем…' : !hasSavedVersion ? 'Сохраните требования перед AI-исследованием' : hasUnsavedChanges ? 'Есть несохранённые изменения' : `Сохранено · ${latestVersion?.createdAt ? formatRuDateTime(latestVersion.createdAt) : 'только что'}`;
+    : busy ? 'Сохраняем…' : !hasSavedVersion ? 'Сохраните требования перед AI-исследованием' : hasUnsavedChanges ? 'Есть несохранённые изменения' : saveInitialVersion ? 'Финальная версия ещё не сохранена' : savedVersionStatus(latestVersion, finalMode);
   return (
     <ReviewDraftProvider review={review} submit={saveRegistry} busy={busy}><div className={compact ? "space-y-2" : "space-y-5"}><div inert={Boolean(compact && activeQuestion)} className={compact ? "space-y-2" : "space-y-5"}>
-      {isBabokTextDraft(recoveryDraft) && <BabokRecoveryDraft responses={recoveryDraft.responses} columns={BABOK_REQUIREMENT_COLUMNS} groups={registry.groups}
-        sourceText={businessContext} onAdd={(type, text, fields) => addRequirement(type, text, { fields, showAllTypes: true })}
-        added={review.state.decisions.recoveryAdded || {}}
-        onAccepted={(key, id) => review.dispatch({ type: 'decisions', value: (decisions) => ({ ...decisions, recoveryAdded: { ...decisions.recoveryAdded, [key]: id } }) })}
-      />}
+      {recoveryNotice && <div role="status" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
+        <p className="font-semibold">{coverage.total ? 'Проверьте черновик требований' : 'AI не завершил подготовку требований'}</p>
+        <p className="mt-1">{coverage.total
+          ? 'Сверьте черновик с исходной задачей. Проверьте, всё ли важное учтено и верно ли сформулированы условия.'
+          : 'Добавьте требования по исходной бизнес-задаче.'}</p>
+        {openQuestionCount > 0 && <p className="mt-1">Конкретные вопросы отмечены у связанных требований.</p>}
+        {projection?.hasUnclassified && <p className="mt-1">Фрагменты без определённого типа доступны в разделе «Исходный ответ AI».</p>}
+        {recoveryResult.recovery.omittedResponses && <p className="mt-1">Часть ответов AI не вошла в черновик.</p>}
+      </div>}
       {pendingDeletion && <ReviewDialog label="Удаление требования" onClose={() => setPendingDeletion(null)}><h2 className="text-lg font-bold">Удалить {pendingDeletion.id}?</h2><p className="my-3">Связанные записи: {pendingDeletion.affectedIds.join(', ') || 'нет'}. Связей в схеме: {pendingDeletion.links}. Ссылки на удалённое требование будут убраны. До сохранения удаление можно отменить.</p><div className="flex gap-3"><button className="rounded-lg border p-3" onClick={() => setPendingDeletion(null)}>Не удалять</button><button className="rounded-lg bg-red-700 text-white p-3" onClick={confirmDeletion}>Подтвердить удаление</button></div></ReviewDialog>}
       {lastDeletion && <p role="status" className="rounded-xl bg-amber-50 p-3">Удалено {lastDeletion.id}. <button className="font-semibold text-indigo-700 underline p-2" onClick={undoDeletion}>Отменить удаление</button></p>}
       {validationError && <p role="alert" className="text-sm text-red-700">{validationError.id}: {validationError.message}</p>}
       {compact && !finalMode ? <RequirementsReviewHeader version={latestVersion} dirty={hasUnsavedChanges} busy={busy} researchBusy={researchBusy} reopenWarning={cascadeReopenedIds} onSave={() => saveRegistry()} onResearch={onStartResearch && ((savedVersionId) => onStartResearch({ requirementsVersionId: savedVersionId }))} onFinal={() => saveRegistry({ ...review.state.decisions, skippedResearch: true })} /> : <>
       <div className="rounded-xl border border-slate-200 bg-white p-4 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex items-center gap-3 min-w-0">
-          {hasSavedVersion && !hasUnsavedChanges && <span className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0"><Check className="w-4 h-4" /></span>}
-          <div className="min-w-0"><h1 className="text-base font-semibold text-slate-900">{title || (finalMode ? 'Финальная версия требований' : 'Проверка требований')}</h1><p id="babok-save-status" role="status" className={`text-xs mt-0.5 ${hasSavedVersion && !hasUnsavedChanges ? 'text-emerald-700' : 'text-slate-600'}`}>{statusText}</p>{hasUnsavedChanges && cascadeReopenedIds.length > 0 && <p role="status" className="text-xs mt-0.5 text-amber-700">Правка переоткроет вопросы: {cascadeReopenedIds.join(', ')} — их прежние решения сохранятся и потребуют повторного подтверждения.</p>}<RequirementsReadiness coverage={coverage} onQuestions={() => setReviewSection('questions')} onLinks={() => setReviewSection('links')} /></div>
+          {savedAndClean && <span className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0"><Check className="w-4 h-4" /></span>}
+          <div className="min-w-0"><h1 className="text-base font-semibold text-slate-900">{title || (finalMode ? 'Финальная версия требований' : 'Проверка требований')}</h1><p id="babok-save-status" role="status" className={`text-xs mt-0.5 ${savedAndClean ? 'text-emerald-700' : 'text-slate-600'}`}>{statusText}</p>{hasUnsavedChanges && cascadeReopenedIds.length > 0 && <p role="status" className="text-xs mt-0.5 text-amber-700">Правка переоткроет вопросы: {cascadeReopenedIds.join(', ')} — их прежние решения сохранятся и потребуют повторного подтверждения.</p>}<RequirementsReadiness coverage={coverage} onQuestions={() => setReviewSection('questions')} onLinks={() => setReviewSection('links')} /></div>
         </div>
         <div className="flex flex-wrap items-center gap-2 lg:justify-end">
           {onBack && <button onClick={onBack} className="min-h-10 max-w-full px-4 py-2 border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 hover:bg-slate-50 flex items-center justify-center gap-2 sm:h-10 sm:shrink-0 sm:whitespace-nowrap"><ArrowLeft className="w-4 h-4 shrink-0" />К результатам AI-исследования</button>}
@@ -990,13 +1008,13 @@ function BabokRegistryResult({ value, latestVersion, onSave, onStartResearch, on
             <button aria-label={researchBusy ? 'AI-исследование выполняется…' : 'Улучшить требования с помощью AI'} aria-describedby="babok-save-status" title={!hasSavedVersion || hasUnsavedChanges ? 'Сначала сохраните текущую версию требований' : researchBusy ? 'Дождитесь завершения текущего AI-исследования' : 'Необязательный следующий шаг'} disabled={busy || researchBusy || !hasSavedVersion || hasUnsavedChanges} onClick={() => onStartResearch?.({ requirementsVersionId: latestVersion.versionId })} className="h-10 shrink-0 whitespace-nowrap px-4 py-2 border border-indigo-200 bg-white text-indigo-700 text-sm font-semibold rounded-lg hover:bg-indigo-50 disabled:border-slate-200 disabled:text-slate-600 disabled:bg-slate-100 flex items-center justify-center gap-2">{researchBusy ? <><Loader2 className="w-4 h-4 animate-spin" />AI-исследование выполняется…</> : <><Sparkles className="w-4 h-4" />Улучшить с AI</>}</button>
             <button aria-label="Перейти к финальной версии" aria-describedby="babok-save-status" title={!hasSavedVersion || hasUnsavedChanges ? 'Сначала сохраните текущую версию требований' : 'Пропустить необязательное AI-исследование'} disabled={busy || researchBusy || !hasSavedVersion || hasUnsavedChanges} onClick={() => saveRegistry({ ...(latestVersion?.decisions || {}), skippedResearch: true })} className="h-10 shrink-0 whitespace-nowrap px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed">К финальной версии</button>
           </>}
-          {finalMode && onStartResearch && <FinalResearchActions versionId={latestVersion.versionId} disabled={busy || researchBusy || hasUnsavedChanges} onStart={onStartResearch} />}
+          {finalMode && onStartResearch && <FinalResearchActions version={latestVersion} disabled={busy || researchBusy || hasUnsavedChanges} onStart={onStartResearch} />}
         </>}</div>
       </div></>}
-      {compact && !finalMode && coverage.incomplete && !openQuestionCount && <RequirementsReadiness coverage={coverage} onQuestions={() => setReviewSection('questions')} onLinks={() => setReviewSection('links')} />}
+      {compact && !finalMode && !recoveryNotice && coverage.incomplete && !openQuestionCount && <RequirementsReadiness coverage={coverage} onQuestions={() => setReviewSection('questions')} onLinks={() => setReviewSection('links')} />}
 
 
-      <CoverageWarning registry={registry} />
+      {!recoveryNotice && <CoverageWarning registry={registry} />}
       <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
       <div role="group" aria-label="Разделы проверки" className={compact ? 'flex flex-wrap gap-1' : 'flex flex-wrap gap-2'}>
         {[['requirements', 'Требования'], ['questions', 'Вопросы'], ['links', 'Связи'], ['report', 'Полный отчёт']].map(([key, label]) => (
@@ -1015,6 +1033,7 @@ function BabokRegistryResult({ value, latestVersion, onSave, onStartResearch, on
         columns={BABOK_REQUIREMENT_COLUMNS} groups={registry.groups} entries={entries} selected={selectedEntry}
         onSelect={setSelectedRecordId} typeFilter={typeFilter} query={query} needsClarification={needsClarification}
         onFiltersChange={changeFilters} qualityLabels={BABOK_QUALITY_LABELS} drafts={review.state.drafts}
+        questionRequirementIds={questionFilter}
         composerMenu={!readOnly && <RequirementComposerMenu contained columns={BABOK_REQUIREMENT_COLUMNS} onChoose={(type) => { changeFilters({ type, query: '', needsClarification: false }); setComposerType(type); }} />}
         composer={!readOnly && composerType && <section id={`req-type-${composerType}`} aria-label={`Добавление: ${composerType}`} className="rounded-xl border border-slate-200 bg-white p-3">
           <BabokAddRequirementForm key={composerType} type={composerType} categoryLabel={BABOK_REQUIREMENT_COLUMNS.find(([type]) => type === composerType)?.[1]} onAdd={(text) => addRequirement(composerType, text, { targetIds: review.state.drafts[`${composerType}:new-${composerType}`]?.targetIds })} onDraftChange={(dirty) => setDraftDirty(`${composerType}:new`, dirty)} />
@@ -1119,6 +1138,7 @@ function displayEnhancementsForInsight(insight) {
 
 function InsightEnhancementDecisionRow({ enhancement, decision, onDecision }) {
   const review = useContext(DraftContext);
+  const { staleResearch } = useContext(RequirementsReviewContext);
   const action = researchProposalAction(enhancement, review);
   const type = enhancement.targetType || 'functional';
   const label = TARGET_TYPE_LABELS[type] || TARGET_TYPE_LABELS.functional;
@@ -1144,7 +1164,7 @@ function InsightEnhancementDecisionRow({ enhancement, decision, onDecision }) {
       <ProposalChangePreview enhancement={enhancement} />
       <p className="mt-3 whitespace-pre-line break-words text-sm text-slate-600"><span className="font-semibold">Обоснование: </span>{enhancement.rationale || 'Не предоставлено моделью.'}</p>
       <p className="mt-3 whitespace-pre-line break-words text-sm text-slate-600"><span className="font-semibold">Условия подтверждения: </span>{enhancement.confirmationConditions || 'Не указаны моделью.'}</p>
-      <div className="mt-4 flex flex-wrap gap-2">
+      {!staleResearch && <div className="mt-4 flex flex-wrap gap-2">
         <button
           type="button"
           aria-label={`Принять улучшение: ${enhancement.text}`}
@@ -1164,7 +1184,7 @@ function InsightEnhancementDecisionRow({ enhancement, decision, onDecision }) {
         >
           Отклонить
         </button>
-      </div>
+      </div>}
     </div>
   );
 }
@@ -1221,14 +1241,18 @@ function SourceDataMenu({ onShowContext, onShowRequirements }) {
   </details>;
 }
 
-function ResearchResultsHeader({ acceptedCount, busy, onSave, saveLabel }) {
+function ResearchResultsHeader({ acceptedCount, busy, onSave, saveLabel, finalVersionSaved }) {
+  const { finalResearch, returnToWorkflowFinal, staleResearch } = useContext(RequirementsReviewContext);
+  const description = staleResearch || (finalResearch === 'previous' && !finalVersionSaved) ? 'Исследование выполнено по предыдущей версии требований.'
+    : finalVersionSaved && returnToWorkflowFinal ? 'Решения по предложениям сохранены в финальной версии задачи.'
+      : 'Выберите полезные улучшения для финальной версии требований.';
   return <header className="flex flex-wrap items-start justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-5">
     <div>
       <h1 className="text-xl font-bold text-slate-900">Результаты AI-исследования</h1>
-      <p className="mt-2 text-sm text-slate-600">Выберите полезные улучшения для финальной версии требований.</p>
+      <p className="mt-2 text-sm text-slate-600">{description}</p>
     </div>
     <div className="space-y-2">
-      <button type="button" disabled={busy} onClick={onSave} className="min-h-10 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:bg-slate-300">{saveLabel}</button>
+      {!staleResearch && (!finalVersionSaved || !returnToWorkflowFinal) && <button type="button" disabled={busy} onClick={onSave} className="min-h-10 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:opacity-50">{finalVersionSaved ? 'К финальным требованиям' : saveLabel}</button>}
       <p className="text-sm text-slate-600">Выбрано улучшений: {acceptedCount}</p>
     </div>
   </header>;
@@ -1286,6 +1310,11 @@ function BusinessContextInputCard({ open, onOpenChange, running, summary, childr
   </section>;
 }
 
+function savedVersionStatus(version, finalVersion) {
+  const label = finalVersion ? 'Финальная версия сохранена' : 'Сохранено';
+  return `${label} · ${version?.createdAt ? formatRuDateTime(version.createdAt) : 'только что'}`;
+}
+
 function FinalRequirementsEditor({ latestVersion, onSave, onShowInsights, onShowSource, onShowContext, onStartResearch, onDirtyChange, busy, researchBusy = false, researchSkipped = false, saveInitialVersion = false }) {
   const review = useReviewState(latestVersion?.requirements || { business: [], functional: [], nonfunctional: [] }, latestVersion?.decisions || {});
   const { content: requirements, setContent: setRequirements } = review;
@@ -1302,6 +1331,7 @@ function FinalRequirementsEditor({ latestVersion, onSave, onShowInsights, onShow
   const [activeType, setActiveType] = useState('business');
   const selectType = (type) => { setActiveType(type); if (layout === 'columns') requestAnimationFrame(() => { const target = document.getElementById(`req-type-${type}`); target?.scrollIntoView?.({ block: 'start' }); target?.focus(); }); };
   const hasUnsavedChanges = review.dirty || dirtyDrafts.size > 0 || JSON.stringify(requirements) !== JSON.stringify(latestVersion?.requirements || {});
+  const savedAndClean = !saveInitialVersion && !hasUnsavedChanges && !busy;
 
   function setDraftDirty(key, dirty) {
     setDirtyDrafts((current) => { const next = new Set(current); if (dirty) next.add(key); else next.delete(key); return next; });
@@ -1332,15 +1362,15 @@ function FinalRequirementsEditor({ latestVersion, onSave, onShowInsights, onShow
       <div className="bg-white rounded-2xl shadow-xs border border-slate-200 p-5">
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
-            <div className="flex items-center gap-2 flex-wrap"><CheckCircle2 className="w-5 h-5 text-emerald-600" /><h1 className="text-xl font-bold text-slate-900">Финальная версия требований</h1></div>
-            <p className="text-sm font-semibold text-emerald-700 mt-2">{busy ? 'Сохраняем…' : hasUnsavedChanges ? 'Есть несохранённые изменения' : `Сохранено · ${formatRuDateTime(latestVersion.createdAt)}`}</p>
+            <div className="flex items-center gap-2 flex-wrap">{savedAndClean && <CheckCircle2 className="w-5 h-5 text-emerald-600" />}<h1 className="text-xl font-bold text-slate-900">Финальная версия требований</h1></div>
+            <p role="status" className={`text-sm font-semibold mt-2 ${savedAndClean ? 'text-emerald-700' : 'text-slate-600'}`}>{busy ? 'Сохраняем…' : hasUnsavedChanges ? 'Есть несохранённые изменения' : saveInitialVersion ? 'Финальная версия ещё не сохранена' : savedVersionStatus(latestVersion, true)}</p>
           </div>
           <div className="flex gap-2 flex-wrap">
             {onShowSource && onShowContext && <SourceDataMenu onShowContext={onShowContext} onShowRequirements={onShowSource} />}
             {!hasUnsavedChanges && <ResultExportAction />}
             {saveInitialVersion && !hasUnsavedChanges && <button disabled={busy} onClick={saveReview} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white disabled:bg-slate-300">Сохранить финальную версию</button>}
             {onShowInsights && <button onClick={onShowInsights} className="px-4 py-2 border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-2"><ArrowLeft className="w-4 h-4" />К результатам AI-исследования</button>}
-            {researchSkipped && onStartResearch && <FinalResearchActions versionId={latestVersion.versionId} disabled={busy || researchBusy || hasUnsavedChanges} onStart={onStartResearch} />}
+            {researchSkipped && onStartResearch && <FinalResearchActions version={latestVersion} disabled={busy || researchBusy || hasUnsavedChanges} onStart={onStartResearch} />}
           </div>
         </div>
       </div>
@@ -1430,9 +1460,10 @@ function BabokRequirementsInsightsResult({ value, latestVersion, businessContext
   const savedAcceptedKeys = Array.isArray(latestVersion?.decisions?.acceptedEnhancementKeys) ? latestVersion.decisions.acceptedEnhancementKeys : [];
   const savedRejectedKeys = Array.isArray(latestVersion?.decisions?.rejectedEnhancementKeys) ? latestVersion.decisions.rejectedEnhancementKeys : [];
   const session = useContext(SessionContext);
+  const { staleResearch } = useContext(RequirementsReviewContext);
   const activeView = session?.view || (latestVersion?.versionId ? 'final' : 'insights');
   const setActiveView = (view) => session?.requestView(view, { preserveDraft: activeView !== 'final' && view !== 'final' });
-  const review = useReviewState(latestVersion?.registry || latestVersion?.requirements || value.baseRegistry || value.baseRequirements, latestVersion?.decisions || value.baseDecisions || {}, { readOnly: activeView === 'final', editor: 'insights' });
+  const review = useReviewState(latestVersion?.registry || latestVersion?.requirements || value.baseRegistry || value.baseRequirements, latestVersion?.decisions || value.baseDecisions || {}, { readOnly: staleResearch || activeView === 'final', editor: 'insights' });
   const decisions = Object.fromEntries([...(review.state.decisions.acceptedEnhancementKeys || []).map((key) => [key, 'accepted']), ...(review.state.decisions.rejectedEnhancementKeys || []).map((key) => [key, 'rejected'])]);
   const requirementIndex = useMemo(() => buildBabokRequirementIndex(value.baseRegistry, { requirementTypes: BABOK_REQUIREMENT_TYPES, analysisTypes: BABOK_ANALYSIS_TYPES }), [value.baseRegistry]);
   const hasDecisionChanges = review.dirty;
@@ -1457,7 +1488,8 @@ function BabokRequirementsInsightsResult({ value, latestVersion, businessContext
     <ReviewDraftProvider review={review} submit={saveInsights} busy={busy}><section className="space-y-5">
       <ResearchResultsHeader acceptedCount={acceptedKeys.length} busy={busy}
         onSave={() => finalVersionSaved ? setActiveView('final') : saveInsights()}
-        saveLabel={finalVersionSaved ? 'К финальным требованиям' : latestVersion ? 'Сохранить новую редакцию' : 'Сохранить финальную версию'} />
+        finalVersionSaved={finalVersionSaved}
+        saveLabel={latestVersion ? 'Сохранить новую редакцию' : 'Сохранить финальную версию'} />
       <ResearchInsightWorkspace
         insights={insights}
         categoryMeta={INSIGHT_CATEGORY_META}
@@ -1467,6 +1499,7 @@ function BabokRequirementsInsightsResult({ value, latestVersion, businessContext
         renderEvidence={(insight) => <ResearchEvidence insight={insight} />}
         renderEnhancement={(enhancement, insight) => <ProposalReview key={enhancement.key} enhancement={{ ...enhancement, insightTitle: insight.title, rationale: enhancement.rationale || insight.rationale }} decision={decisions[enhancement.key]}>{(onDecision) => <InsightEnhancementDecisionRow enhancement={enhancement} decision={decisions[enhancement.key]} onDecision={onDecision} />}</ProposalReview>}
         decisions={decisions}
+        readOnly={staleResearch}
       />
       <ResearchSourceLinks onShowContext={() => setActiveView('context')} onShowRequirements={() => setActiveView('source')} />
     </section></ReviewDraftProvider>
@@ -1479,9 +1512,10 @@ function RequirementsInsightsResult({ value, latestVersion, businessContext, bus
   const savedAcceptedKeys = Array.isArray(latestVersion?.decisions?.acceptedEnhancementKeys) ? latestVersion.decisions.acceptedEnhancementKeys : [];
   const savedRejectedKeys = Array.isArray(latestVersion?.decisions?.rejectedEnhancementKeys) ? latestVersion.decisions.rejectedEnhancementKeys : [];
   const session = useContext(SessionContext);
+  const { staleResearch } = useContext(RequirementsReviewContext);
   const activeView = session?.view || (latestVersion?.versionId ? 'final' : 'insights');
   const setActiveView = (view) => session?.requestView(view, { preserveDraft: activeView !== 'final' && view !== 'final' });
-  const review = useReviewState(latestVersion?.registry || latestVersion?.requirements || value.baseRegistry || value.baseRequirements, latestVersion?.decisions || value.baseDecisions || {}, { readOnly: activeView === 'final', editor: 'insights' });
+  const review = useReviewState(latestVersion?.registry || latestVersion?.requirements || value.baseRegistry || value.baseRequirements, latestVersion?.decisions || value.baseDecisions || {}, { readOnly: staleResearch || activeView === 'final', editor: 'insights' });
   const decisions = Object.fromEntries([...(review.state.decisions.acceptedEnhancementKeys || []).map((key) => [key, 'accepted']), ...(review.state.decisions.rejectedEnhancementKeys || []).map((key) => [key, 'rejected'])]);
   const requirementIndex = useMemo(() => buildLegacyRequirementIndex(value.baseRequirements), [value.baseRequirements]);
   const hasDecisionChanges = review.dirty;
@@ -1533,7 +1567,8 @@ function RequirementsInsightsResult({ value, latestVersion, businessContext, bus
     <ReviewDraftProvider review={review} submit={saveInsights} busy={busy}><section className="space-y-5">
       <ResearchResultsHeader acceptedCount={acceptedKeys.length} busy={busy}
         onSave={() => finalVersionSaved ? setActiveView('final') : saveInsights()}
-        saveLabel={finalVersionSaved ? 'К финальным требованиям' : latestVersion ? 'Сохранить новую редакцию' : 'Сохранить финальную версию'} />
+        finalVersionSaved={finalVersionSaved}
+        saveLabel={latestVersion ? 'Сохранить новую редакцию' : 'Сохранить финальную версию'} />
       <ResearchInsightWorkspace
         insights={insights}
         categoryMeta={INSIGHT_CATEGORY_META}
@@ -1543,6 +1578,7 @@ function RequirementsInsightsResult({ value, latestVersion, businessContext, bus
         renderEvidence={(insight) => <ResearchEvidence insight={insight} />}
         renderEnhancement={(enhancement, insight) => <ProposalReview key={enhancement.key} enhancement={{ ...enhancement, insightTitle: insight.title, rationale: enhancement.rationale || insight.rationale }} decision={decisions[enhancement.key]}>{(onDecision) => <InsightEnhancementDecisionRow enhancement={enhancement} decision={decisions[enhancement.key]} onDecision={onDecision} />}</ProposalReview>}
         decisions={decisions}
+        readOnly={staleResearch}
       />
       <ResearchSourceLinks onShowContext={() => setActiveView('context')} onShowRequirements={() => setActiveView('source')} />
     </section></ReviewDraftProvider>
@@ -1550,20 +1586,26 @@ function RequirementsInsightsResult({ value, latestVersion, businessContext, bus
 }
 
 function ResultView({ content, latestVersion, businessContext, businessContextLoading, onSaveRequirements, onStartResearch, onSaveFinal, onDirtyChange, busy, researchBusy = false, jobId = null, discussionEnabled = true }) {
-  const value = safeJson(content);
+  const value = useMemo(() => safeJson(content), [content]);
+  const { staleResearch, returnToWorkflowFinal } = useContext(RequirementsReviewContext);
+  const session = useContext(SessionContext);
   if (!value) return <Markdown>{content}</Markdown>;
+  if (value.mode !== 'REQUIREMENTS_INSIGHTS' && latestVersion?.researchJobId) {
+    return isBabokRegistry(latestVersion.registry)
+      ? <BabokRegistryResult value={latestVersion.registry} latestVersion={latestVersion} finalVersion onSave={onSaveRequirements} onStartResearch={onStartResearch} onDirtyChange={onDirtyChange} busy={busy} researchBusy={researchBusy} jobId={latestVersion.sourceJobId} discussionEnabled={discussionEnabled} />
+      : <FinalRequirementsEditor latestVersion={latestVersion} researchSkipped onSave={onSaveRequirements} onStartResearch={onStartResearch} onDirtyChange={onDirtyChange} busy={busy} researchBusy={researchBusy} />;
+  }
   if (isBabokTextDraft(value)) return <Suspense fallback={<p>Загрузка черновика…</p>}><BabokTextDraft value={value} /></Suspense>;
   if (value.recovery && isBabokRegistry(value.manualRegistry)) return <div className="space-y-4">
-    <p role="status" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-950">AI не завершил проверку декомпозиции. {isBabokTextDraft(value.recovery.draft) ? 'Черновик сохранён. Проверьте формулировки и сохраните требования.' : 'Добавьте требования вручную по исходной задаче.'}</p>
-    {value.recovery.omittedResponses && <p className="text-sm text-amber-950">Часть ответов AI не поместилась в черновик.</p>}
-    <BabokRegistryResult value={value.manualRegistry} latestVersion={latestVersion} recoveryDraft={value.recovery.draft} businessContext={businessContext} onSave={onSaveRequirements} onStartResearch={onStartResearch} onDirtyChange={onDirtyChange} busy={busy} researchBusy={researchBusy} finalVersion={Boolean(latestVersion?.decisions?.skippedResearch)} jobId={jobId} discussionEnabled={discussionEnabled} />
+    <BabokRegistryResult value={value.manualRegistry} latestVersion={latestVersion} recoveryResult={value} onSave={onSaveRequirements} onStartResearch={onStartResearch} onDirtyChange={onDirtyChange} busy={busy} researchBusy={researchBusy} finalVersion={Boolean(latestVersion?.decisions?.skippedResearch)} jobId={jobId} discussionEnabled={discussionEnabled} />
     {isBabokTextDraft(value.recovery.draft) && <details className="rounded-lg border border-slate-200 bg-white p-3"><summary className="cursor-pointer font-semibold">Исходный ответ AI</summary><Suspense fallback={<p>Загрузка ответа…</p>}><BabokTextDraft value={value.recovery.draft} /></Suspense></details>}
   </div>;
   if (value.mode === 'REQUIREMENTS_INSIGHTS') {
     if (value.recovery) {
+      if (staleResearch || (returnToWorkflowFinal && latestVersion && session?.view === 'insights')) return <p role="status" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-950">AI не подготовил проверенные рекомендации.</p>;
       const version = latestVersion || { versionId: value.inputRequirementsVersionId, registry: value.baseRegistry, requirements: value.baseRequirements, decisions: value.baseDecisions, createdAt: value.baseCreatedAt };
       return <div className="space-y-4">
-        <p role="status" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-950">AI не подготовил проверенные рекомендации. Продолжите с сохранёнными требованиями. Их можно отредактировать и сохранить как финальную версию.</p>
+        <p role="status" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-950">AI не подготовил проверенные рекомендации.{!latestVersion && ' Продолжите с сохранёнными требованиями. Их можно отредактировать и сохранить как финальную версию.'}</p>
         {isBabokRegistry(version.registry)
           ? <BabokRegistryResult value={version.registry} latestVersion={version} finalVersion saveInitialVersion={!latestVersion} onSave={onSaveFinal} onDirtyChange={onDirtyChange} busy={busy} jobId={jobId} discussionEnabled={discussionEnabled} />
           : <FinalRequirementsEditor latestVersion={version} saveInitialVersion={!latestVersion} onSave={onSaveFinal} onDirtyChange={onDirtyChange} busy={busy} />}
@@ -1749,8 +1791,10 @@ function ArchivedLegacyResult({ job, result, onDownload }) {
   </section>;
 }
 
+const EMPTY_VERSION_PAGE = { items: [], workflowFinal: null };
+
 export default function AsyncJobWorkspace() {
-  const [routeJobId, setRouteJobId] = useState(() => jobIdFromPath());
+  const [{ routeJobId, finalResearch }, setRoute] = useState(() => ({ routeJobId: jobIdFromPath(), finalResearch: window.history.state?.finalResearch }));
   const [historyOpen, setHistoryOpen] = useState(false);
   const closeHistory = useCallback(() => setHistoryOpen(false), []);
   const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
@@ -1777,7 +1821,7 @@ export default function AsyncJobWorkspace() {
   const [resultContent, setResultContent] = useState('');
   const [backgroundJob, setBackgroundJob] = useState(null);
   const [completionNotice, setCompletionNotice] = useState(null);
-  const [requirementsVersions, setRequirementsVersions] = useState([]);
+  const [versionPage, setVersionPage] = useState(EMPTY_VERSION_PAGE);
   const [remoteRequirementsVersions, setRemoteRequirementsVersions] = useState(null);
   const editorDirtyRef = useRef(false);
   const editorControllerRef = useRef(null);
@@ -1828,24 +1872,31 @@ export default function AsyncJobWorkspace() {
   const reviewResearch = childResearchActive ? linkedChild : completedResearch || linkedChild;
   const linkedResearchBusy = linkedResearchSubmitting || activeLinkedResearch || childResearchActive;
   const linkedResearchComplete = linkedResearch && job?.status === 'SUCCEEDED';
-  const finalVersionReady = linkedResearchComplete && requirementsVersions.some((item) => item.sourceJobId === result?.jobId);
-  const directFinalReady = Boolean(decompositionReady && requirementsVersions[0]?.sourceJobId === result?.jobId && requirementsVersions[0]?.decisions?.skippedResearch);
-  const researchStatus = { loading: 'Статус уточняется', ready: 'Пропущено', error: 'Статус недоступен' }[researchLookupState];
-  const finalResearchStatus = directFinalReady && (completedResearch ? 'Есть результаты' : childResearchActive ? 'Выполняется' : researchStatus);
-  const currentStage = linkedResearch && activeReviewView && activeReviewView !== 'final' ? 3 : finalVersionReady || directFinalReady ? 4 : linkedResearch ? 3 : decompositionReady ? 2 : 1;
+  const { items: requirementsVersions, workflowFinal } = versionPage;
+  const jobVersion = requirementsVersions[0];
+  const latestVersion = (decompositionReady && workflowFinal ? workflowFinal : jobVersion) || null;
+  const finalVersionReady = linkedResearchComplete && jobVersion && jobVersion.sourceJobId === result?.jobId && (!workflowFinal || workflowFinal.versionId === jobVersion.versionId);
+  const directFinalReady = Boolean(decompositionReady && (workflowFinal || (jobVersion?.sourceJobId === result?.jobId && jobVersion?.decisions?.skippedResearch)));
+  const staleResearch = Boolean(linkedResearchComplete && workflowFinal && (jobVersion?.versionId || job.inputArtifactId || parsedResult?.inputRequirementsVersionId) !== workflowFinal.versionId);
+  const researchStatus = { loading: 'Статус уточняется', ready: latestVersion?.researchJobId ? 'Есть результаты' : 'Пропущено', error: 'Статус недоступен' }[researchLookupState];
+  const finalResearchStatus = linkedResearch && job?.outcome === 'PARTIAL' ? 'Готово частично'
+    : directFinalReady && (completedResearch?.outcome === 'PARTIAL' ? 'Готово частично' : completedResearch ? 'Есть результаты' : childResearchActive ? 'Выполняется' : researchStatus);
+  const reviewView = staleResearch && activeReviewView === 'final' ? 'insights' : activeReviewView || (linkedResearch && (finalResearch || staleResearch) ? 'insights' : null);
+  const currentStage = linkedResearch && reviewView && reviewView !== 'final' ? 3 : finalVersionReady || directFinalReady ? 4 : linkedResearch ? 3 : decompositionReady ? 2 : 1;
   const researchParentId = linkedResearch && currentStage === 3 ? job?.parentJobId : null;
-  const completedStage = finalVersionReady || directFinalReady ? 4 : linkedResearchComplete ? 3 : linkedResearch ? 2 : decompositionReady ? 1 : 0;
+  const returnToWorkflowFinal = Boolean(researchParentId && (workflowFinal || (finalResearch && finalResearch !== 'history')));
+  const completedStage = workflowFinal || finalVersionReady || directFinalReady ? 4 : linkedResearchComplete ? 3 : linkedResearch ? 2 : decompositionReady ? 1 : 0;
   const handleEditorDirty = useCallback((dirty) => { editorDirtyRef.current = dirty; }, []);
 
-  const navigate = useCallback((id, { replace = false, confirmed = false } = {}) => {
+  const navigate = useCallback((id, { replace = false, confirmed = false, finalResearch = null } = {}) => {
     if (saveInFlightRef.current && id !== routeJobIdRef.current) return false;
-    if (!confirmed && editorDirtyRef.current && id !== routeJobIdRef.current) { setPendingNavigation({ id, replace }); return false; }
+    if (!confirmed && editorDirtyRef.current && id !== routeJobIdRef.current) { setPendingNavigation({ id, replace, finalResearch }); return false; }
     const path = id ? `/tasks/${encodeURIComponent(id)}` : '/';
     const index = replace ? historyIndexRef.current : historyIndexRef.current + 1;
-    window.history[replace ? 'replaceState' : 'pushState']({ reqaiIndex: index }, '', path);
+    window.history[replace ? 'replaceState' : 'pushState']({ reqaiIndex: index, finalResearch }, '', path);
     historyIndexRef.current = index;
     routeJobIdRef.current = id || null;
-    setRouteJobId(id || null);
+    setRoute({ routeJobId: id || null, finalResearch });
     return true;
   }, []);
 
@@ -1858,10 +1909,10 @@ export default function AsyncJobWorkspace() {
         const delta = Number.isInteger(event.state?.reqaiIndex) ? event.state.reqaiIndex - historyIndexRef.current : null;
         if (delta) { restoringPopRef.current = true; window.history.go(-delta); }
         else window.history.pushState({ reqaiIndex: historyIndexRef.current }, '', routeJobIdRef.current ? `/tasks/${encodeURIComponent(routeJobIdRef.current)}` : '/');
-        if (!saveInFlightRef.current) setPendingNavigation({ id, historyDelta: delta }); return;
+        if (!saveInFlightRef.current) setPendingNavigation({ id, historyDelta: delta, finalResearch: event.state?.finalResearch }); return;
       }
       if (Number.isInteger(event.state?.reqaiIndex)) historyIndexRef.current = event.state.reqaiIndex;
-      routeJobIdRef.current = id; setRouteJobId(id);
+      routeJobIdRef.current = id; setRoute({ routeJobId: id, finalResearch: event.state?.finalResearch });
     };
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
@@ -1912,7 +1963,7 @@ export default function AsyncJobWorkspace() {
     else if (next.view) { setEditorEpoch((value) => value + 1); setActiveReviewView(next.view); }
     else if (next.submit) submit();
     else if (next.newTask) startNewTask();
-    else navigate(next.id, { replace: next.replace, confirmed: true });
+    else navigate(next.id, { replace: next.replace, confirmed: true, finalResearch: next.finalResearch });
   }
 
   function requestReviewView(view, { preserveDraft = false } = {}) {
@@ -1921,8 +1972,9 @@ export default function AsyncJobWorkspace() {
   }
 
   function compareRecovery(recovery) {
-    const next = requirementsVersions[0];
-    setRebasePreview({ ...rebaseReview(recovery.state, recovery.baseContent, next?.registry || next?.requirements || parsedResult, recovery.baseDecisions, next?.decisions), versions: requirementsVersions });
+    const next = latestVersion;
+    const content = parsedResult?.manualRegistry && !next?.researchJobId ? projectBabokRecovery(parsedResult, next?.registry, next?.decisions).registry : next?.registry || next?.requirements || parsedResult;
+    setRebasePreview({ ...rebaseReview(recovery.state, recovery.baseContent, content, recovery.baseDecisions, next?.decisions), versions: versionPage });
   }
 
   function restoreRecovery(recovery) {
@@ -1933,16 +1985,17 @@ export default function AsyncJobWorkspace() {
 
   function loadRemoteRequirementsVersion() {
     if (!remoteRequirementsVersions) return;
-    const current = requirementsVersions[0];
-    const next = remoteRequirementsVersions[0];
+    const current = latestVersion;
+    const next = (decompositionReady && remoteRequirementsVersions.workflowFinal) || remoteRequirementsVersions.items[0];
     const snapshot = editorControllerRef.current?.snapshot?.();
     if (snapshot && editorDirtyRef.current) {
-      const base = current?.registry || current?.requirements || (isBabokRegistry(parsedResult) ? parsedResult : collectRequirements(parsedResult));
+      const base = parsedResult?.manualRegistry && !current?.researchJobId ? projectBabokRecovery(parsedResult, current?.registry, current?.decisions).registry
+        : current?.registry || current?.requirements || (isBabokRegistry(parsedResult) ? parsedResult : collectRequirements(parsedResult));
       setRebasePreview({ ...rebaseReview(snapshot, base, next.registry || next.requirements, current?.decisions, next.decisions), versions: remoteRequirementsVersions });
       return;
     }
     editorDirtyRef.current = false;
-    setRequirementsVersions(remoteRequirementsVersions);
+    setVersionPage(remoteRequirementsVersions);
     setRemoteRequirementsVersions(null);
   }
 
@@ -1951,7 +2004,7 @@ export default function AsyncJobWorkspace() {
     setRestoredReviewState(keepLocal ? rebasePreview.state : null);
     if (keepLocal) setActiveReviewView(rebasePreview.state.editor === 'insights' ? 'insights' : null);
     setEditorEpoch((value) => value + 1);
-    setRequirementsVersions(rebasePreview.versions);
+    setVersionPage(rebasePreview.versions);
     setRemoteRequirementsVersions(null);
     setRebasePreview(null);
     setError('');
@@ -1960,7 +2013,8 @@ export default function AsyncJobWorkspace() {
 
   const loadRequirementsVersions = useCallback(async (id) => {
     const page = await enterpriseApi.listRequirementsVersions(id);
-    return Promise.all((page.items || []).map((item) => item.requirements ? item : enterpriseApi.getRequirementsVersion(item.versionId)));
+    const items = await Promise.all((page.items || []).map((item) => item.requirements ? item : enterpriseApi.getRequirementsVersion(item.versionId)));
+    return { items, workflowFinal: page.workflowFinal || null };
   }, []);
 
   const loadResult = useCallback(async (id, signal) => {
@@ -1983,7 +2037,7 @@ export default function AsyncJobWorkspace() {
       });
     }
     setResultContent(hydrated);
-    setRequirementsVersions(versions);
+    setVersionPage(versions);
     setRemoteRequirementsVersions(null);
     loadedResultJobIdRef.current = id;
   }, [loadRequirementsVersions]);
@@ -2054,13 +2108,14 @@ export default function AsyncJobWorkspace() {
     setActiveReviewView(null);
     setRestoredReviewState(null); setRebasePreview(null);
     setDebugOpen(false); setSseObservations([]); setRouteUnavailable(false); setError('');
+    setJob(null); setResult(null); setResultContent(''); setVersionPage(EMPTY_VERSION_PAGE); setRemoteRequirementsVersions(null);
+    loadedResultJobIdRef.current = null;
+    editorDirtyRef.current = false;
     if (!routeJobId) {
       const draft = unsentContextRef.current;
       setContextFormOpen(true);
       setRequirements(draft.text); setFile(draft.file); setBaselineFile(draft.baseline); setReferenceFiles(draft.references);
-      setJob(null); setResult(null); setResultContent(''); setRequirementsVersions([]); setRemoteRequirementsVersions(null);
       setBusinessContextLoading(false);
-      loadedResultJobIdRef.current = null;
       return undefined;
     }
     setFile(null); setBaselineFile(null); setReferenceFiles([]);
@@ -2088,8 +2143,7 @@ export default function AsyncJobWorkspace() {
             if (!controller.signal.aborted && routeJobIdRef.current === routeJobId) setBusinessContextLoading(false);
           }
         }
-        setResult(null); setResultContent(''); setRequirementsVersions([]); setRemoteRequirementsVersions(null);
-        loadedResultJobIdRef.current = null; editorDirtyRef.current = false;
+        if (controller.signal.aborted || routeJobIdRef.current !== routeJobId) return;
         if (selected.status === 'SUCCEEDED') await loadResult(routeJobId, controller.signal);
       } catch (cause) {
         if (controller.signal.aborted) return;
@@ -2138,7 +2192,7 @@ export default function AsyncJobWorkspace() {
         if (controller.signal.aborted || routeJobIdRef.current !== jobId) return;
         if (editorDirtyRef.current) setRemoteRequirementsVersions(versions);
         else {
-          setRequirementsVersions(versions);
+          setVersionPage(versions);
           setRemoteRequirementsVersions(null);
         }
         return;
@@ -2237,8 +2291,13 @@ export default function AsyncJobWorkspace() {
     finally { setBusy(false); }
   }
 
-  function load(id) {
-    if (!navigate(id)) return;
+  function load(id, options) {
+    if (id === routeJobIdRef.current && options?.finalResearch === 'history') {
+      requestReviewView('insights');
+      setHistoryOpen(false);
+      return;
+    }
+    if (!navigate(id, options)) return;
     if (backgroundJob?.jobId === id) {
       localStorage.removeItem(BACKGROUND_JOB_KEY);
       setBackgroundJob(null);
@@ -2265,7 +2324,7 @@ export default function AsyncJobWorkspace() {
     setJob(null);
     setResult(null);
     setResultContent('');
-    setRequirementsVersions([]);
+    setVersionPage(EMPTY_VERSION_PAGE);
     setRemoteRequirementsVersions(null);
     setError('');
     setVersionBusy(false);
@@ -2277,50 +2336,58 @@ export default function AsyncJobWorkspace() {
   }
 
   async function saveRequirementsVersion({ requirements: nextRequirements, registry: nextRegistry, baseVersionId = null, decisions = {}, editedRecordIds = [] }) {
-    if (!result?.jobId || saveInFlightRef.current) return null;
+    if (!result?.jobId || staleResearch || saveInFlightRef.current) return null;
     saveInFlightRef.current = true;
-    const savingJobId = result.jobId;
+    const savingRouteId = result.jobId;
+    const editingLinkedFinal = decompositionReady && latestVersion?.researchJobId && latestVersion.versionId === baseVersionId;
+    const savingJobId = editingLinkedFinal ? latestVersion.sourceJobId : savingRouteId;
+    const finalizing = editingLinkedFinal || result.type === 'RESEARCH' || decisions.skippedResearch === true;
     const savingIdentity = identityGenerationRef.current;
     setVersionBusy(true);
     setError('');
     try {
-      if (result.type === 'RESEARCH' || decisions.skippedResearch === true) {
+      if (finalizing) {
         const issues = openReviewItems(nextRegistry || nextRequirements, decisions.review);
         if (issues.length) {
           const confirmed = await new Promise((resolve) => { finalReviewResolverRef.current = resolve; setFinalReviewPrompt({ issues, resolve }); });
           finalReviewResolverRef.current = null;
-          if (!confirmed || routeJobIdRef.current !== savingJobId || savingIdentity !== identityGenerationRef.current) return null;
+          if (!confirmed || routeJobIdRef.current !== savingRouteId || savingIdentity !== identityGenerationRef.current) return null;
           decisions = updateReviewMetadata(decisions, { acknowledgment: { confirm: true } });
         } else decisions = updateReviewMetadata(decisions, {});
       }
-      const content = { sourceJobId: savingJobId, baseVersionId, decisions, expectedLatestVersionId: requirementsVersions[0]?.versionId || null, ...(nextRegistry ? { registry: nextRegistry, editedRecordIds } : { requirements: nextRequirements }) };
+      const content = { sourceJobId: savingJobId, baseVersionId, decisions, expectedLatestVersionId: (editingLinkedFinal ? latestVersion : jobVersion)?.versionId || null, ...(nextRegistry ? { registry: nextRegistry, editedRecordIds } : { requirements: nextRequirements }) };
       const fingerprint = JSON.stringify(content);
       if (saveRequestRef.current?.fingerprint !== fingerprint) saveRequestRef.current = { fingerprint, id: crypto.randomUUID() };
       const payload = { ...content, clientMutationId: saveRequestRef.current.id };
       const saved = await enterpriseApi.saveRequirementsVersion(payload);
       if (savingIdentity !== identityGenerationRef.current) return null;
       if (!saved?.versionId) throw new Error('Сервер не подтвердил сохранение версии. Повторите запрос.');
-      if (routeJobIdRef.current !== savingJobId) return saved;
+      if (routeJobIdRef.current !== savingRouteId) return saved;
       editorControllerRef.current?.discard?.();
       setRestoredReviewState(null);
-      setActiveReviewView(null);
+      setActiveReviewView(result.type === 'RESEARCH' && finalResearch ? 'final' : null);
       saveRequestRef.current = null;
-      setRequirementsVersions((current) => [saved, ...current.filter((item) => item.versionId !== saved.versionId)]);
+      setVersionPage((current) => ({
+        items: savingJobId === savingRouteId ? [saved, ...current.items.filter((item) => item.versionId !== saved.versionId)] : current.items,
+        workflowFinal: finalizing ? saved : current.workflowFinal,
+      }));
+      setHistoryRefreshKey((key) => key + 1);
       setRemoteRequirementsVersions(null);
       editorDirtyRef.current = false;
       return saved;
     } catch (cause) {
-      if (savingIdentity === identityGenerationRef.current && routeJobIdRef.current === savingJobId) {
-        setError(cause.code === 'REQUIREMENTS_VERSION_CONFLICT' ? 'На сервере появилась новая версия. Сравните её с вашими правками перед сохранением.' : userFacingError(cause));
-        if (cause.code === 'REQUIREMENTS_VERSION_CONFLICT') {
-          try { const versions = await loadRequirementsVersions(savingJobId); if (routeJobIdRef.current === savingJobId) setRemoteRequirementsVersions(versions); } catch { /* draft remains available; retry can reload the conflict */ }
+      if (savingIdentity === identityGenerationRef.current && routeJobIdRef.current === savingRouteId) {
+        const versionConflict = ['REQUIREMENTS_VERSION_CONFLICT', 'WORKFLOW_FINAL_CONFLICT'].includes(cause.code);
+        setError(cause.code === 'WORKFLOW_FINAL_CONFLICT' && linkedResearch ? 'Финальная версия задачи изменилась. Откройте актуальную версию. Ваши правки пока в черновике.' : versionConflict ? 'На сервере появилась новая версия. Сравните её с вашими правками перед сохранением.' : userFacingError(cause));
+        if (versionConflict && (decompositionReady || cause.code !== 'WORKFLOW_FINAL_CONFLICT')) {
+          try { const versions = await loadRequirementsVersions(savingRouteId); if (routeJobIdRef.current === savingRouteId) setRemoteRequirementsVersions(versions); } catch { /* draft remains available; retry can reload the conflict */ }
         }
       }
       return null;
     } finally { if (savingIdentity === identityGenerationRef.current) { saveInFlightRef.current = false; setVersionBusy(false); } }
   }
 
-  async function startResearchFromDecomposition({ requirementsVersionId }) {
+  async function startResearchFromDecomposition({ requirementsVersionId, fromFinal }) {
     if (!result?.jobId || !requirementsVersionId || linkedResearchSubmissionRef.current || versionBusy || activeLinkedResearch || childResearchActive) return;
     linkedResearchSubmissionRef.current = true;
     setLinkedResearchSubmitting(true);
@@ -2328,7 +2395,7 @@ export default function AsyncJobWorkspace() {
     setError('');
     try {
       const accepted = await enterpriseApi.researchRequirements(requirementsVersionId, nextAiSettings);
-      navigate(accepted.jobId);
+      navigate(accepted.jobId, { finalResearch: fromFinal ? 'current' : null });
       await refresh();
     } catch (cause) { setError(userFacingError(cause)); }
     finally {
@@ -2356,7 +2423,7 @@ export default function AsyncJobWorkspace() {
       request.accepted = accepted;
       if (identity !== identityGenerationRef.current) return;
       setHistoryRefreshKey((key) => key + 1);
-      if (routeJobIdRef.current === sourceJobId) navigate(accepted.jobId);
+      if (routeJobIdRef.current === sourceJobId) navigate(accepted.jobId, { finalResearch });
     } catch (cause) {
       if (identity === identityGenerationRef.current && routeJobIdRef.current === sourceJobId) setError(userFacingError(cause));
     } finally {
@@ -2406,7 +2473,7 @@ export default function AsyncJobWorkspace() {
     </button>
   );
 
-  const compactReview = [2, 4].includes(currentStage) && !isBabokTextDraft(parsedResult) && !parsedResult?.manualRegistry;
+  const compactReview = [2, 4].includes(currentStage) && !isBabokTextDraft(parsedResult);
   const contextComplete = Boolean(result && !legacyJob && (job?.type === 'DECOMPOSITION' || result.mode === 'DECOMPOSITION'));
   const showReadOnlyBusinessContext = Boolean((linkedResearch && !result) || directFinalReady);
   const contextFormBody = <>
@@ -2465,7 +2532,7 @@ export default function AsyncJobWorkspace() {
           {(contextComplete || linkedResearch) && <WorkflowStepper compact={compactReview} currentStage={currentStage} completedStage={completedStage} researchStatus={finalResearchStatus} />}
           {researchParentId && <button type="button" disabled={versionBusy} onClick={() => load(researchParentId)} className="mb-3 inline-flex min-h-10 items-center gap-2 rounded-lg border border-indigo-200 bg-white px-4 text-left text-sm font-semibold text-indigo-700 hover:bg-indigo-50 focus-visible:ring-2 focus-visible:ring-indigo-500 disabled:opacity-50">
             <ArrowLeft aria-hidden="true" className="h-4 w-4 shrink-0" />
-            Вернуться в реестр требований
+            {returnToWorkflowFinal ? 'Вернуться к финальной версии' : 'Вернуться в реестр требований'}
           </button>}
           {showReadOnlyBusinessContext && <section className="bg-white rounded-2xl border border-slate-200 mb-5 overflow-hidden"><OriginalBusinessContext compact value={requirements} loading={businessContextLoading} /></section>}
           {activeLinkedResearch && !contextComplete ? <div className="mb-5"><ActiveJobPanel job={job} onCancel={cancelActiveJob} onBackground={continueInBackground} /></div> : contextComplete && !directFinalReady ? compactReview ? null : <section className="bg-white rounded-2xl border border-slate-200 mb-5 overflow-hidden">
@@ -2489,7 +2556,7 @@ export default function AsyncJobWorkspace() {
             {remoteRequirementsVersions && <section role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-4 flex items-center justify-between gap-4 flex-wrap"><div><p className="text-sm font-semibold text-amber-900">Доступна новая сохранённая версия</p><p className="text-xs text-amber-700 mt-1">Она создана в другом клиенте. Текущие несохранённые изменения оставлены без изменений.</p></div><button onClick={loadRemoteRequirementsVersion} className={compactReview ? "px-4 py-2 rounded-lg bg-indigo-600 text-sm font-semibold text-white hover:bg-indigo-700" : "px-4 py-2 rounded-lg border border-amber-300 bg-white text-sm font-semibold text-amber-800 hover:bg-amber-100"}>Загрузить новую версию</button></section>}
             {progressingJob && !activeLinkedResearch && <ActiveJobPanel job={job} onCancel={cancelActiveJob} onBackground={continueInBackground} />}
             <JobStateCard job={job} onCancel={cancelActiveJob} onRetry={linkedResearch && job?.inputArtifactId ? retryResearch : undefined} retryBusy={researchRetryBusy} />
-            {result && identityReady && <RequirementsReviewContext.Provider value={{ conflict: Boolean(remoteRequirementsVersions), saveError: error, onCompareVersions: loadRemoteRequirementsVersion, childId: reviewResearch?.jobId, child: reviewResearch, completedResearch, researchLookupState, submitting: linkedResearchSubmitting, onOpenResearch: (id = reviewResearch?.jobId) => load(id), source: compactReview ? <OriginalBusinessContext compact value={requirements} loading={businessContextLoading} editable><h2 className="text-lg font-bold">Изменить бизнес-задачу</h2><p className="mb-4 text-sm text-slate-600">После изменений запустите декомпозицию повторно.</p>{contextFormBody}</OriginalBusinessContext> : null }}><ResultExportContext.Provider value={<VersionExport key={`${result.jobId}:${authEpoch}`} version={requirementsVersions[0]} isDirty={() => editorDirtyRef.current} onSave={() => editorControllerRef.current?.save?.()} />}><ResultPanel reservedIds={requirementsVersions.flatMap((version) => Object.values(version.registry?.groups || version.requirements || {}).filter(Array.isArray).flat().map((record) => record.id))} editorEpoch={editorEpoch} activeReviewView={activeReviewView} requestReviewView={requestReviewView} restoredReviewState={restoredReviewState} compareRecovery={compareRecovery} restoreRecovery={restoreRecovery} actorScope={actorScope} registerEditor={registerEditor} result={result} resultContent={resultContent} latestVersion={requirementsVersions[0] || null} businessContext={requirements} businessContextLoading={businessContextLoading} onSaveRequirements={saveRequirementsVersion} onStartResearch={startResearchFromDecomposition} onSaveFinal={saveRequirementsVersion} onDirtyChange={handleEditorDirty} busy={versionBusy} researchBusy={linkedResearchBusy} discussionEnabled={inputCapabilities.discussionAvailable !== false} /></ResultExportContext.Provider></RequirementsReviewContext.Provider>}
+            {result && identityReady && <RequirementsReviewContext.Provider value={{ conflict: Boolean(remoteRequirementsVersions), saveError: error, onCompareVersions: loadRemoteRequirementsVersion, childId: reviewResearch?.jobId, child: reviewResearch, completedResearch, researchLookupState, finalResearch, returnToWorkflowFinal, staleResearch, submitting: linkedResearchSubmitting, onOpenResearch: (id = reviewResearch?.jobId, options) => load(id, options), source: compactReview ? <OriginalBusinessContext compact value={requirements} loading={businessContextLoading} editable><h2 className="text-lg font-bold">Изменить бизнес-задачу</h2><p className="mb-4 text-sm text-slate-600">После изменений запустите декомпозицию повторно.</p>{contextFormBody}</OriginalBusinessContext> : null }}><ResultExportContext.Provider value={<VersionExport key={`${result.jobId}:${authEpoch}`} version={staleResearch ? null : latestVersion} isDirty={() => editorDirtyRef.current} onSave={() => editorControllerRef.current?.save?.()} />}><ResultPanel reservedIds={[...requirementsVersions, ...(workflowFinal ? [workflowFinal] : [])].flatMap((version) => Object.values(version.registry?.groups || version.requirements || {}).filter(Array.isArray).flat().map((record) => record.id))} editorEpoch={editorEpoch} activeReviewView={reviewView} requestReviewView={requestReviewView} restoredReviewState={restoredReviewState} compareRecovery={compareRecovery} restoreRecovery={restoreRecovery} actorScope={actorScope} registerEditor={registerEditor} result={result} resultContent={resultContent} latestVersion={latestVersion} businessContext={requirements} businessContextLoading={businessContextLoading} onSaveRequirements={saveRequirementsVersion} onStartResearch={startResearchFromDecomposition} onSaveFinal={saveRequirementsVersion} onDirtyChange={handleEditorDirty} busy={versionBusy} researchBusy={linkedResearchBusy} discussionEnabled={inputCapabilities.discussionAvailable !== false} /></ResultExportContext.Provider></RequirementsReviewContext.Provider>}
           </div>
         </main>
       )}

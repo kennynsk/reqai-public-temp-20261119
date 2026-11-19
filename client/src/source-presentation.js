@@ -17,6 +17,6 @@ export function presentSource(source, materials = {}) {
   const fallback = role === 'baseline' ? 'Предыдущая версия' : role === 'reference' ? 'Справочный материал' : role === 'primary' ? 'Исходная бизнес-задача' : 'Источник требований';
   const name = [source.name, source.title, material?.name, material?.title, material?.filename].find(usableName);
   const label = discussion ? `Ответ на уточнение ${discussion[1]}` : accepted ? 'Принятое AI-предложение' : clean(name) || fallback;
-  const location = discussion || accepted ? '' : locator === 'manual-review' ? 'Ручная формулировка' : locator === 'manual-research-review' ? 'AI-предложение после ручной проверки' : locator.startsWith('research:') ? 'AI-предложение' : !technical.test(locator) ? locator.replace(/^section:/i, 'Раздел ').replace(/^paragraph:/i, 'Абзац ').replace(/^page:/i, 'Страница ') : '';
+  const location = discussion || accepted ? '' : locator === 'manual-review' ? 'Ручная формулировка' : locator === 'recovered-draft' ? 'Черновик AI' : locator === 'manual-research-review' ? 'AI-предложение после ручной проверки' : locator.startsWith('research:') ? 'AI-предложение' : !technical.test(locator) ? locator.replace(/^section:/i, 'Раздел ').replace(/^paragraph:/i, 'Абзац ').replace(/^page:/i, 'Страница ') : '';
   return { label, locator: location, quote: clean(source.quote) };
 }

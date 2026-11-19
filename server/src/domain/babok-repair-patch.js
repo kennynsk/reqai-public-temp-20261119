@@ -10,7 +10,7 @@ const fail = (reason) => { throw semanticViolation([{ key: '$patch', code: 'SEMA
 export function applyBabokRepairPatch(value, patch, issues) {
   if (patch?.baseRevision !== repairRevision(value) || !Array.isArray(patch.upserts) || !Array.isArray(patch.removeIds)) fail('Patch must bind the exact base revision and declare upserts/removeIds');
   const next = structuredClone(value);
-  const flagged = new Set(issues.map((issue) => issue.key));
+  const flagged = new Set(issues.filter(({ code }) => code !== 'BABOK_PARENT_TRACEABILITY_MISSING').map((issue) => issue.key));
   const all = [...Object.values(next.groups).flat(), ...next.context, ...['GAP', 'HYP', 'TERM', 'delta', 'questions'].flatMap((type) => next.analysis[type])];
   const known = new Set(all.map((record) => record.id));
   const removed = new Set(patch.removeIds);
@@ -48,14 +48,27 @@ export function applyBabokRepairPatch(value, patch, issues) {
   return next;
 }
 
-export function applyInsightRepairPatch(value, patch) {
+export function insightRepairScope(value, issues) {
+  // A coverage finding concerns the full research result; patch errors do not expand its scope.
+  if (issues.some(({ key }) => key === '$coverage')) return value.insights.map(({ id }) => id);
+  const keys = new Set(issues.map(({ key }) => key));
+  return value.insights.filter(({ id, enhancements }) => keys.has(id)
+    || enhancements.some((_, index) => keys.has(`${id}:${index}`))).map(({ id }) => id);
+}
+
+export function applyInsightRepairPatch(value, patch, allowedIds) {
   if (patch?.baseRevision !== repairRevision(value) || !Array.isArray(patch.insights) || !patch.insights.length) fail('Insight repair must bind the exact revision and contain corrected insights');
   const next = structuredClone(value);
   const seen = new Set();
+  let changed = false;
   for (const insight of patch.insights) {
     const index = next.insights.findIndex((item) => item.id === insight?.id);
     if (index < 0 || seen.has(insight.id)) fail('Repair may replace only existing, unique insight ids');
-    seen.add(insight.id); next.insights[index] = structuredClone(insight);
+    seen.add(insight.id);
+    if (!allowedIds.includes(insight.id)) continue;
+    changed ||= repairRevision(insight) !== repairRevision(next.insights[index]);
+    next.insights[index] = structuredClone(insight);
   }
+  if (!changed) fail('Repair must change at least one of the flagged insights');
   return next;
 }

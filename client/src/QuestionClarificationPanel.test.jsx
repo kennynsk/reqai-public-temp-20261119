@@ -23,7 +23,7 @@ test('one shared GAP has two questions and ten unique requirement checks, with c
   const { save } = setup();
   open();
   expect(screen.getAllByRole('dialog')).toHaveLength(1);
-  expect(screen.getByText('Как обрабатывать недоступный канал?')).toBeVisible();
+  expect(within(screen.getByRole('dialog')).getByText('Как обрабатывать недоступный канал?')).toBeVisible();
   expect(screen.getAllByRole('textbox', { name: 'Ответ на GAP-001' })).toHaveLength(1);
   expect(screen.getByRole('button', { name: 'Связанные требования · 10' })).toHaveAttribute('aria-expanded', 'false');
   expect(screen.queryByRole('button', { name: 'Редактировать FR-004' })).not.toBeInTheDocument();

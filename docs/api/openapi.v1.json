@@ -428,7 +428,8 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "items": { "type": "array", "items": { "$ref": "#/components/schemas/RequirementsVersion" } }
+                    "items": { "type": "array", "items": { "$ref": "#/components/schemas/RequirementsVersion" } },
+                    "workflowFinal": { "description": "Current finalized revision across the decomposition and linked research, or null before finalization.", "oneOf": [{ "$ref": "#/components/schemas/RequirementsVersion" }, { "type": "null" }] }
                   }
                 }
               }

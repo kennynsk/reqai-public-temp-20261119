@@ -28,8 +28,8 @@ test('server search resets cursor, ignores late pages and opens an existing chil
   expect(screen.queryByText('Поздний ответ')).not.toBeInTheDocument();
   expect(api.listJobs).toHaveBeenLastCalledWith({ limit: 20, groupBy: 'workflow', q: 'старая задача' }, expect.any(Object));
   fireEvent.click(screen.getAllByText('Этапы задачи')[0]);
-  fireEvent.click(screen.getByRole('button', { name: /AI-исследование 1/ }));
-  expect(select).toHaveBeenCalledWith('child');
+  fireEvent.click(screen.getByRole('button', { name: 'AI-исследование 1 · Готово' }));
+  expect(select).toHaveBeenCalledWith('child', { finalResearch: 'history' });
 });
 
 test('keeps accepted and queued statuses distinguishable in the filter', async () => {
@@ -95,7 +95,7 @@ test('renders fallback labels, partial outcomes, child stages, and saved version
       { jobId: 'retired', mode: 'DECOMPOSITION_WITH_INSIGHTS', status: 'UNKNOWN', createdAt: '2026-08-28' },
       { jobId: 'insights', mode: 'REQUIREMENTS_INSIGHTS', status: 'CANCELLED', createdAt: '2026-08-28', contextExcerpt: 'Сводка исследования' },
       { jobId: 'research', type: 'RESEARCH', status: 'FAILED', createdAt: '2026-08-28', contextExcerpt: 'Исследование' },
-      { jobId: 'partial', type: 'DECOMPOSITION', status: 'RUNNING', outcome: 'PARTIAL', createdAt: '2026-08-28', children: [{ jobId: 'child', status: 'SUCCEEDED' }], savedVersions: [{ versionId: 'v1', final: true, createdAt: '2026-08-28' }] },
+      { jobId: 'partial', type: 'DECOMPOSITION', status: 'RUNNING', outcome: 'PARTIAL', createdAt: '2026-08-28', children: [{ jobId: 'child', status: 'SUCCEEDED', outcome: 'PARTIAL' }], savedVersions: [{ versionId: 'v1', final: true, createdAt: '2026-08-28' }] },
       { jobId: 'saved', type: 'DECOMPOSITION', status: 'QUEUED', title: 'Сохранённая', savedVersions: [{ versionId: 'v2', final: false, createdAt: '2026-08-28' }] },
     ],
     nextCursor: null,
@@ -108,14 +108,14 @@ test('renders fallback labels, partial outcomes, child stages, and saved version
   expect(screen.getAllByText('Исследование').length).toBeGreaterThanOrEqual(1);
   expect(screen.getByText('Подготовка требований')).toBeInTheDocument();
   expect(screen.getByText('Готово частично')).toBeInTheDocument();
-  expect(screen.getByText('Статус уточняется')).toBeInTheDocument();
+  expect(screen.getByText('Статус неизвестен')).toBeInTheDocument();
 
   fireEvent.click(screen.getAllByText('Этапы задачи')[0]);
   expect(screen.getByText(/Финальная версия сохранена/)).toBeInTheDocument();
-  fireEvent.click(screen.getAllByRole('button', { name: 'Исходная декомпозиция' })[0]);
-  fireEvent.click(screen.getByRole('button', { name: /AI-исследование 1/ }));
+  fireEvent.click(screen.getByRole('button', { name: /Подготовка требований/ }));
+  fireEvent.click(screen.getByRole('button', { name: 'AI-исследование 1 · Готово частично' }));
   expect(onSelect).toHaveBeenCalledWith('partial');
-  expect(onSelect).toHaveBeenCalledWith('child');
+  expect(onSelect).toHaveBeenCalledWith('child', { finalResearch: 'history' });
 
   fireEvent.click(screen.getAllByText('Этапы задачи')[1]);
   expect(screen.getByText(/Проверенная версия сохранена/)).toBeInTheDocument();

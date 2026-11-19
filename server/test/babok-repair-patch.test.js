@@ -3,7 +3,7 @@ import { collectBabokQualityIssues } from '../src/services/babok-requirements-co
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createEmptyBabokRegistry } from '../src/services/babok-requirements-contract.js';
-import { applyBabokRepairPatch, applyInsightRepairPatch, repairRevision } from '../src/domain/babok-repair-patch.js';
+import { applyBabokRepairPatch, applyInsightRepairPatch, insightRepairScope, repairRevision } from '../src/domain/babok-repair-patch.js';
 
 function registry() {
   const value = createEmptyBabokRegistry();
@@ -32,14 +32,22 @@ test('stale patches, removing an unflagged obligation and silently changing an i
     { baseRevision: repairRevision(value), upserts: [{ type: 'BR', id: 'FR-001', record: value.groups.FR[0] }], removeIds: [] },
     { baseRevision: repairRevision(value), upserts: [{ type: 'FR', record: {} }], removeIds: [] },
   ]) assert.throws(() => applyBabokRepairPatch(value, patch, [{ key: 'FR-001' }]), { type: 'BABOK_SEMANTIC_INVALID' });
+  assert.throws(() => applyBabokRepairPatch(value, {
+    baseRevision: repairRevision(value), upserts: [], removeIds: ['FR-001'],
+  }, [{ key: 'FR-001', code: 'BABOK_PARENT_TRACEABILITY_MISSING' }]), { type: 'BABOK_SEMANTIC_INVALID' });
 });
 
-test('research repair changes only the selected insight and rejects foreign ids', () => {
+test('research repair preserves unflagged insights even when the model returns replacements for them', () => {
   const value = { insights: [{ id: 'one', enhancements: ['bad'] }, { id: 'two', enhancements: ['unchanged'] }] };
-  const result = applyInsightRepairPatch(value, { baseRevision: repairRevision(value), insights: [{ id: 'one', enhancements: ['correct'] }] });
+  const allowedIds = insightRepairScope(value, [{ key: 'one:0', code: 'NON_ATOMIC' }, { key: '$patch' }]);
+  assert.deepEqual(allowedIds, ['one']);
+  const patch = { baseRevision: repairRevision(value), insights: [{ id: 'one', enhancements: ['first', 'second'] }, { id: 'two', enhancements: ['unrequested'] }] };
+  const result = applyInsightRepairPatch(value, patch, allowedIds);
+  assert.deepEqual(result.insights[0].enhancements, ['first', 'second']);
   assert.deepEqual(result.insights[1], value.insights[1]);
   assert.deepEqual(value.insights[0].enhancements, ['bad']);
-  assert.throws(() => applyInsightRepairPatch(value, { baseRevision: repairRevision(value), insights: [{ id: 'foreign' }] }), { type: 'BABOK_SEMANTIC_INVALID' });
+  assert.throws(() => applyInsightRepairPatch(value, { ...patch, insights: [{ id: 'foreign' }] }, allowedIds), { type: 'BABOK_SEMANTIC_INVALID' });
+  assert.throws(() => applyInsightRepairPatch(value, { ...patch, insights: [patch.insights[1]] }, allowedIds), { type: 'BABOK_SEMANTIC_INVALID' });
 });
 
 test('automatic splits record normalized provenance while preserving source quotes and text', () => {

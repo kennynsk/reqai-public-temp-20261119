@@ -54,6 +54,11 @@ export function narrativeCoverageFor(insights) {
 
 export function qualityIssuesToSemanticIssues(registry, qualityIssues) {
   return qualityIssues.flatMap((issue) => {
+    if (issue.code === 'BABOK_PARENT_TRACEABILITY_MISSING') {
+      const parent = issue.key.startsWith('SR-') ? 'BR' : issue.key.startsWith('FR-') ? 'SR' : 'SR или BR';
+      return [{ key: issue.key, code: issue.code, reason: issue.reason,
+        repair: `Добавь в patch.traceability обоснованную связь от ${parent} к ${issue.key} с типом «обосновывает», «реализует» или «уточняет». Верни полный массив, сохранив существующие связи. Если материалы не дают основания для связи, добавь конкретный GAP с ${issue.key} в affectedIds. Сохрани требование.` }];
+    }
     if (issue.path === '$.analysis.questions' && registry.analysis.questions.length > 7 && /больше семи/u.test(issue.reason)) {
       const rank = { P0: 0, P1: 1, P2: 2 };
       const priorityOrder = registry.analysis.questions.map((question, index) => ({ question, index }))
@@ -140,6 +145,22 @@ export function semanticViolation(issues) {
   return Object.assign(new Error('AI result failed BABOK semantic validation'), {
     type: 'BABOK_SEMANTIC_INVALID', code: 'BABOK_SEMANTIC_INVALID', details: { policy: BABOK_SEMANTIC_POLICY, issues },
   });
+}
+
+// Both sections describe the same revision. Return all actionable feedback in one repair.
+export function validateResearchAudit(audit, records, narrative) {
+  const issues = [];
+  function collect(validate) {
+    try { return validate(); }
+    catch (error) {
+      if (error.type !== 'BABOK_SEMANTIC_INVALID') throw error;
+      issues.push(...error.details.issues);
+    }
+  }
+  const validation = collect(() => validateSemanticAudit(audit, records, { mode: 'RESEARCH' }));
+  const narrativeValidation = collect(() => validateNarrativeAudit(audit, narrative));
+  if (issues.length) throw semanticViolation(issues);
+  return { ...validation, narrativeValidation };
 }
 
 export function validateSemanticAudit(value, records, { mode }) {

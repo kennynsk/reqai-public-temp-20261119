@@ -1,6 +1,7 @@
 import { ApiError } from '../errors/api-error.js';
 import { canonicalSha256 } from '../prompts/prompt-utils.js';
 import { babokIdentifierSet, validateBabokRegistry } from './babok-requirements-contract.js';
+import { projectBabokRecovery } from './babok-recovery-registry.js';
 import { normalizeReviewMetadata } from './review-metadata.js';
 import { overlayLegacyReview } from './legacy-review-overlay.js';
 import { deterministicSemanticIssues, registrySemanticRecords } from '../domain/babok-semantics.js';
@@ -10,6 +11,11 @@ const REQUIREMENT_GROUPS = ['business', 'functional', 'nonfunctional'];
 
 function ownerScope(auth) {
   return auth.roles.some((role) => PRIVILEGED.has(role)) ? null : auth.userId;
+}
+
+function workflowJobId(job) {
+  if (job.type === 'DECOMPOSITION' && (job.configuration_snapshot?.featureMode ?? 'DECOMPOSITION') === 'DECOMPOSITION') return job.id;
+  return job.type === 'RESEARCH' && job.configuration_snapshot?.featureMode === 'REQUIREMENTS_INSIGHTS' ? job.parent_job_id : null;
 }
 
 function normalizeRequirements(value) {
@@ -140,9 +146,14 @@ export function createRequirementsVersionService({ config, jobRepository, artifa
         catch { throw new ApiError({ status: 409, code: 'REVIEW_SOURCE_UNAVAILABLE', message: 'Research review context is unavailable' }); }
       }
       let analysisBase = base?.content.registry || null;
-      if (!analysisBase && suppliedDecisions.review && sourceJob.result_artifact_id) {
-        try { analysisBase = JSON.parse(await artifactRepository.readText({ tenantId: auth.tenantId, artifactId: sourceJob.result_artifact_id })); }
+      const importingRecovery = decisions.recoveryImported === true && base?.content.decisions?.recoveryImported !== true;
+      if ((!analysisBase || importingRecovery) && suppliedDecisions.review && sourceJob.result_artifact_id) {
+        let original;
+        try { original = JSON.parse(await artifactRepository.readText({ tenantId: auth.tenantId, artifactId: sourceJob.result_artifact_id })); }
         catch { throw new ApiError({ status: 409, code: 'REVIEW_SOURCE_UNAVAILABLE', message: 'Original review context is unavailable' }); }
+        analysisBase = original?.manualRegistry && original.recovery
+          ? projectBabokRecovery(original, analysisBase || original.manualRegistry, base?.content.decisions).registry
+          : analysisBase || original;
       }
       const review = normalizeReviewMetadata({ supplied: suppliedDecisions.review, inherited: base?.content.decisions?.review, content: registry || requirements, allowedGaps: analysisBase?.analysis?.GAP || [], contextId: businessContextArtifactId, actorId: auth.userId, now, baseVersionId: base?.row.id, finalizing: sourceJob.type === 'RESEARCH' || decisions.skippedResearch === true, baseContent: base?.content.registry || base?.content.requirements, researchResult, researchJobId: sourceJob.type === 'RESEARCH' ? sourceJob.id : null });
       if (review !== undefined) decisions.review = review;
@@ -208,6 +219,8 @@ export function createRequirementsVersionService({ config, jobRepository, artifa
         clientMutationId,
         mutationHash,
         expectedLatestVersionId: body.expectedLatestVersionId,
+        workflowJobId: workflowJobId(sourceJob),
+        workflowOwnerId: ownerScope(auth),
         event: {
           type: 'requirements.version-created',
           payload: {
@@ -230,13 +243,19 @@ export function createRequirementsVersionService({ config, jobRepository, artifa
     },
 
     async list({ auth, jobId }) {
-      await visibleJob(auth, jobId);
-      const rows = await versionRepository.listVisibleByJob({ tenantId: auth.tenantId, ownerUserId: ownerScope(auth), jobId });
+      const job = await visibleJob(auth, jobId);
+      const scope = { tenantId: auth.tenantId, ownerUserId: ownerScope(auth) };
+      const root = workflowJobId(job);
+      const [rows, finalRow] = await Promise.all([
+        versionRepository.listVisibleByJob({ ...scope, jobId }),
+        root ? versionRepository.findWorkflowFinal({ ...scope, workflowJobId: root }) : null,
+      ]);
       const items = await Promise.all(rows.map(async (row) => {
         const content = parseVersionContent(await artifactRepository.readText({ tenantId: auth.tenantId, artifactId: row.id }));
         return { ...(content.title ? { title: content.title } : {}), versionId: row.id, sourceJobId: row.source_job_id, baseVersionId: row.base_version_id, researchJobId: row.research_job_id, requirements: content.requirements, ...(content.registry ? { registry: content.registry, analysisContext: content.analysisContext || null, materialLineage: content.materialLineage || null, contentSchemaVersion: content.contentSchemaVersion || content.registry.schemaVersion } : {}), decisions: content.decisions || row.decisions || {}, revision: content.revision || null, createdAt: new Date(row.created_at).toISOString() };
       }));
-      return { items };
+      const workflowFinal = finalRow ? items.find((version) => version.versionId === finalRow.id) ?? await service.get({ auth, versionId: finalRow.id }) : null;
+      return { items, workflowFinal };
     },
 
     async validateResearchInput({ auth, parentJobId, versionId }) {

@@ -35,6 +35,7 @@ export default function ResearchInsightWorkspace({
   renderEvidence,
   renderEnhancement,
   decisions = {},
+  readOnly = false,
 }) {
   const presentations = useMemo(() => insights.map((insight, index) => buildInsightPresentation(insight, {
     categoryMeta,
@@ -159,7 +160,7 @@ export default function ResearchInsightWorkspace({
             {selected.noEnhancementReason && <p>{selected.noEnhancementReason}</p>}
           </div>}
           {selected.enhancements.length > 0 && <div className="mt-5 space-y-3 border-t border-slate-100 pt-5">
-            <div><h3 className="text-base font-bold text-slate-900">Предлагаемые изменения</h3><p className="mt-1 text-sm text-slate-500">Проверьте новые требования и изменения существующих перед применением к черновику.</p></div>
+            <div><h3 className="text-base font-bold text-slate-900">Предлагаемые изменения</h3>{!readOnly && <p className="mt-1 text-sm text-slate-500">Проверьте новые требования и изменения существующих перед применением к черновику.</p>}</div>
             {selected.enhancements.filter((item) => decisionFilter === 'all' || (decisions[item.key] || 'pending') === decisionFilter).map((enhancement, index) => renderEnhancement(enhancement, selected, index))}
           </div>}
         </article> : <article aria-label="Пустой результат фильтра" className="flex min-h-64 min-w-0 items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white p-6 text-center">

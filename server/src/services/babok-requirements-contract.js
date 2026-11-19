@@ -423,7 +423,12 @@ export function collectBabokQualityIssues(value, { final = false } = {}) {
       const parents = record.id.startsWith('SR-') ? value.groups.BR
         : record.id.startsWith('NFR-') ? [...value.groups.SR, ...value.groups.BR] : value.groups.SR;
       if (!parents.some((parent) => linked(parent, record)) && !gapsFor(record).length) {
-        contractViolation('$.analysis.traceability', `${record.id}: отсутствует явная связь с родительским требованием или GAP, объясняющий разрыв трассировки.`);
+        issues.push({
+          path: '$.analysis.traceability',
+          key: record.id,
+          code: 'BABOK_PARENT_TRACEABILITY_MISSING',
+          reason: `${record.id}: отсутствует явная связь с родительским требованием или GAP, объясняющий разрыв трассировки.`,
+        });
       }
     }
     if (gapIds.size && !value.analysis.questions.length) contractViolation('$.analysis.questions', 'Для выявленных пробелов не сформулированы вопросы. Добавьте вопросы для уточнения.');

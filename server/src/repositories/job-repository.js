@@ -98,7 +98,7 @@ export class JobRepository {
         COALESCE((SELECT jsonb_agg(to_jsonb(c) ORDER BY c.created_at,c.id) FROM members c WHERE c.root_id=r.id AND c.id<>r.id),'[]'::jsonb) AS children,
         (SELECT jsonb_agg(saved.entry) FROM (SELECT jsonb_build_object('jobId',v.source_job_id,'versionId',v.id,'createdAt',v.created_at,'final',v.research_job_id IS NOT NULL OR COALESCE(v.decisions->>'skippedResearch'='true',false)) AS entry
           FROM ${this.schema}.requirements_versions v WHERE v.tenant_id = $1 AND ($2::text IS NULL OR v.owner_user_id=$2) AND v.source_job_id IN (SELECT m.id FROM members m WHERE m.root_id=r.id)
-          ORDER BY v.created_at DESC,v.id DESC LIMIT 1) saved) AS saved_versions
+          ORDER BY (v.research_job_id IS NOT NULL OR COALESCE(v.decisions->>'skippedResearch'='true',false)) DESC,v.created_at DESC,v.id DESC LIMIT 1) saved) AS saved_versions
         FROM visible r WHERE r.id IN (SELECT DISTINCT root_id FROM members)
           AND ($3='' OR EXISTS(SELECT 1 FROM members m WHERE m.root_id=r.id AND strpos(lower(COALESCE(m.title,'') || ' ' || m.search_summary),lower($3))>0))
           AND ($4::text IS NULL OR EXISTS(SELECT 1 FROM members m WHERE m.root_id=r.id AND m.type=$4))

@@ -12,7 +12,13 @@ ReqAI supports one guided workflow:
 4. Optional requirements-linked `REQUIREMENTS_INSIGHTS` research.
 5. Insight decisions and an immutable final requirements version.
 
+After incomplete AI decomposition, recovered typed formulations open in the ordinary requirements registry as a draft. The review notice and linked questions guide the user before saving a version.
+
 Standalone research, model/agent comparison, arbitrary prompt testing, and combined decomposition/research are retired. Historical jobs from those modes remain read-only through canonical task APIs and permalinks; never add a mutation that retries or recreates them.
+
+Частичный результат AI-исследования отображается в истории как «Готово частично». Экран финала подтверждает сохранение только после записи финальной версии. Диагностика отклонённого ответа исследования содержит стадию, код и JSON-путь.
+
+Задача, её история и экспорт показывают актуальную финальную редакцию всей связки декомпозиции и исследования. Сохранение нового итога требует актуальной финальной базы, если итог уже существует. Ранее сохранённые редакции доступны как неизменяемые версии.
 
 ## Commands
 

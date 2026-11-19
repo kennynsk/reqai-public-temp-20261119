@@ -731,13 +731,15 @@ test('finishes requirements without AI research and switches category layout', a
 
 test.each([
   ['final-v1', 'Посмотреть предложения AI'],
-  ['draft-v1', 'AI-исследование предыдущей версии'],
-])('restores completed research of %s when a newer attempt was cancelled', async (versionId, openLabel) => {
+  ['draft-v1', 'Результаты AI по предыдущей версии'],
+])('opens findings for %s directly from the final registry after a newer attempt was cancelled', async (versionId, openLabel) => {
   const parent = { jobId: 'parent-job', type: 'DECOMPOSITION', mode: 'DECOMPOSITION', status: 'SUCCEEDED', outcome: 'COMPLETE' };
   const research = { parentJobId: parent.jobId, type: 'RESEARCH', mode: 'REQUIREMENTS_INSIGHTS' };
   const completed = { ...research, jobId: 'completed-research', status: 'SUCCEEDED', inputArtifactId: versionId };
   const cancelled = { ...research, jobId: 'cancelled-research', status: 'CANCELLED', inputArtifactId: 'final-v1' };
   const registry = makeBabokRegistry();
+  const workflowFinal = { versionId: 'final-v1', sourceJobId: parent.jobId, registry, decisions: { skippedResearch: true } };
+  const historical = versionId !== workflowFinal.versionId;
   window.history.replaceState({}, '', '/tasks/parent-job');
   mocks.listJobs.mockImplementation(async ({ parentJobId, status }) => ({
     items: parentJobId === parent.jobId ? [status === 'SUCCEEDED' ? completed : cancelled] : [],
@@ -745,10 +747,16 @@ test.each([
   mocks.getJob.mockImplementation(async (id) => ({ [parent.jobId]: parent, [completed.jobId]: completed, [cancelled.jobId]: cancelled })[id]);
   mocks.getResult.mockImplementation(async (id) => ({ jobId: id, resultArtifactId: 'result', ...(id === parent.jobId ? parent : completed) }));
   mocks.getResultContent.mockImplementation(async (id) => JSON.stringify(id === parent.jobId ? registry : {
-    mode: 'REQUIREMENTS_INSIGHTS', inputRequirementsVersionId: versionId, baseRegistry: registry, baseDecisions: {}, agentInsights: [],
+    mode: 'REQUIREMENTS_INSIGHTS', inputRequirementsVersionId: versionId, baseRegistry: registry, baseDecisions: {},
+    insights: [{ id: 'INS-001', title: 'Уточнить срок', enhancements: [{ targetType: 'FR', text: 'Уведомлять клиента о сроке обработки' }] }],
   }));
-  mocks.listRequirementsVersions.mockImplementation(async (id) => ({ items: id === parent.jobId ? [{ versionId: 'final-v1' }] : [] }));
-  mocks.getRequirementsVersion.mockResolvedValue({ versionId: 'final-v1', sourceJobId: parent.jobId, registry, decisions: { skippedResearch: true } });
+  mocks.listRequirementsVersions.mockImplementation(async (id) => ({
+    items: id === parent.jobId ? [{ versionId: 'final-v1' }] : historical ? [{ versionId: 'research-final-v1' }] : [],
+    workflowFinal,
+  }));
+  mocks.getRequirementsVersion.mockImplementation(async (id) => id === 'final-v1'
+    ? workflowFinal
+    : { versionId: id, sourceJobId: completed.jobId, registry, decisions: {} });
 
   render(<AsyncJobWorkspace />);
   const open = await screen.findByRole('button', { name: openLabel });
@@ -756,10 +764,72 @@ test.each([
   expect(screen.getByText('Есть результаты')).toBeInTheDocument();
   expect(screen.queryByText('Пропущено')).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Добавить AI-исследование' })).not.toBeInTheDocument();
-  expect(Boolean(screen.queryByRole('button', { name: 'Исследовать эту версию' }))).toBe(versionId !== 'final-v1');
+  expect(Boolean(screen.queryByRole('button', { name: 'Исследовать эту версию' }))).toBe(historical);
   fireEvent.click(open);
-  await waitFor(() => expect(window.location.pathname).toBe('/tasks/completed-research'));
+  const resultsHeading = await screen.findByRole('heading', { name: 'Результаты AI-исследования' });
+  expect(window.location.pathname).toBe('/tasks/completed-research');
+  expectBusinessStage(3);
+  if (historical) {
+    expect(within(resultsHeading.closest('header')).queryByRole('button')).not.toBeInTheDocument();
+    expect(screen.getByText('Исследование выполнено по предыдущей версии требований.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Принять улучшение/ })).not.toBeInTheDocument();
+    window.history.back();
+  } else {
+    fireEvent.click(screen.getByRole('button', { name: 'Отклонить улучшение: Уведомлять клиента о сроке обработки' }));
+    expect(screen.getByRole('button', { name: 'Сохранить финальную версию' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Вернуться к финальной версии' }));
+    expect(screen.getByRole('dialog', { name: 'Несохранённые изменения' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Отбросить и перейти' }));
+  }
+  expect(await screen.findByRole('button', { name: openLabel })).toBeInTheDocument();
+  expect(window.location.pathname).toBe('/tasks/parent-job');
+  expectBusinessStage(4);
+
+  if (historical) {
+    window.history.forward();
+    expect(await screen.findByRole('heading', { name: 'Результаты AI-исследования' })).toBeInTheDocument();
+    expectBusinessStage(3);
+  }
   expect(mocks.researchRequirements).not.toHaveBeenCalled();
+  expect(mocks.saveRequirementsVersion).not.toHaveBeenCalled();
+});
+
+test('the parent task opens the linked research final with its accepted requirement', async () => {
+  const registry = makeBabokRegistry();
+  const accepted = { ...registry.groups.FR[0], id: 'FR-002', text: 'Клиент может продолжить заполнение черновика' };
+  const parent = { jobId: 'parent', type: 'DECOMPOSITION', mode: 'DECOMPOSITION', status: 'SUCCEEDED' };
+  const research = { jobId: 'research', parentJobId: parent.jobId, type: 'RESEARCH', mode: 'REQUIREMENTS_INSIGHTS', status: 'SUCCEEDED', inputArtifactId: 'draft' };
+  const workflowFinal = { versionId: 'with-ai', sourceJobId: research.jobId, researchJobId: research.jobId, registry: { ...registry, groups: { ...registry.groups, FR: [...registry.groups.FR, accepted] } }, decisions: { acceptedEnhancementKeys: ['INS-001:0'] } };
+  window.history.replaceState({}, '', '/tasks/parent');
+  mocks.getJob.mockImplementation(async (id) => id === parent.jobId ? parent : research);
+  mocks.getResult.mockImplementation(async (id) => ({ ...(id === parent.jobId ? parent : research), resultArtifactId: 'result' }));
+  mocks.getResultContent.mockImplementation(async (id) => JSON.stringify(id === parent.jobId ? registry : { mode: 'REQUIREMENTS_INSIGHTS', baseRegistry: registry, baseDecisions: {}, insights: [{ id: 'INS-001', title: 'Черновик', enhancements: [{ targetType: 'FR', text: accepted.text }] }] }));
+  mocks.listRequirementsVersions.mockImplementation(async (id) => ({ items: id === parent.jobId ? [{ versionId: 'without-ai' }] : [{ versionId: workflowFinal.versionId }], workflowFinal }));
+  mocks.getRequirementsVersion.mockImplementation(async (id) => id === workflowFinal.versionId ? workflowFinal : { versionId: id, sourceJobId: parent.jobId, registry, decisions: { skippedResearch: true } });
+  mocks.listJobs.mockImplementation(async ({ parentJobId }) => ({ items: parentJobId === parent.jobId ? [research] : [] }));
+
+  render(<AsyncJobWorkspace />);
+  expect(await screen.findByRole('button', { name: `Выбрать ${accepted.id}: ${accepted.text}` })).toBeVisible();
+  expectBusinessStage(4);
+  fireEvent.click(await screen.findByRole('button', { name: 'Посмотреть предложения AI' }));
+  const results = await screen.findByRole('heading', { name: 'Результаты AI-исследования' });
+  expect(within(results.closest('header')).queryByRole('button')).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /Реестр, сохранённый по итогам/ })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Вернуться к финальной версии' }));
+  expect(await screen.findByRole('button', { name: `Выбрать ${accepted.id}: ${accepted.text}` })).toBeVisible();
+  expect(window.location.pathname).toBe('/tasks/parent');
+
+  mocks.saveRequirementsVersion.mockImplementationOnce(async (payload) => ({ ...workflowFinal, versionId: 'new-final', registry: payload.registry }));
+  fireEvent.click(screen.getByRole('button', { name: 'Редактировать' }));
+  fireEvent.change(screen.getByRole('textbox', { name: 'Критерий успеха BR-001' }), { target: { value: 'Согласование занимает не более двух дней' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Сохранить изменения' }));
+  await waitFor(() => expect(mocks.saveRequirementsVersion).toHaveBeenCalledWith(expect.objectContaining({
+    sourceJobId: research.jobId, baseVersionId: workflowFinal.versionId, expectedLatestVersionId: workflowFinal.versionId,
+    registry: expect.objectContaining({ groups: expect.objectContaining({
+      BR: [expect.objectContaining({ successIndicator: 'Согласование занимает не более двух дней' })],
+      FR: expect.arrayContaining([expect.objectContaining({ id: accepted.id, text: accepted.text })]),
+    }) }),
+  })));
 });
 
 test('receives remote versions on a completed job without overwriting local unsaved edits', async () => {
@@ -958,8 +1028,8 @@ test.each(['decomposition', 'research'])('shows the audit failure in the journal
 
   render(<AsyncJobWorkspace />);
   const target = research ? await screen.findByRole('heading', { name: 'Финальная версия требований' }).then((node) => node.closest('#task-result'))
-    : await screen.findByRole('region', { name: 'Формулировки AI на проверку' });
-  expect(screen.getByText(research ? /Продолжите с сохранёнными требованиями/ : /Черновик сохранён/)).toBeVisible();
+    : await screen.findByRole('region', { name: 'Реестр требований: список и детали' });
+  expect(screen.getByText(research ? /Продолжите с сохранёнными требованиями/ : /AI не завершил подготовку требований/)).toBeVisible();
   const trigger = screen.getByRole('button', { name: 'Журнал задачи' });
   fireEvent.click(trigger);
   const dialog = within(screen.getByRole('dialog', { name: 'Журнал задачи' }));
@@ -1209,86 +1279,106 @@ test('reviews a BABOK registry by type, preserves evidence and saves a complete 
   expect(screen.getAllByText('Система сохраняет историю статусов')[0]).toBeInTheDocument();
 });
 
-test('reviews candidate cards individually and saves only selected requirements after failed decomposition', async () => {
+test('opens recovered requirements in the registry with linked questions and preserves edits and deletions', async () => {
   const manualRegistry = createEmptyBabokRegistry({ outcome: 'PARTIAL' });
   manualRegistry.materials.primary = makeBabokRegistry().materials.primary;
   manualRegistry.scope.partial = true;
+  const source = { artifactId: manualRegistry.materials.primary.artifactId, locator: '§1', quote: 'Две секунды на поиск' };
   const job = { jobId: 'manual-review', type: 'DECOMPOSITION', mode: 'DECOMPOSITION', status: 'SUCCEEDED', outcome: 'PARTIAL' };
   window.history.replaceState({}, '', '/tasks/manual-review');
   mocks.getJob.mockResolvedValue(job);
   mocks.getResult.mockResolvedValue({ ...job, resultArtifactId: 'artifact', modelAttempts: [] });
   mocks.getResultContent.mockResolvedValue(JSON.stringify({
-    mode: 'DECOMPOSITION', manualRegistry, recovery: { draft: createBabokTextDraft([
-      JSON.stringify({ groups: { NFR: [{ text: 'Поиск завершается за две секунды.', category: 'Производительность', scope: 'Поиск заявок', verificationMethod: 'Нагрузочный тест', quality: 'Готово', relatedTo: ['FR-404'], source: { quote: 'Две секунды на поиск' } }] } }),
-      'Непроверенная формулировка AI',
+    mode: job.mode, manualRegistry, recovery: { draft: createBabokTextDraft([
+      JSON.stringify({
+        groups: { NFR: [{ id: 'NFR-001', text: 'Поиск завершается за две секунды.', category: 'Производительность', verificationMethod: 'Нагрузочный тест', quality: 'Готово', relatedTo: ['GAP-001', 'FR-404'], source }] },
+        analysis: {
+          GAP: [{ id: 'GAP-001', text: 'Не задан объём нагрузки.', affectedIds: [] }],
+          questions: [{ id: 'QUESTION-001', gapId: 'GAP-001', text: 'Сколько пользователей ищут одновременно?', priority: 'P1', addressee: 'Владелец продукта' }],
+        },
+      }),
+      JSON.stringify({ groups: { FR: [{ id: 'FR-404', text: 'Система хранит историю поиска.' }] } }),
+      JSON.stringify({ groups: { TR: [{ id: 'TR-001', text: 'Перенести сохранённые запросы.' }] } }),
+      'Неразмеченный ответ AI',
     ]) },
   }));
   mocks.saveRequirementsVersion.mockImplementation(async (body) => ({ ...body, versionId: 'manual-v1' }));
 
   const view = render(<AsyncJobWorkspace />);
-  expect(await screen.findByRole('heading', { name: 'На проверку · 2' })).toBeVisible();
-  const [typed, plain] = screen.getAllByRole('button', { name: 'Проверить', exact: true });
-  fireEvent.click(plain);
-  let dialog = within(screen.getByRole('dialog', { name: 'Проверка формулировки AI' }));
-  expect(dialog.getByLabelText('Тип требования')).toHaveValue('');
-  expect(dialog.getByRole('button', { name: 'Добавить в реестр' })).toBeDisabled();
-  fireEvent.click(dialog.getByRole('button', { name: 'Отмена' }));
-  fireEvent.click(typed);
-  dialog = within(screen.getByRole('dialog', { name: 'Проверка формулировки AI' }));
-  expect(dialog.getByLabelText('Тип требования')).toHaveValue('NFR');
-  expect(dialog.getByLabelText('Метод проверки')).toHaveValue('Нагрузочный тест');
-  expect(dialog.getByText('Две секунды на поиск')).toBeVisible();
-  fireEvent.change(dialog.getByLabelText('Формулировка'), { target: { value: 'Система выполняет поиск заявок за две секунды.' } });
-  fireEvent.click(dialog.getByRole('button', { name: 'Добавить в реестр' }));
-  expect(screen.getByRole('heading', { name: 'На проверку · 1' })).toBeVisible();
+  const list = within(await screen.findByRole('navigation', { name: 'Список требований' }));
+  expect(list.getAllByRole('button', { name: /^Выбрать / })).toHaveLength(3);
+  expect(screen.getAllByText('Проверьте черновик требований')).toHaveLength(1);
+  expect(screen.queryByRole('region', { name: 'Формулировки AI на проверку' })).not.toBeInTheDocument();
+  expect(screen.getByText(/Фрагменты без определённого типа/)).toBeVisible();
+  expect(screen.getByText('Исходный ответ AI')).toBeVisible();
+
+  const plain = list.getByRole('button', { name: /^Выбрать FR-001:/ });
+  const linked = list.getByRole('button', { name: /^Выбрать NFR-001:/ });
+  expect(within(plain).queryByText('Есть вопрос')).not.toBeInTheDocument();
+  expect(within(linked).getByText('Есть вопрос')).toBeVisible();
+  const onlyQuestions = screen.getByRole('checkbox', { name: 'Есть открытые вопросы' });
+  fireEvent.click(onlyQuestions);
+  expect(list.getAllByRole('button', { name: /^Выбрать / })).toHaveLength(1);
+  fireEvent.click(onlyQuestions);
+  fireEvent.click(linked);
+  const question = within(screen.getByRole('region', { name: 'Связанные вопросы NFR-001' }));
+  expect(question.getByText('Сколько пользователей ищут одновременно?')).toBeVisible();
+  expect(question.getByRole('button', { name: 'Разобрать вопрос' })).toBeEnabled();
+  fireEvent.click(screen.getByRole('button', { name: 'Редактировать' }));
+  fireEvent.change(screen.getByRole('textbox', { name: 'Текст требования NFR-001' }), { target: { value: 'Система выполняет поиск заявок за две секунды.' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Применить к черновику' }));
+
+  fireEvent.click(list.getByRole('button', { name: /^Выбрать FR-001:/ }));
+  const actions = screen.getByRole('button', { name: 'Действия для FR-001' }).closest('details');
+  fireEvent.click(within(actions).getByRole('button', { name: 'Действия для FR-001' }));
+  fireEvent.click(within(actions).getByRole('button', { name: 'Удалить' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Подтвердить удаление' }));
+
   fireEvent.click(screen.getByRole('button', { name: 'Сохранить черновик' }));
   await waitFor(() => expect(mocks.saveRequirementsVersion).toHaveBeenCalledWith(expect.objectContaining({
-    sourceJobId: 'manual-review', baseVersionId: null, decisions: { recoveryAdded: { 0: 'NFR-001' } }, registry: expect.objectContaining({
-      groups: expect.objectContaining({ NFR: [expect.objectContaining({
+    sourceJobId: 'manual-review', baseVersionId: null, editedRecordIds: ['NFR-001', 'FR-001'], decisions: expect.objectContaining({ recoveryImported: true }), registry: expect.objectContaining({
+      groups: expect.objectContaining({ FR: [], NFR: [expect.objectContaining({
         text: 'Система выполняет поиск заявок за две секунды.', category: 'Производительность',
-        scope: 'Поиск заявок', verificationMethod: 'Нагрузочный тест', relatedTo: [], quality: 'Требует уточнения',
-        source: expect.objectContaining({ locator: 'manual-review', quote: null }),
+        verificationMethod: 'Нагрузочный тест', relatedTo: ['GAP-001'], quality: 'Требует уточнения', source,
       })] }),
     }),
   })));
-  expect(JSON.stringify(mocks.saveRequirementsVersion.mock.calls[0][0])).not.toContain('Непроверенная формулировка AI');
-  await waitFor(() => expect(screen.getByRole('button', { name: 'Завершить подготовку' })).toBeEnabled());
-  expect(screen.getByRole('heading', { name: 'На проверку · 1' })).toBeVisible();
+  await waitFor(() => expect(screen.queryByRole('button', { name: 'Сохранить черновик' })).not.toBeInTheDocument());
   mocks.listRequirementsVersions.mockResolvedValue({ items: [{ versionId: 'manual-v1' }] });
   mocks.getRequirementsVersion.mockResolvedValue({ ...mocks.saveRequirementsVersion.mock.calls[0][0], versionId: 'manual-v1' });
   view.unmount();
   sessionStorage.clear();
   render(<AsyncJobWorkspace />);
-  expect(await screen.findByRole('heading', { name: 'На проверку · 1' })).toBeVisible();
-  expect(screen.getAllByRole('button', { name: 'Проверить', exact: true })).toHaveLength(1);
+  const reopened = within(await screen.findByRole('navigation', { name: 'Список требований' }));
+  expect(reopened.getAllByRole('button', { name: /^Выбрать / })).toHaveLength(2);
+  expect(reopened.getByRole('button', { name: /^Выбрать NFR-001: Система выполняет поиск/ })).toBeVisible();
 });
 
-test('hides the completed recovery queue and shows all requirement types in the registry', async () => {
+test('adds the remaining typed rows to a draft saved with the old acceptance queue', async () => {
   const draft = roomBookingRegistry();
   const manualRegistry = createEmptyBabokRegistry({ outcome: 'PARTIAL' });
   manualRegistry.materials = draft.materials;
   manualRegistry.scope.partial = true;
-  const job = { jobId: 'finished-queue', type: 'DECOMPOSITION', mode: 'DECOMPOSITION', status: 'SUCCEEDED', outcome: 'PARTIAL' };
-  window.history.replaceState({}, '', '/tasks/finished-queue');
+  const savedRegistry = structuredClone(manualRegistry);
+  const previous = 'Отредактированное бизнес-требование';
+  savedRegistry.groups.BR = [{ ...draft.groups.BR[0], text: previous }];
+  savedRegistry.summary.counts.BR = 1;
+  const job = { jobId: 'old-queue', type: 'DECOMPOSITION', mode: 'DECOMPOSITION', status: 'SUCCEEDED', outcome: 'PARTIAL' };
+  window.history.replaceState({}, '', '/tasks/old-queue');
   mocks.getJob.mockResolvedValue(job);
   mocks.getResult.mockResolvedValue({ ...job, resultArtifactId: 'artifact', modelAttempts: [] });
   mocks.getResultContent.mockResolvedValue(JSON.stringify({
-    mode: job.mode, manualRegistry, recovery: { draft: createBabokTextDraft([JSON.stringify(draft)]) },
+    mode: job.mode, manualRegistry, recovery: { draft: createBabokTextDraft(['Текст без типа.', JSON.stringify(draft)]) },
   }));
+  mocks.listRequirementsVersions.mockResolvedValue({ items: [{ versionId: 'legacy-v1' }] });
+  mocks.getRequirementsVersion.mockResolvedValue({ versionId: 'legacy-v1', registry: savedRegistry, decisions: { recoveryAdded: { 1: 'BR-001' } } });
 
   render(<AsyncJobWorkspace />);
-  const queue = within(await screen.findByRole('region', { name: 'Формулировки AI на проверку' }));
-  for (const remaining of [3, 2, 1]) {
-    expect(queue.getByRole('heading', { name: `На проверку · ${remaining}` })).toBeVisible();
-    fireEvent.click(queue.getAllByRole('button', { name: 'Проверить', exact: true })[0]);
-    fireEvent.click(within(screen.getByRole('dialog', { name: 'Проверка формулировки AI' })).getByRole('button', { name: 'Добавить в реестр' }));
-    if (remaining === 3) fireEvent.change(screen.getByRole('combobox', { name: 'Тип требований' }), { target: { value: 'BR' } });
-  }
-  expect(screen.queryByRole('region', { name: 'Формулировки AI на проверку' })).not.toBeInTheDocument();
-  expect(screen.getByRole('combobox', { name: 'Тип требований' })).toHaveValue('all');
-  const registry = within(screen.getByRole('navigation', { name: 'Список требований' }));
+  const registry = within(await screen.findByRole('navigation', { name: 'Список требований' }));
   expect(registry.getAllByRole('button', { name: /^Выбрать / })).toHaveLength(3);
-  expect(registry.getByRole('button', { name: /^Выбрать FR-002:/ })).toHaveAttribute('aria-pressed', 'true');
+  expect(registry.getByRole('button', { name: `Выбрать BR-001: ${previous}` })).toBeVisible();
+  expect(registry.getByRole('button', { name: /^Выбрать FR-002:/ })).toBeVisible();
+  expect(screen.getByRole('button', { name: 'Сохранить черновик' })).toBeEnabled();
 });
 
 test.each([false, true])('finalizes the saved input after failed linked research without requiring edits (BABOK: %s)', async (babok) => {
@@ -1300,16 +1390,20 @@ test.each([false, true])('finalizes the saved input after failed linked research
   mocks.getResult.mockResolvedValue({ ...job, resultArtifactId: 'artifact', modelAttempts: [] });
   mocks.getResultContent.mockResolvedValue(JSON.stringify({ mode: job.mode, inputRequirementsVersionId: 'input-version', insights: [], recovery: { reasonCode: 'BABOK_SEMANTIC_INVALID' } }));
   mocks.getRequirementsVersion.mockResolvedValue({ versionId: 'input-version', requirements, registry, decisions: {}, createdAt: '2026-11-18T08:00:00Z' });
-  mocks.saveRequirementsVersion.mockImplementation(async (body) => ({ ...body, versionId: 'final-version' }));
+  mocks.saveRequirementsVersion.mockImplementation(async (body) => ({ ...body, versionId: 'final-version', createdAt: '2026-11-19T08:00:00Z' }));
 
   render(<AsyncJobWorkspace />);
   expect(await screen.findByText(/Продолжите с сохранёнными требованиями/)).toBeInTheDocument();
+  expect(screen.getByText('Финальная версия ещё не сохранена')).toBeVisible();
+  expect(screen.getByText('Готово частично')).toBeVisible();
   if (babok) expect(document.getElementById('record-BR-001')).toHaveTextContent('Сократить время согласования');
   else expect(screen.getByText('Сократить срок рассмотрения')).toBeVisible();
   fireEvent.click(screen.getByRole('button', { name: 'Сохранить финальную версию' }));
   await waitFor(() => expect(mocks.saveRequirementsVersion).toHaveBeenCalledWith(expect.objectContaining({
     sourceJobId: 'research-recovery', baseVersionId: 'input-version', ...(babok ? { registry } : { requirements }),
   })));
+  expect(await screen.findByText(/^Финальная версия сохранена ·/)).toBeVisible();
+  expect(screen.queryByText(/Продолжите с сохранёнными требованиями/)).not.toBeInTheDocument();
 });
 
 test.each([false, true])('keeps BABOK target types and original decision indices when filtering unsupported proposals: %s', async (unsupportedFirst) => {

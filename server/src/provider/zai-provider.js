@@ -33,7 +33,7 @@ export class ZaiProvider {
     this.fetchImpl = fetchImpl;
   }
 
-  async complete({ model, messages, temperature, maxOutputTokens, thinking, reasoning, timeoutMs, signal, requestId = randomUUID() }) {
+  async complete({ model, messages, temperature, maxOutputTokens, jsonObject, thinking, reasoning, timeoutMs, signal, requestId = randomUUID() }) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     const dispatcher = new Agent({ headersTimeout: timeoutMs, bodyTimeout: timeoutMs });
@@ -54,6 +54,7 @@ export class ZaiProvider {
           ...(Number.isInteger(maxOutputTokens) ? { max_tokens: maxOutputTokens } : {}),
           ...(effectiveReasoning.thinking ? { thinking: { type: effectiveReasoning.thinking } } : {}),
           ...(effectiveReasoning.reasoningEffort ? { reasoning_effort: effectiveReasoning.reasoningEffort } : {}),
+          ...(jsonObject ? { response_format: { type: 'json_object' } } : {}),
           stream: false,
         }),
         signal: signal ? AbortSignal.any([signal, controller.signal]) : controller.signal,

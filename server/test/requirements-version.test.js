@@ -6,9 +6,44 @@ import { normalizeReviewMetadata } from '../src/services/review-metadata.js';
 import { RequirementsVersionRepository } from '../src/repositories/requirements-version-repository.js';
 import { createRequirementsVersionService } from '../src/services/requirements-version-service.js';
 import { createEmptyBabokRegistry } from '../src/services/babok-requirements-contract.js';
+import { projectBabokRecovery } from '../src/services/babok-recovery-registry.js';
+import { createBabokTextDraft } from '../src/services/babok-text-draft.js';
 
 const auth = { tenantId: 'tenant-a', userId: 'user-a', roles: ['user'] };
 const config = { process: { siteId: 'dc-a' }, retention: { finalResultsDays: 180 }, jobs: { resultMaxBytes: 104857600 } };
+
+test('saves answers to section questions from the original recovery result', async () => {
+  const manualRegistry = createEmptyBabokRegistry({ outcome: 'PARTIAL' });
+  manualRegistry.materials.primary = { artifactId: 'primary', role: 'primary', name: null, sha256: null, status: 'AVAILABLE' };
+  const responses = ['Создавать заявку', 'Отменять заявку'].map((text) => JSON.stringify({
+    groups: { FR: [{ id: 'FR-001', text }, { id: 'FR-002', text: 'Хранить историю' }] },
+    analysis: { GAP: [{ id: 'GAP-001', text: `Кто может ${text.toLowerCase()}?`, affectedIds: ['FR-001'] }] },
+  }));
+  const original = { manualRegistry, recovery: { draft: createBabokTextDraft(responses) } };
+  const { registry } = projectBabokRecovery(original);
+  assert.equal(registry.groups.FR.length, 3);
+  assert.deepEqual(registry.analysis.GAP.map(({ affectedIds }) => affectedIds), [['FR-001'], ['FR-003']]);
+  const service = createRequirementsVersionService({
+    config,
+    jobRepository: { async findVisibleById() { return { id: 'job', type: 'DECOMPOSITION', status: 'SUCCEEDED', input_artifact_id: 'primary', result_artifact_id: 'recovery-result' }; } },
+    artifactRepository: {
+      async readText(input) {
+        assert.deepEqual(input, { tenantId: 'tenant-a', artifactId: 'recovery-result' });
+        return JSON.stringify(original);
+      },
+      async createText() { return { artifactId: 'new' }; },
+    },
+    versionRepository: { async create() { return { id: 'new', source_job_id: 'job', created_at: new Date() }; } },
+  });
+  const answer = { state: 'answered', answer: 'Владелец заявки' };
+  const body = (gapId) => ({ sourceJobId: 'job', registry, decisions: {
+    recoveryImported: true, review: { schemaVersion: 1, gaps: { [gapId]: answer } },
+  } });
+  await assert.rejects(service.create({ auth, body: body('GAP-404') }), { code: 'INVALID_REVIEW_METADATA' });
+  const saved = await service.create({ auth, body: body('GAP-002') });
+  assert.equal(saved.registry.analysis.GAP[1].text, 'Кто может отменять заявку?');
+  assert.equal(saved.decisions.review.gaps['GAP-002'].answer, answer.answer);
+});
 
 test('projection-only client retains BABOK analysis and review evidence through save and reload', async () => {
   const registry = JSON.parse(readFileSync(new URL('./fixtures/babok-requirements-v1.complete.json', import.meta.url)));
@@ -165,6 +200,34 @@ test('requirements version and its realtime event are committed with one ordered
   assert.ok(calls.some(({ sql }) => sql === 'COMMIT'));
 });
 
+test('publishing final research locks the parent, rejects a superseded base and notifies both jobs', async () => {
+  const calls = [];
+  const client = {
+    async query(sql, params) {
+      calls.push({ sql, params });
+      if (sql.includes('SELECT v.*')) return { rows: [{ id: 'current-final' }] };
+      if (sql.includes('INSERT INTO "reqai".requirements_versions')) return { rows: [{ id: 'next-final' }] };
+      if (sql.includes('UPDATE "reqai".jobs')) return { rows: [{ sequence: 7 }] };
+      return { rows: [] };
+    },
+    release() {},
+  };
+  const repository = new RequirementsVersionRepository({ connect: async () => client });
+  const save = (baseVersionId) => repository.create({
+    tenantId: 'tenant-a', ownerUserId: 'user-a', workflowOwnerId: 'user-a', id: 'next-final',
+    workflowJobId: 'parent', sourceJobId: 'research', researchJobId: 'research', baseVersionId,
+    event: { type: 'requirements.version-created', payload: { jobId: 'research', versionId: 'next-final' } },
+  });
+  await assert.rejects(() => save('old-final'), { code: 'WORKFLOW_FINAL_CONFLICT' });
+  assert.equal(calls.find(({ sql }) => sql.includes('FOR UPDATE')).params[1], 'parent');
+  assert.ok(calls.some(({ sql }) => sql === 'ROLLBACK'));
+  assert.ok(calls.every(({ sql }) => !sql.includes('INSERT INTO')));
+  calls.length = 0;
+  await save('current-final');
+  const events = calls.filter(({ sql }) => sql.includes('.outbox_events')).map(({ params }) => [params[2], JSON.parse(params[5]).jobId]);
+  assert.deepEqual(events, [['research', 'research'], ['parent', 'parent']]);
+});
+
 test('linked research accepts only a version owned by its completed decomposition parent', async () => {
   const jobs = {
     parent: { id: 'parent', owner_user_id: 'user-a', type: 'DECOMPOSITION', status: 'SUCCEEDED' },
@@ -198,15 +261,26 @@ test('requirements research source resolver returns server-authoritative immutab
   });
 });
 
-test('saved versions can restore their requirements after a page reload', async () => {
+test('job versions and the current workflow final restore independently after reload', async () => {
+  const created_at = new Date('2026-01-01T00:00:00Z');
+  const linked = { id: 'linked-final', source_job_id: 'research', research_job_id: 'research', created_at };
   const service = createRequirementsVersionService({
     config,
     jobRepository: { async findVisibleById() { return { id: 'job', type: 'DECOMPOSITION', status: 'SUCCEEDED' }; } },
-    versionRepository: { async listVisibleByJob() { return [{ id: 'version', source_job_id: 'job', base_version_id: null, research_job_id: null, decisions: {}, created_at: new Date('2026-01-01T00:00:00Z') }]; } },
-    artifactRepository: { async readText() { return JSON.stringify({ kind: 'REQUIREMENTS_VERSION', requirements: { business: [{ id: 'BT-1', text: 'Сохранённая правка' }], functional: [], nonfunctional: [] }, decisions: {} }); } },
+    versionRepository: {
+      async listVisibleByJob() { return [{ id: 'version', source_job_id: 'job', base_version_id: null, research_job_id: null, created_at }]; },
+      async findWorkflowFinal(scope) { assert.deepEqual(scope, { tenantId: 'tenant-a', ownerUserId: 'user-a', workflowJobId: 'job' }); return linked; },
+      async findVisibleById({ id }) { assert.equal(id, linked.id); return linked; },
+    },
+    artifactRepository: {
+      async metadata() { return { id: linked.id }; },
+      async readText({ artifactId }) { return JSON.stringify({ kind: 'REQUIREMENTS_VERSION', requirements: { business: [{ id: 'BT-1', text: 'Сохранённая правка' }], functional: artifactId === linked.id ? [{ id: 'FT-1', text: 'Принятое предложение' }] : [], nonfunctional: [] }, decisions: {} }); },
+    },
   });
   const result = await service.list({ auth, jobId: 'job' });
   assert.equal(result.items[0].requirements.business[0].text, 'Сохранённая правка');
+  assert.equal(result.items[0].requirements.functional.length, 0);
+  assert.equal(result.workflowFinal.requirements.functional[0].text, 'Принятое предложение');
 });
 
 test('final version must use the immutable requirements version consumed by research', async () => {

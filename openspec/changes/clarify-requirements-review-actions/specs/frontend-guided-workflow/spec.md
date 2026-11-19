@@ -74,6 +74,12 @@ The compact review SHALL show at most one emphasized action for the current stat
 - **WHEN** research is starting, already active, or blocked by a version conflict
 - **THEN** the workspace prevents another launch and communicates the current state
 
+#### Scenario: The workflow indicator shows stage labels and research status
+
+- **WHEN** the workflow indicator renders at a wide or narrow viewport with an optional second line of stage status
+- **THEN** its track passes through the centers of the four stage markers and ends at the first and last markers
+- **AND** the completed portion ends at the corresponding stage marker
+
 #### Scenario: Job admission limit rejects linked research
 
 - **WHEN** the server rejects linked research because the active-job limit was reached
@@ -131,10 +137,34 @@ The linked-research screen SHALL expose direct navigation to the parent requirem
 - **WHEN** the user selects «Вернуться в реестр требований» while viewing linked research
 - **THEN** the workspace opens the registry of the parent requirements task and applies the existing unsaved-changes confirmation if applicable
 
+#### Scenario: User opens completed research from the final version
+
+- **WHEN** the user opens a completed research run from a saved final version, including a run with its own saved final version
+- **THEN** the workspace opens the findings directly and identifies when the run analyzed a previous requirements version
+- **AND** «Вернуться к финальной версии» returns to the parent final registry through the existing unsaved-changes guard
+- **AND** browser back and forward restore the corresponding final registry and research entry view
+
 #### Scenario: User is ready to finalize research results
 
 - **WHEN** linked research results are visible
-- **THEN** the action for saving or opening the final version is available at the top and uses the existing save and acknowledgement flow
+- **THEN** the save action or ordinary final-version action is available at the top and uses the existing save and acknowledgement flow
+- **AND** when the task has a saved final and the research decisions are saved, research offers a single return to the task's final version
+
+### Requirement: One current final requirements version per task
+
+The frontend SHALL use the latest finalized revision of the decomposition and its linked research as the task's current final. The task, history and export SHALL resolve the same version. The service SHALL preserve immutable previous versions and reject publication from a stale final base.
+
+#### Scenario: Accepted research is saved
+
+- **WHEN** the user saves an accepted proposal from research based on the current requirements
+- **THEN** the parent task displays the saved requirements including the accepted change and exports that same version
+- **AND** the task final and research findings are available through distinct navigation actions
+
+#### Scenario: A final already exists and an older run is opened
+
+- **WHEN** a historical research run has a superseded final or is based on a previous input
+- **THEN** the user can inspect its findings and recorded decisions and return to the current final
+- **AND** a stale save cannot replace the current final
 
 #### Scenario: Some research findings have concrete requirement changes
 

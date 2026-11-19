@@ -27,6 +27,7 @@ export const CODE_MESSAGES = {
   BR_IS_FUNCTION: 'Проверьте, описывает ли запись бизнес-цель или действие системы.',
   BR_IS_MEASUREMENT: 'Показатель успеха стоит проверить в составе бизнес-цели.',
   BABOK_QUALITY_INVALID: 'Нужно уточнить формулировку или её связь с открытым вопросом.',
+  BABOK_PARENT_TRACEABILITY_MISSING: 'Нужна явная связь с родительским требованием или вопрос, объясняющий разрыв.',
   SEMANTIC_PATCH_CONTRACT_INVALID: 'Не удалось прочитать предложенное исправление.',
   OUTPUT_CONTRACT_VIOLATION: 'Ответ AI не соответствует формату задачи.',
   INVALID_REQUIREMENTS_INSIGHTS: 'Предложения AI не прошли проверку формата.',

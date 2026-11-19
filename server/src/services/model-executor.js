@@ -28,7 +28,7 @@ export function validateModelPolicy(policy) {
 export function createModelExecutor({ provider, coordination, attempts, jobTraceRepository, diagnosticCapture, clock = () => new Date(), sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)), uuid = randomUUID }) {
   const trace = (input) => jobTraceRepository?.append(input).catch((error) => logEvent('warn', 'job.trace.append.failed', { jobId: input.jobId, category: input.category, errorType: error?.name || 'Error' }));
   return {
-    async execute({ tenantId, ownerUserId, jobId, stepId, persistenceStepId = stepId, messages, policy, deadlineAt, executionSite, temperature }) {
+    async execute({ tenantId, ownerUserId, jobId, stepId, persistenceStepId = stepId, messages, jsonObject, policy, deadlineAt, executionSite, temperature }) {
       const snapshot = validateModelPolicy(policy);
       const executionId = uuid();
       const requestedModel = snapshot.models[0];
@@ -54,7 +54,7 @@ export function createModelExecutor({ provider, coordination, attempts, jobTrace
           }
           let response;
           try {
-            response = await provider.complete({ model, messages, temperature, maxOutputTokens, thinking: snapshot.thinking, reasoning: snapshot.reasoning, timeoutMs: requestTimeoutMs, traceContext: injectTrace({}) });
+            response = await provider.complete({ model, messages, jsonObject, temperature, maxOutputTokens, thinking: snapshot.thinking, reasoning: snapshot.reasoning, timeoutMs: requestTimeoutMs, traceContext: injectTrace({}) });
           } catch (rawError) {
             const error = classifyProviderError(rawError);
             await coordination.failure({ tenantId, model, leaseId: lease.id, reasonCode: error.reasonCode });

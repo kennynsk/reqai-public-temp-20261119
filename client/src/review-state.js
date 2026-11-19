@@ -216,7 +216,7 @@ export function rebaseReview(state, base, remote, baseDecisions = {}, remoteDeci
   return { state: { ...state, evidenceContent: content, content, drafts, decisions, reservedIds: [...new Set([...(state.reservedIds || []), ...recordIds(base), ...recordIds(content)])] }, changes, transferredProposalCount: transferredProposals.length };
 }
 
-export function useReviewState(initialContent, initialDecisions = {}, { readOnly = false, editor = 'requirements' } = {}) {
+export function useReviewState(initialContent, initialDecisions = {}, { readOnly = false, editor = 'requirements', prepareRestoredState = (state) => state } = {}) {
   const inheritedSession = useContext(SessionContext);
   const session = readOnly ? null : inheritedSession;
   const [initialDraft] = useState(() => session?.restoredState ? null : readReviewDraft(session?.key));
@@ -224,7 +224,10 @@ export function useReviewState(initialContent, initialDecisions = {}, { readOnly
     && (!initialDraft.state.editor || initialDraft.state.editor === editor);
   const [recovery, setRecovery] = useState(() => autoRestore ? null : initialDraft);
   const [storageError, setStorageError] = useState(false);
-  const [state, reduce] = useReducer(reviewReducer, null, () => session?.restoredState || (autoRestore ? initialDraft.state : null) || ({ content: copy(initialContent), decisions: copy(initialDecisions), drafts: {}, editor, reservedIds: [...new Set([...recordIds(initialContent), ...(session?.reservedIds || [])])] }));
+  const [state, reduce] = useReducer(reviewReducer, null, () => {
+    const restored = session?.restoredState || (autoRestore ? initialDraft.state : null);
+    return restored ? prepareRestoredState(restored) : { content: copy(initialContent), decisions: copy(initialDecisions), drafts: {}, editor, reservedIds: [...new Set([...recordIds(initialContent), ...(session?.reservedIds || [])])] };
+  });
   const dirtyFields = Object.values(state.drafts).some((draft) => draft.text !== draft.initialText || Object.keys(draft.fields || {}).length > 0);
   const dirty = dirtyFields || JSON.stringify(state.content) !== JSON.stringify(initialContent) || JSON.stringify(state.decisions) !== JSON.stringify(initialDecisions);
   const stateRef = useRef(state);
@@ -274,7 +277,7 @@ export function useReviewState(initialContent, initialDecisions = {}, { readOnly
   const field = (key, value) => dispatch({ type: 'field', key, value });
   const clear = (key) => dispatch({ type: 'clear', key });
   return { state, dispatch, content: state.content, setContent, dirtyFields, field, clear, dirty, session, recovery, storageError, discard,
-    restore: () => { if (recovery.state.editor && recovery.state.editor !== editor) session?.restoreRecovery(recovery); else { dispatch({ type: 'restore', value: recovery.state }); setRecovery(null); } },
+    restore: () => { if (recovery.state.editor && recovery.state.editor !== editor) session?.restoreRecovery(recovery); else { dispatch({ type: 'restore', value: prepareRestoredState(recovery.state) }); setRecovery(null); } },
   };
 }
 

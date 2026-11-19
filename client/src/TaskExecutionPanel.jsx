@@ -14,6 +14,7 @@ const EVENT_LABELS = {
   'decompose-chunk': 'Генерация требований',
   'merge-decomposition': 'Сборка черновика',
   'requirements-insights': 'AI-исследование',
+  'Research output rejected': 'Ответ исследования отклонён проверкой формата',
   'recover-requirements': 'Сохранение частичного результата',
   'BABOK audit started': 'Независимая проверка началась',
   'BABOK audit accepted': 'Независимая проверка пройдена',
@@ -34,6 +35,7 @@ function TraceEntry({ entry, detail, expanded, onToggle }) {
   const issue = Array.isArray(issues) ? issues.find((item) => typeof item?.code === 'string' && Object.hasOwn(CODE_MESSAGES, item.code)) : null;
   const reasonCode = issue?.code || entry.metadata?.reasonCode || entry.metadata?.summary?.reasonCode;
   const reason = typeof reasonCode === 'string' && Object.hasOwn(CODE_MESSAGES, reasonCode) ? CODE_MESSAGES[reasonCode] : null;
+  const recordId = reasonCode === 'BABOK_PARENT_TRACEABILITY_MISSING' && /^(SR|FR|NFR)-\d{3,}$/.test(issue?.key) ? issue.key : null;
   return <li className="rounded-lg border border-slate-200 bg-white">
     <button type="button" aria-expanded={expanded} onClick={onToggle} className="w-full rounded-lg p-3 text-left focus-visible:outline-indigo-500">
       <div className="flex justify-between gap-2">
@@ -41,7 +43,7 @@ function TraceEntry({ entry, detail, expanded, onToggle }) {
           <span className="mr-2 font-semibold text-slate-800">{label || entry.name}</span>
           <span className={`inline-block rounded px-1.5 py-0.5 text-xs ${TRACE_TONES[entry.status] || 'bg-slate-100 text-slate-600'}`}>{entry.status}</span>
           {entry.source === 'CLIENT_LOCAL' && <span className="ml-2 text-xs text-violet-700">текущая вкладка</span>}
-          {reason && <p className="mt-1 text-xs text-slate-700">{reason}</p>}
+          {reason && <p className="mt-1 text-xs text-slate-700">{recordId && <><strong>{recordId}</strong>{' '}</>}{reason}</p>}
           <p className="mt-1 text-xs text-slate-500">{entry.category}{entry.stepId && ` · ${entry.stepId}`}{reason && ` · ${reasonCode}`}</p>
         </div>
         <div className="shrink-0 text-right text-xs text-slate-500"><time>{timeOf(entry.startedAt)}</time><p>{formatDuration(entry.durationMs)}</p></div>

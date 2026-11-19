@@ -213,6 +213,53 @@ function fiveDirectionAudit(request) {
   };
 }
 
+test('research repairs proposal and narrative findings together and independently audits the new revision', async () => {
+  const draft = fiveDirections();
+  const revised = structuredClone(draft.insights[2]);
+  revised.detail = 'Владелец согласует показатель и период наблюдения.';
+  const h = harness('RESEARCH', (request) => {
+    const prompt = request.messages.at(-1).content;
+    if (request.stepId === 'requirements-insights') return draft;
+    if (request.stepId.includes(':semantic-repair:')) {
+      assert.match(prompt, /NON_ATOMIC/);
+      assert.match(prompt, /INSIGHT_EVIDENCE_INVALID/);
+      assert.ok(request.messages[0].content.includes('Разрешённые ID в patch.insights: ["insight-risks"]'));
+      return { baseRevision: prompt.match(/"baseRevision":"([a-f0-9]{16})"/)[1], insights: [revised, { ...draft.insights[0], title: "Незапрошенная правка" }] };
+    }
+    assert.match(request.messages[0].content, /checks ровно по ключам \["insight-risks:0"\]/);
+    const audit = fiveDirectionAudit(request);
+    if (request.stepId.endsWith(':audit:0')) {
+      audit.checks[0].obligations.push('Второе обязательство');
+      audit.insightChecks[2].factsSupported = false;
+    } else {
+      assert.equal(request.stepId, 'requirements-insights:audit:1');
+      assert.doesNotMatch(prompt, /Второе обязательство|Незапрошенная правка/);
+    }
+    return audit;
+  }, '2.15.0');
+  await h.handlers.generateRequirementsInsights(h.input);
+  assert.equal(h.saved[0].semanticValidation.corrections.length, 1);
+  assert.equal(h.saved[0].semanticValidation.status, 'PASSED');
+  assert.equal(h.saved[0].insights[2].detail, revised.detail);
+});
+
+test('malformed research critic coverage cannot certify a result with a rejected proposal', async () => {
+  const h = harness('RESEARCH', (request) => {
+    if (request.stepId === 'requirements-insights') return fiveDirections();
+    const prompt = request.messages.at(-1).content.split('\nПредыдущий ответ аудитора')[0];
+    const audit = fiveDirectionAudit({ messages: [{ content: prompt }] });
+    audit.checks[0].obligations.push('Ещё одно обязательство');
+    audit.insightChecks.pop();
+    return audit;
+  }, '2.15.0');
+  await assert.rejects(h.handlers.generateRequirementsInsights(h.input), (error) => {
+    assert.deepEqual(error.details.issues.map(({ code }) => code), ['NON_ATOMIC', 'SEMANTIC_AUDIT_INVALID']);
+    return true;
+  });
+  assert.equal(h.saved.length, 0);
+  assert.equal(h.calls.at(-1).stepId, 'requirements-insights:audit-contract-repair');
+});
+
 test('five-direction research automatically repairs missing categories and audits LLM hypotheses without external sources', async () => {
   const h = harness('RESEARCH', (request) => {
     if (request.stepId.includes(':audit:')) return fiveDirectionAudit(request);
@@ -357,6 +404,51 @@ test('a stale source audit is repaired without changing the requirement candidat
   assert.equal(h.calls.some(({ stepId }) => stepId.includes('semantic-repair')), false);
 });
 
+test('decomposition repairs missing NFR parent traceability and then runs the independent audit', async () => {
+  const h = harness('DECOMPOSITION', (request) => {
+    const prompt = request.messages.at(-1).content;
+    if (request.stepId.endsWith(':semantic-repair:1')) {
+      assert.match(prompt, /"key":"NFR-001","code":"BABOK_PARENT_TRACEABILITY_MISSING"/);
+      assert.match(prompt, /от SR или BR к NFR-001/);
+      return {
+        baseRevision: prompt.match(/"baseRevision":"([a-f0-9]{16})"/)[1],
+        upserts: [], removeIds: [], traceability: [...h.base.analysis.traceability, nfrParent],
+      };
+    }
+    assert.match(request.stepId, /:audit:1$/);
+    const source = JSON.parse(prompt.split('sourceCoverage:\n')[1].split('\n')[0]);
+    return { ...compactChecks(request, records, 'DECOMPOSITION'),
+      sourceRevision: source.revision,
+      sourceChecks: source.units.map(({ key }) => ({ key, targetKeys: ['BR-001'], preservesConditions: true, issues: [] })),
+    };
+  }, '2.18.0');
+  const source = h.base.groups.BR[0].source;
+  const record = (id, text, relatedTo, fields = {}) => ({
+    id, text, relatedTo, ...fields, source, provenance: 'Нормализовано', quality: 'Готово',
+  });
+  h.base.groups.SR = [record('SR-001', 'Оператору нужно быстро находить заказы.', ['BR-001'], { role: 'Оператор' })];
+  h.base.groups.FR = [record('FR-001', 'Система показывает результаты поиска заказов.', ['SR-001'])];
+  h.base.groups.NFR = [record('NFR-001', 'Поиск заказов выполняется за две секунды.', ['SR-001'], {
+    category: 'Производительность', scope: 'Поиск заказов', verificationMethod: 'Нагрузочный тест',
+  })];
+  const edge = (from, to, relation) => ({ from, to, relation, status: 'Предполагается', source: null });
+  h.base.analysis.traceability = [
+    edge('BR-001', 'SR-001', 'обосновывает'), edge('SR-001', 'FR-001', 'реализует'), edge('FR-001', 'NFR-001', 'ограничивает'),
+  ];
+  Object.assign(h.base.summary.counts, { SR: 1, FR: 1, NFR: 1 });
+  const nfrParent = edge('SR-001', 'NFR-001', 'уточняет');
+  const records = Object.entries(h.base.groups).flatMap(([type, rows]) => rows.map((record) => ({ key: record.id, type, record })));
+
+  await h.handlers.mergeDecomposition(h.input);
+  assert.deepEqual(h.calls.map(({ stepId }) => stepId), ['consolidate-decomposition:semantic-repair:1', 'consolidate-decomposition:audit:1']);
+  assert.deepEqual(h.saved[0].groups, h.base.groups);
+  assert.deepEqual(h.saved[0].analysis.traceability, [...h.base.analysis.traceability, nfrParent]);
+  assert.equal(h.saved[0].semanticValidation.status, 'PASSED');
+  assert.deepEqual(h.trace.find(({ name }) => name === 'BABOK semantic correction required').metadata.issues, [
+    { key: 'NFR-001', code: 'BABOK_PARENT_TRACEABILITY_MISSING' },
+  ]);
+});
+
 test('a repaired research response still passes semantic audit before publication', async () => {
   const h = harness('RESEARCH', (request) => {
     if (request.stepId.endsWith(':audit:0')) return fiveDirectionAudit(request);
@@ -416,6 +508,98 @@ test('research without the critic still repairs malformed JSON before saving all
   assert.equal(h.saved[0].semanticValidation.status, 'SKIPPED');
   assert.equal(h.trace.find(({ name }) => name === 'BABOK audit skipped')?.metadata.reasonCode, 'CRITIC_DISABLED');
 });
+
+test('research preserves explained findings with omitted or null proposals and audits the other proposals', async () => {
+  const draft = fiveDirections();
+  for (const insight of draft.insights.filter(({ category }) => category !== 'risks')) {
+    insight.noEnhancementReason = 'Чтобы изменить требования, нужно сначала согласовать применимость к пилоту.';
+  }
+  delete draft.insights[0].enhancements;
+  draft.insights[4].enhancements = null;
+  const h = harness('RESEARCH', (request) => request.stepId.endsWith(':audit:0') ? fiveDirectionAudit(request) : draft, '2.16.0');
+  await h.handlers.generateRequirementsInsights(h.input);
+  assert.deepEqual(h.calls.map(({ stepId }) => stepId), ['requirements-insights', 'requirements-insights:audit:0']);
+  assert.deepEqual(h.saved[0].insights[0].enhancements, []);
+  assert.deepEqual(h.saved[0].insights[4].enhancements, []);
+  assert.equal(h.saved[0].insights[4].noEnhancementReason, draft.insights[4].noEnhancementReason);
+  assert.deepEqual(h.saved[0].insights[2].enhancements, [corrected]);
+  assert.equal(h.saved[0].semanticValidation.status, 'PASSED');
+});
+
+test('one repair identifies both missing proposal fields and the corrected result passes independent review', async () => {
+  const valid = fiveDirections();
+  for (const insight of valid.insights.filter((item) => !item.enhancements.length)) {
+    insight.noEnhancementReason = 'Изменение уже покрыто исходным требованием.';
+  }
+  const invalid = structuredClone(valid);
+  delete invalid.insights[2].enhancements[0].rationale;
+  invalid.insights[2].enhancements[0].confirmationConditions = null;
+  const h = harness('RESEARCH', (request) => {
+    if (request.stepId === 'requirements-insights') return invalid;
+    if (request.stepId.endsWith(':repair')) {
+      const prompt = request.messages.at(-1).content;
+      for (const field of ['rationale', 'confirmationConditions']) {
+        assert.ok(prompt.includes(`$.insights[2].enhancements[0].${field}`));
+      }
+      return valid;
+    }
+    return fiveDirectionAudit(request);
+  }, '2.16.0');
+  await h.handlers.generateRequirementsInsights(h.input);
+  assert.deepEqual(h.calls.map(({ stepId }) => stepId), ['requirements-insights', 'requirements-insights:repair', 'requirements-insights:audit:0']);
+  assert.deepEqual(h.saved[0].insights[2].enhancements, [corrected]);
+  assert.equal(h.saved[0].semanticValidation.status, 'PASSED');
+});
+
+test('research rejects malformed proposals and reports only the phase, code and structural path', async () => {
+  const draft = fiveDirections();
+  draft.insights[0].enhancements = null;
+  const h = harness('RESEARCH', (request) => {
+    if (request.stepId.endsWith(':repair')) assert.match(request.messages.at(-1).content, /\$\.insights\[0\]\.enhancements/);
+    return draft;
+  }, '2.16.0');
+  await assert.rejects(h.handlers.generateRequirementsInsights(h.input), { type: 'INVALID_REQUIREMENTS_INSIGHTS' });
+  assert.deepEqual(h.trace.filter(({ name }) => name === 'Research output rejected').map(({ metadata }) => metadata), [
+    { stage: 'generation', code: 'INVALID_FIELD', path: '$.insights[0].enhancements' },
+    { stage: 'repair', code: 'INVALID_FIELD', path: '$.insights[0].enhancements' },
+    { stage: 'regeneration', code: 'INVALID_FIELD', path: '$.insights[0].enhancements' },
+  ]);
+  assert.equal(h.saved.length, 0);
+});
+
+for (const failure of ['invalid JSON', 'persistent semantic rejection']) {
+  test(`current research regenerates once after ${failure} and audits the fresh result`, async () => {
+    const valid = fiveDirections();
+    for (const insight of valid.insights.filter((item) => !item.enhancements.length)) {
+      insight.noEnhancementReason = 'Вопрос уже покрыт исходными требованиями.';
+    }
+    const h = harness('RESEARCH', (request) => {
+      const { stepId } = request;
+      assert.equal(request.jsonObject, true);
+      if (stepId === 'requirements-insights:regenerate') {
+        assert.doesNotMatch(request.messages.at(-1).content, /broken-marker/);
+        return valid;
+      }
+      if (stepId === 'requirements-insights:regenerate:audit:0') return fiveDirectionAudit(request);
+      if (failure === 'invalid JSON') return '{"broken-marker":';
+      if (stepId.includes(':semantic-repair:')) {
+        const revision = request.messages.at(-1).content.match(/"baseRevision":"([a-f0-9]{16})"/)[1];
+        return { baseRevision: revision, insights: [{ ...valid.insights[2], title: stepId }] };
+      }
+      if (stepId.includes(':audit:')) {
+        const audit = fiveDirectionAudit(request);
+        audit.checks[0].obligations.push('Второе обязательство');
+        return audit;
+      }
+      return valid;
+    }, '2.16.0');
+    await h.handlers.generateRequirementsInsights(h.input);
+    assert.equal(h.calls.filter(({ stepId }) => stepId.endsWith(':regenerate')).length, 1);
+    assert.equal(h.calls.at(-1).stepId, 'requirements-insights:regenerate:audit:0');
+    assert.equal(h.saved.length, 1);
+    assert.equal(h.saved[0].semanticValidation.status, 'PASSED');
+  });
+}
 
 test('malformed research JSON gets one repair before falling back to the input version', async () => {
   const h = harness('RESEARCH', () => '{"insights":[{"id":"truncated', '2.15.0');

@@ -37,6 +37,7 @@ test('ZAI provider calls OpenAI-compatible endpoint and normalizes response meta
   assert.equal(request.options.headers.authorization, 'Bearer secret');
   assert.equal(JSON.parse(request.options.body).model, 'glm-5.2');
   assert.equal(JSON.parse(request.options.body).max_tokens, 16000);
+  assert.equal(JSON.parse(request.options.body).response_format, undefined);
   assert.deepEqual(JSON.parse(request.options.body).thinking, { type: 'disabled' });
   assert.deepEqual(result, { text: 'completed', model: 'glm-5.2', requestId: 'zai-request-1', usage: { inputTokens: 12, outputTokens: 7 } });
 });
@@ -73,10 +74,11 @@ test('ZAI provider forwards a selected GLM-5.3-Flash reasoning effort', async ()
     },
   });
 
-  await provider.complete({ model: 'glm-5.3-flash', messages: [], temperature: 0.2, maxOutputTokens: 16000, reasoning: 'high', timeoutMs: 1000 });
+  await provider.complete({ model: 'glm-5.3-flash', messages: [], temperature: 0.2, maxOutputTokens: 16000, jsonObject: true, reasoning: 'high', timeoutMs: 1000 });
   const body = JSON.parse(request.options.body);
   assert.deepEqual(body.thinking, { type: 'enabled' });
   assert.equal(body.reasoning_effort, 'high');
+  assert.deepEqual(body.response_format, { type: 'json_object' });
 });
 
 test('ZAI provider classifies authentication failures without returning provider response content', async () => {

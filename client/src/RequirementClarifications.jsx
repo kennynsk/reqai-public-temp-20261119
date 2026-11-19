@@ -17,7 +17,9 @@ export default function RequirementClarifications({ requirement, editing, readOn
     <h3 className="text-sm font-semibold text-slate-700">Связанные вопросы · {openCount} открытых</h3>
     {gaps.map((gap) => <div key={gap.id} className="rounded-lg border border-amber-200 bg-amber-50/50 p-3 text-sm">
       <div className="flex flex-wrap items-center justify-between gap-2"><span className="text-xs font-semibold text-slate-600">{gap.id} · {states[gap.id]?.state === 'closed' ? 'Закрыт' : states[gap.id]?.answer?.trim() ? 'Ответ добавлен' : 'Ожидает ответа'}</span><button type="button" data-question-id={gap.id} onClick={(event) => onOpenQuestion(gap.id, event.currentTarget)} className="font-semibold text-indigo-700 underline underline-offset-2">Разобрать вопрос</button></div>
-      <p title={gap.text} className="mt-2 line-clamp-3 break-words text-slate-700">{gap.text}</p>
+      <p className="mt-2 break-words text-slate-700">{gap.text}</p>
+      {review.content.analysis.questions.filter((question) => question.gapId === gap.id && question.text !== gap.text).map((question) =>
+        <p key={question.id} className="mt-1 break-words text-slate-700">{question.text}</p>)}
     </div>)}
   </section>;
   function updateCheck(gap, requirementId, patch) {

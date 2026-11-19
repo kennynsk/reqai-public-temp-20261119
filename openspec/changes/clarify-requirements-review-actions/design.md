@@ -15,6 +15,10 @@ Make the next action legible while preserving the current draft, linked research
 
 - Reuse guarded job navigation for the return from research to the parent requirements task. Place direct links to the source context and frozen requirements below the research results and move the finalization control and selected count to the results header.
 - Read the latest completed linked research from the persisted job list using the parent task and success filters. Keep its navigation available independently of the current attempt and leave the saved final version's decisions intact.
+- Carry the final-version entry point in the existing browser history entry. Use it to open the research findings first, identify older input and label the return to the parent final version. A plain task link retains its default view. Use the existing dirty-draft guard on both transitions.
+- Resolve the current final across the decomposition and linked research using the most recent saved final revision. Expose it alongside the existing job-scoped version list. The task renders and exports that exact version and saves edits against its producing job. Research findings point back to the task final. Keep past version artifacts immutable.
+- Lock the decomposition job when publishing a final revision. Require the current workflow final as a base when it exists. A historical research run with a different input and its own superseded result remains available for review. Keep new research creation scoped to inputs from decomposition as before.
+- Place the stage markers at the top of four equal columns with labels underneath. Draw the track between the first and last column centers and position the completed fill inside the same track.
 
 ## Risks and Trade-offs
 

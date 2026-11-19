@@ -405,7 +405,7 @@ describe('AsyncJobWorkspace presentational branches', () => {
     render(<FinalRequirementsEditor latestVersion={latestVersion} onSave={onSave} onShowInsights={vi.fn()} onShowSource={vi.fn()} onShowContext={vi.fn()} onStartResearch={onStartResearch} onDirtyChange={vi.fn()} researchSkipped />);
     expect(screen.getByRole('button', { name: 'Добавить AI-исследование' })).toBeEnabled();
     fireEvent.click(screen.getByRole('button', { name: 'Добавить AI-исследование' }));
-    expect(onStartResearch).toHaveBeenCalledWith({ requirementsVersionId: 'final-v1' });
+    expect(onStartResearch).toHaveBeenCalledWith({ requirementsVersionId: 'final-v1', fromFinal: true });
     fireEvent.click(screen.getByRole('button', { name: 'Действия для BT-1' }));
     fireEvent.click(screen.getByRole('button', { name: 'Редактировать' }));
     fireEvent.change(screen.getByRole('textbox', { name: 'Текст требования BT-1' }), { target: { value: '   ' } });
@@ -479,7 +479,7 @@ describe('AsyncJobWorkspace presentational branches', () => {
     const onBack = vi.fn();
     render(<BabokRegistryResult value={registry} latestVersion={{ versionId: 'final-registry', registry, decisions: {}, createdAt: new Date().toISOString() }} finalVersion onStartResearch={onStartResearch} onBack={onBack} onDirtyChange={vi.fn()} />);
     fireEvent.click(screen.getByRole('button', { name: 'Добавить AI-исследование' }));
-    expect(onStartResearch).toHaveBeenCalledWith({ requirementsVersionId: 'final-registry' });
+    expect(onStartResearch).toHaveBeenCalledWith({ requirementsVersionId: 'final-registry', fromFinal: true });
     fireEvent.click(screen.getByRole('button', { name: 'К результатам AI-исследования' }));
     expect(onBack).toHaveBeenCalled();
     cleanup();
@@ -727,6 +727,19 @@ describe('AsyncJobWorkspace presentational branches', () => {
     render(<DebugPanel open jobId={null} observations={[]} refreshKey={0} onClose={onClose} triggerRef={{ current: null }} />);
     expect(screen.getByText('События пока не записаны.')).toBeInTheDocument();
     expect(apiMocks.getJobTrace).not.toHaveBeenCalled();
+  });
+
+  test('shows the affected requirement for a missing parent relationship in the journal', async () => {
+    apiMocks.getJobTrace.mockResolvedValue({
+      jobId: 'traceability-job', status: 'RUNNING', timeline: [{
+        id: 'correction', source: 'TRACE', name: 'BABOK semantic correction required', category: 'VALIDATION', status: 'INFO',
+        metadata: { issues: [{ key: 'NFR-001', code: 'BABOK_PARENT_TRACEABILITY_MISSING' }] },
+      }],
+    });
+    render(<DebugPanel open jobId="traceability-job" onClose={vi.fn()} />);
+    const entry = await screen.findByRole('button', { name: /Требуется исправить формулировки/ });
+    expect(entry).toHaveTextContent('NFR-001 Нужна явная связь с родительским требованием');
+    expect(entry).toHaveTextContent('BABOK_PARENT_TRACEABILITY_MISSING');
   });
 
   test('distinguishes a successful retry from browser disconnection and copies only a safe summary', async () => {
