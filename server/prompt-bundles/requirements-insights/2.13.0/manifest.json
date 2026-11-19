@@ -1,0 +1,61 @@
+{
+  "id": "requirements-insights",
+  "version": "2.13.0",
+  "displayName": "Five-direction LLM research with accurate FR trigger attribution",
+  "workflowPurposes": [
+    "REQUIREMENTS_INSIGHTS"
+  ],
+  "outputSchemaVersion": "requirements-insights.v1",
+  "templates": {
+    "insights": {
+      "path": "insights.md",
+      "requiredVariables": [
+        "babokIdentifierSet",
+        "businessContext",
+        "requirementsSection",
+        "reviewContext",
+        "supportingMaterials"
+      ],
+      "sha256": "7d4c373709cfed6cfbab16fd91808a96ceac5ba439286d5a107479d72642c893"
+    },
+    "review": {
+      "path": "review.md",
+      "requiredVariables": [
+        "originalPrompt",
+        "draft",
+        "qualityFindings"
+      ],
+      "sha256": "5b7debe43b6fab1d2e1524792a2923e0a87c6ab8e42643e4a3340379716e4ddd"
+    },
+    "semantic-audit": {
+      "path": "semantic-audit.md",
+      "requiredVariables": [
+        "semanticContext",
+        "candidates",
+        "qualityFindings",
+        "revision",
+        "narrativeCandidates"
+      ],
+      "sha256": "25aee0c6bb9762b6015e62daa9561a553485d110f73e3e8657f6d6d333a2298e"
+    },
+    "semantic-repair": {
+      "path": "semantic-repair.md",
+      "requiredVariables": [
+        "semanticContext",
+        "draft",
+        "qualityFindings",
+        "revision"
+      ],
+      "sha256": "3bcaaafe386b1c53dbe667b82620ac3d2a2137a8c8668bae51c78c6900f13be2"
+    }
+  },
+  "semanticPolicy": "babok-semantic.v2",
+  "performanceBudgetMs": 900000,
+  "requiredResearchCategories": [
+    "trends",
+    "patterns",
+    "risks",
+    "competitors",
+    "standards"
+  ]
+}

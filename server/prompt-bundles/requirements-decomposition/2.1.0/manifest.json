@@ -1,0 +1,19 @@
+{
+  "id": "requirements-decomposition",
+  "version": "2.1.0",
+  "displayName": "BABOK requirements decomposition",
+  "workflowPurposes": ["DECOMPOSITION"],
+  "outputSchemaVersion": "babok-requirements.v1",
+  "templates": {
+    "decompose": {
+      "path": "decompose.md",
+      "requiredVariables": ["baselineMaterial", "businessContext", "chunkContext", "materialDescriptors", "referenceMaterials", "sourceMaterial"],
+      "sha256": "19ad9c58c3c649c184ea3cbc783b0f4fb733ff30be227a67497497856dd08a26"
+    },
+    "consolidate": {
+      "path": "consolidate.md",
+      "requiredVariables": ["baselineMaterial", "businessContext", "consolidationContext", "materialDescriptors", "referenceMaterials", "sectionArtifacts"],
+      "sha256": "1ca374277986f03bcf9aa9a922f4ab1dea3a398d9fac6b02717c3268bd65fba1"
+    }
+  }
+}

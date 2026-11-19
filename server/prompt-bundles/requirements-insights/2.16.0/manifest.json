@@ -1,0 +1,61 @@
+{
+  "id": "requirements-insights",
+  "version": "2.16.0",
+  "displayName": "Research with actionable requirements proposals and explained findings",
+  "workflowPurposes": [
+    "REQUIREMENTS_INSIGHTS"
+  ],
+  "outputSchemaVersion": "requirements-insights.v1",
+  "templates": {
+    "insights": {
+      "path": "insights.md",
+      "requiredVariables": [
+        "babokIdentifierSet",
+        "businessContext",
+        "requirementsSection",
+        "reviewContext",
+        "supportingMaterials"
+      ],
+      "sha256": "988c41886cd0fcf485dde6b818e4eeac987714c2997ab51981b376b11f2c3c77"
+    },
+    "review": {
+      "path": "review.md",
+      "requiredVariables": [
+        "originalPrompt",
+        "draft",
+        "qualityFindings"
+      ],
+      "sha256": "e95597162d1a58db1acca8586e76abfbf35ba4bc66ce614aec2067a70fb7b571"
+    },
+    "semantic-audit": {
+      "path": "semantic-audit.md",
+      "requiredVariables": [
+        "semanticContext",
+        "candidates",
+        "qualityFindings",
+        "revision",
+        "narrativeCandidates"
+      ],
+      "sha256": "3f452516b9a393b557c362722609b94c7f046855b06f914df909ee22c0920cc4"
+    },
+    "semantic-repair": {
+      "path": "semantic-repair.md",
+      "requiredVariables": [
+        "semanticContext",
+        "draft",
+        "qualityFindings",
+        "revision"
+      ],
+      "sha256": "2986bd3f594f89749f525487f087fd4eab4ead178e3f8c267f54d2148a6a3dd3"
+    }
+  },
+  "semanticPolicy": "babok-semantic.v2",
+  "performanceBudgetMs": 900000,
+  "requiredResearchCategories": [
+    "trends",
+    "patterns",
+    "risks",
+    "competitors",
+    "standards"
+  ]
+}

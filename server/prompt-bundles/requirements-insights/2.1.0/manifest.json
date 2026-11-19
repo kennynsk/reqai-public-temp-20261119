@@ -1,0 +1,22 @@
+{
+  "id": "requirements-insights",
+  "version": "2.1.0",
+  "displayName": "BABOK research with reviewed decisions and source materials",
+  "workflowPurposes": [
+    "REQUIREMENTS_INSIGHTS"
+  ],
+  "outputSchemaVersion": "requirements-insights.v1",
+  "templates": {
+    "insights": {
+      "path": "insights.md",
+      "requiredVariables": [
+        "babokIdentifierSet",
+        "businessContext",
+        "requirementsSection",
+        "reviewContext",
+        "supportingMaterials"
+      ],
+      "sha256": "06f40549cfb7d4db00c864bfc562ed419051572cfdc51de849b852dddd800f23"
+    }
+  }
+}

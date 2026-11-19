@@ -1,0 +1,27 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: reqai-ingress
+spec:
+  podSelector:
+    matchLabels:
+      app: reqai
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: replace-ingress-namespace
+      ports:
+        - protocol: TCP
+          port: 8080
+        - protocol: TCP
+          port: 5178
+    - from:
+        - podSelector:
+            matchLabels:
+              app: reqai-mcp-gateway
+      ports:
+        - protocol: TCP
+          port: 5178

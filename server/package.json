@@ -1,0 +1,35 @@
+{
+  "name": "server",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "predev": "node ./scripts/free-dev-port.mjs",
+    "dev": "NODE_ENV=development node --watch index.js",
+    "start": "NODE_ENV=production node index.js",
+    "config:check": "node ./scripts/print-effective-config.mjs",
+    "db:migrate": "node ./scripts/migrate.mjs",
+    "prompts:qualify": "node ./scripts/qualify-prompt-catalog.mjs",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@opentelemetry/api": "^1.9.1",
+    "@temporalio/activity": "^1.22.0",
+    "@temporalio/client": "^1.22.0",
+    "@temporalio/worker": "^1.22.0",
+    "@temporalio/workflow": "^1.22.0",
+    "ajv": "8.20.0",
+    "docx": "9.7.1",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "gigachat": "^0.0.19",
+    "jose": "^6.1.0",
+    "json5": "^2.2.3",
+    "kafkajs": "^2.2.4",
+    "pg": "^8.13.1",
+    "undici": "^6.21.1"
+  },
+  "devDependencies": {
+    "jszip": "^3.10.1"
+  }
+}

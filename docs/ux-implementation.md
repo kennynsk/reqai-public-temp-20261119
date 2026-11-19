@@ -1,0 +1,80 @@
+# UX implementation — isolated worktree
+
+## 2026-10-02 — общий процесс уточнения вопросов
+
+Editable BABOK stage 2 теперь открывает один GAP workspace из карточки требования и очереди «Вопросы». В карточке остаются краткие причины и основной Edit; полный ответ, дедуплицированный checklist, no-change/dismissal reasons и closure находятся в панели. Связанные требования редактируются внутри неё; AI использует тот же GAP anchor в подэкране без второго modal и без генерации при открытии. Незавершённые сообщения, фильтры, selection, origin и requirement drafts сохраняются в существующей task session. Global save собирает скрытые edits; validation раскрывает ошибку внутри панели, ошибки сохранения видимы там же, compare conflict сначала закрывает question shell.
+
+Содержательные поля отделены от collapsed evidence. BR criterion — широкая textarea; assessment пересматривается отдельно и не меняет GAP state. Палитра, глобальные CSS tokens, typography, radii и controls сохранены. Final/read-only/legacy/research presentation не переработаны. Backend, API, schema и миграции не изменены.
+
+Проверки и границы приёмки: [clarification-flow-acceptance-2026-10-02.md](clarification-flow-acceptance-2026-10-02.md). Изменение `unify-question-clarification-flow` пока не архивировано.
+
+## Latest checkpoint — saved-version export and real GLM acceptance
+
+See [the acceptance report](ux-acceptance-2026-08-28.md) for current evidence, model settings, screenshots and explicit outstanding checks. Historical checkpoint counts below describe their own stage, not current completion.
+
+Version exports share one document model across Markdown, safe HTML and locally generated DOCX. Dirty export requires an explicit saved-version choice; prepared print links cannot silently outlive their selected version. The initial bundle is now approximately 423.8 kB after lazy-loading Markdown. The real GLM review/research/final/reload/export path passed; browser PDF printing and the complete responsive/keyboard/state matrix remain unverified. No merge/archive performed.
+
+## Fourth checkpoint — exact research proposal review
+
+- Accept opens a review dialog, including from collapsed cards. Users choose add/replace, target type, explicit replacement target, exact wording and supported fields. Original wording, rationale (or its absence) and field-level before/after values remain visible. Target references never imply overwrite permission.
+- Accepted changes enter the shared draft immediately, with stable enhancement keys and reserved record identifiers. Save final persists pending content and decisions together. Repeated acceptance is idempotent. Reversing an accepted record previews its current wording and requires explicit restoration/removal or retention as a manual record. Unrelated manual changes are retained.
+- `review.proposals` stores original wording, before/after, operation, target and decision; the server validates research lineage, exact new records and replacement preconditions and supplies reviewer/time. Unchanged historical proposal metadata survives later manual edits. To change type/target after acceptance, reverse the prior decision explicitly first.
+- Optional `rationale` and `citations` survive research normalization without trusting model-supplied verification. Applicability is labelled as a model estimate; absent estimates remain absent. Only HTTP(S) citation links without embedded credentials are clickable. No preview, prefetch or automatic source request is performed. `review.citationChecks` stores manual status/note with authoritative source/reviewer/time.
+- Mixed CJK/Russian text and analyst instructions are warnings, not auto-rewrites or hidden LLM calls. New research results retain base review decisions; old results load them from their authorized input version before review.
+- Validation: 79 client tests, lint and production build passed; 188 server tests passed (two opt-in PostgreSQL tests skipped). Pure tests cover all six types, exact server validation, replacement, reversal, manual retention, ID reservation and legacy deduplication. Component tests require exact confirmation instead of immediate acceptance. The full browser proposal/reload matrix remains an acceptance task.
+- Current build main chunk: approximately 541 kB (warning). Code splitting and final responsive checks remain pending; no merge or archive performed.
+
+## Third checkpoint — explicit review decisions
+
+- `decisions.review.schemaVersion: 1` stores GAP answers/status/reason, omission references, manual completeness checks and acknowledgment of remaining issues. Review payloads are limited to 256 KiB; answers, reasons and record references are validated. Actor/time and content fingerprints are computed by the server, never trusted from browser input.
+- Answers leave GAPs open. Closing/reopening needs a reason. These decisions never rewrite the original model output or requirement wording. Current GAP/quality/omission issues must be acknowledged before finalization by the new client. Saving a final version is not semantic approval.
+- Available original text can be compared beside requirements. A missing obligation can become a manual requirement. Content changes invalidate completeness/acknowledgment; deletion of an omission's linked requirement makes that omission unresolved again.
+- Old clients omitting review fields preserve compatible inherited evidence, with stale checks after changes. Projection-only clients saving from BABOK bases now overlay BR/FR/NFR while retaining SR/TR/CON, analysis and sources, instead of discarding the full registry. Incompatible identifiers still fail contract validation. Three-way rebase merges independent GAP/omission decisions and invalidates approval after reconciliation.
+- Browser regression on the isolated synthetic task: load seven GAPs; answer GAP-001, observe dirty/disabled-next state; require a reason for closing; save and reload the exact answer/reason with server reviewer/time; reopen with a new reason and save. Cancel finalization, then explicitly retain all seven issues. Compare source against the deliberately incomplete registry, flag reopening, create FR-003, mark manual completeness, and save with an updated issue acknowledgment. This is deterministic fixture testing, not a real model run.
+- Validation: 70 client tests, client lint, 185 server tests passed (two optional database tests skipped in this run). Targeted service tests verify persistence/reload through a projection-only client and non-mutation of the base; reducer tests cover independent review decisions across clients.
+- No database migration is needed for review metadata; it lives in immutable version artifacts and existing decisions JSON. Rollback may leave the additive metadata intact. Do not delete version history. Exact proposal review, export and full acceptance remain pending.
+
+Base: `4771717`; branch: `codex/requirements-ux-improvements`. The original checkout remains on `codex/integrate-babok-requirements-skill`. No merge or archive is authorized yet.
+
+## OpenSpec reconciliation
+
+The current main frontend spec still describes three legacy categories. The implemented `integrate-babok-requirements-skill` delta adds six BABOK types and evidence panels and modifies review, research cards and editor layout. At final spec synchronization, apply/reconcile that earlier delta first, then `improve-requirements-workspace-ux`. In particular, preserve the new explicit parent/child navigation and don't restore the old automatic SSE redirect. Integration API/MCP contracts remain additive. Do not archive `refactor-enterprise-async-platform` or any other change as part of this work.
+
+## Isolated stack
+
+Use `docker compose -p reqai-ux -f compose.ux.yaml up --build -d`. This file uses its own network and project-prefixed database/Kafka volumes. Exposed ports: frontend 58080, API 55178, PostgreSQL 55432, Kafka 59092, Temporal 57233, Temporal UI 58088, optional MCP 55180. Never run the default compose command from this worktree: its ports/network belong to the existing local stack.
+
+The default provider is mock for deterministic development. For a real run, point `REQAI_UX_CREDENTIAL_FILE` to an existing credential file (default: git-ignored `.env.ux.local`) and explicitly set `LLM_PROVIDER_MODE=zai`; select `glm-5.3-flash` and low in the UI. Do not print or commit credentials or copy production data. Real-provider tests are separate from mock acceptance tests.
+
+To stop this stack, use `docker compose -p reqai-ux -f compose.ux.yaml stop`. Do not delete volumes on completion. The original stack is not stopped, migrated or rebuilt by these commands.
+
+## Regression log
+
+- Added two component tests for the room-booking audit. Both failed on the baseline: category switching lost the open draft; saved/next-step status ignored the pending card text.
+- Shared drafts now include open text/structured editors, additions/removals and AI decisions; global save assembles them together. Card-level Done is local, never a server save.
+- Frontend baseline plus new regressions: 61 passing tests. Lint and production build passed. Server: 175 passed, one opt-in PostgreSQL test skipped by default. The PostgreSQL test was also run explicitly on port 55432 and passed. OpenSpec strict validation passed.
+- Real browser smoke (mock provider, isolated stack): create task, save an open new-record composer, edit text and success indicator, switch BR→FR→BR, Save-and-navigate, restore saved version from its permalink. Two independent tabs: remote version notification, stale-save conflict, explicit rebase preserving the first tab's wording and the second tab's success indicator, successful merged save.
+- Synthetic browser task: `8d5b64b8-a61e-4124-a923-b72f5980aa4d` on port 58080. Mock output intentionally starts empty; manually added records test the editor, not AI extraction quality. No real GLM call has been made in this implementation stage.
+- Session recovery is tenant/user/job-scoped with a 24-hour TTL. `setAccessToken` in `client/src/api/auth-session.js` is the integration point for same-tab authentication hosts; external token changes are reconciled on focus/storage/API access. This application currently has no separate sign-in/sign-out screen.
+- Remaining acceptance: full Back/Forward and responsive/keyboard matrix, legacy delete/undo, review metadata/GAPs, proposal editing, history/search, settings/context, export, and real GLM end-to-end. Do not treat the initial implementation checkpoint as completion of the change.
+
+## Migration and rollback for the first checkpoint
+
+Migration 010 adds nullable save-identity columns and a partial unique index; old requests remain valid. Deploy the migration before the new API. Roll back application code first; the nullable columns may remain and do not require data deletion. Do not drop saved versions or volumes. Unknown-response retries reuse the client mutation identity while its content remains unchanged. The source-job lock serializes both new and legacy writers; replay does not emit a second version event.
+
+The artifact write precedes the version transaction in the existing storage architecture. A concurrent replay loser or a conflict may leave an unreferenced artifact for normal retention cleanup, but cannot create a duplicate version/event. This checkpoint does not introduce destructive artifact cleanup.
+
+## Second checkpoint — history, presentation and input
+
+- Registry sections separate requirements/questions/links; appendices and empty analytical groups are collapsed. By-type filters, All scrolls/focuses the chosen group. View preferences migrate from the old rows/columns key. Material-coverage warnings remain outside collapsed appendices.
+- History requests `GET /api/v1/jobs?groupBy=workflow&q=…&type=…&status=…`. Search runs against persisted authorized metadata, not the loaded page. Cursors bind to the query/filters. The old request without options still returns the old flat shape. Orphan or inaccessible-parent children remain directly accessible when authorized.
+- `PATCH /api/v1/jobs/:jobId/metadata` accepts `{title, expectedRevision}`. Titles contain 1–120 characters, metadata revisions are independent of requirements versions, updates publish durable events to the visible workflow stages. Conflicting edits return 409 and the client keeps the local title for comparison.
+- Migration 011 adds nullable title, bounded application-generated search summary, metadata revision and indexing timestamp. Initial title is deterministic, with no LLM call. Search summary uses the first 2,000 normalized characters of the first 8,000 input bytes, text artifacts only. Unavailable/binary inputs use a safe date/type fallback; this is not a full-document search engine.
+- Resume old-task indexing using a trusted tenant scope, for example on this isolated stack: `docker compose -p reqai-ux -f compose.ux.yaml exec -T api node server/scripts/backfill-job-metadata.mjs --tenant default-enterprise --batches 5`. Each transaction processes at most 100 jobs; locked rows are skipped, renamed titles are preserved. The maintenance worker now runs the same bounded backfill once at startup and every five minutes; the script remains available for an immediate one-off repair. The UI reports pending indexing. The script was run successfully on the isolated synthetic tenant (one old task indexed).
+- Apply migration 011 before deploying API/workers. Rollback: return to previous application images and leave the additive columns intact. Do not delete titles, versions, artifacts or database volumes.
+- Primary/baseline/reference files use the existing integration endpoint. Successful uploads survive another file's failure. The text helper only inserts/replaces after an explicit action. An unsent new-task draft survives reading history within the tab; it is not a cross-device draft service.
+- Progress uses server percentage and known milestones only. Estimated duration is separately labelled; elapsed time never invents activities or raises progress. Next-run settings persist per tenant/user and show effective low for GLM-5.3/Flash. New results carry an immutable execution settings snapshot; old results explicitly report its absence.
+- Browser checks on port 58080: rename the synthetic task to «Переговорные — UX-проверка истории», search by the new title, reload the second tab and verify the same title. No requirement version changed during rename. Automated tests cover old-page search, owner/tenant boundaries, orphan children, concurrent rename, backfill/restart, late search responses, title conflict, upload retry, context preservation and effective reasoning.
+- OpenAPI local references now have an automated resolution check. This also repaired pre-existing misplaced error/response schemas and documented the already-supported BABOK version payload alongside legacy requirements.
+- Checkpoint validation: 67 client tests passed; lint passed; 180 server tests passed with two opt-in database tests skipped in the regular run. Both database tests were explicitly run on port 55432 and passed. OpenSpec strict validation and diff whitespace checks passed. BABOK and legacy deletion/Undo are now covered, including retained identifiers and unrelated edits.
+- Still pending: the complete responsive/keyboard/Back-Forward acceptance matrix, GAP decisions/completeness checks, exact AI proposal editing, saved-version exports and a real GLM end-to-end run. Build currently warns that the main JS chunk exceeds 500 kB; split optional panels before final acceptance if it remains above the threshold.

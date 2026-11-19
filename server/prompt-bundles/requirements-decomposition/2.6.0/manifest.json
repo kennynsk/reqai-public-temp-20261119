@@ -1,0 +1,57 @@
+{
+  "id": "requirements-decomposition",
+  "version": "2.6.0",
+  "displayName": "BABOK original skill execution",
+  "workflowPurposes": [
+    "DECOMPOSITION"
+  ],
+  "outputSchemaVersion": "babok-requirements.v1",
+  "executionMode": "skill-bundle",
+  "templates": {
+    "decompose": {
+      "path": "decompose.md",
+      "requiredVariables": [
+        "baselineMaterial",
+        "businessContext",
+        "chunkContext",
+        "materialDescriptors",
+        "referenceMaterials",
+        "solutionContext",
+        "sourceMaterial"
+      ],
+      "sha256": "76093d5693cd8746ee5d8dba44e44d0607f9a7fe97c0c26349795918ba8ed724"
+    },
+    "consolidate": {
+      "path": "consolidate.md",
+      "requiredVariables": [
+        "baselineMaterial",
+        "businessContext",
+        "consolidationContext",
+        "materialDescriptors",
+        "referenceMaterials",
+        "sectionArtifacts",
+        "sourceMaterial"
+      ],
+      "sha256": "b60cf64d74f58c5fbfd8a1c6d73a8c60053af1fbc74cf3ad69ce14595b3549aa"
+    },
+    "review": {
+      "path": "review.md",
+      "requiredVariables": [
+        "originalPrompt",
+        "draft",
+        "qualityFindings"
+      ],
+      "sha256": "4ce07cb8f5fe2cad2ab2d02479816adcefd46d14d9cc206746620877329460c5"
+    },
+    "semantic-audit": {
+      "path": "semantic-audit.md",
+      "requiredVariables": [
+        "semanticContext",
+        "candidates",
+        "qualityFindings"
+      ],
+      "sha256": "16d7b8753f7b3cb2616a292890242a3141db7ae7761ec6afdd2222d51dd0a63a"
+    }
+  },
+  "semanticPolicy": "babok-semantic.v1"
+}

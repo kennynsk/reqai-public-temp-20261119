@@ -1,0 +1,33 @@
+{
+  "name": "biz-req-researcher",
+  "private": true,
+  "version": "0.0.0",
+  "workspaces": [
+    "client",
+    "server",
+    "mcp-gateway"
+  ],
+  "scripts": {
+    "dev": "docker compose -f compose.yaml -f compose.dev.yaml up --build",
+    "dev:detached": "docker compose -f compose.yaml -f compose.dev.yaml up --build -d",
+    "dev:stop": "docker compose -f compose.yaml -f compose.dev.yaml down",
+    "build": "npm run build:prod",
+    "build:prod": "npm -w client run build",
+    "start": "npm run start:prod",
+    "start:prod": "NODE_ENV=production npm -w server run start",
+    "start:mcp": "npm -w mcp-gateway run start",
+    "test:mcp": "npm -w mcp-gateway run test",
+    "fix:links": "node scripts/fix-workspace-links.mjs",
+    "postinstall": "node scripts/fix-workspace-links.mjs",
+    "qualify:kubernetes": "node scripts/qualification/kubernetes.mjs",
+    "qualify:load": "node scripts/qualification/load.mjs",
+    "qualify:security": "node scripts/qualification/security.mjs",
+    "qualify:drill": "node scripts/qualification/drill.mjs",
+    "qualify:soak": "node scripts/qualification/soak.mjs",
+    "qualify:failover": "node scripts/qualification/failover.mjs",
+    "qualify:task-routing": "node scripts/qualification/task-permalink-debug.mjs",
+    "qualify:rollout-gate": "node scripts/qualification/rollout-gate.mjs",
+    "qualify:legacy-drain": "node scripts/qualification/legacy-drain.mjs",
+    "qualify:legacy-surface": "node scripts/qualification/legacy-surface.mjs"
+  }
+}

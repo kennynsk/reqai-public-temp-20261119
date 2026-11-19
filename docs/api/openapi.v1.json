@@ -1,0 +1,1446 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "ReqAI Enterprise API",
+    "version": "1.0.0",
+    "description": "Versioned asynchronous job and artifact API. Large content is represented by artifact references."
+  },
+  "servers": [{ "url": "/" }],
+  "security": [{ "bearerAuth": [] }],
+  "paths": {
+    "/api/v1": {
+      "get": {
+        "operationId": "discoverApiCapabilities",
+        "summary": "Discover the authenticated API and enabled capabilities",
+        "responses": {
+          "200": { "description": "Tenant-scoped API capability and safe prompt-release metadata", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiCapabilities" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" }
+        }
+      }
+    },
+    "/api/v1/decompositions": {
+      "post": {
+        "operationId": "startDecomposition",
+        "summary": "Start asynchronous requirements decomposition",
+        "description": "Materials must be nonempty UTF-8 TXT, Markdown or JSON; unsupported MIME returns 415 and malformed, binary or empty content returns 400. Inline businessContext is limited to the JSON request limit. Upload larger inputs through POST /api/v1/artifacts and provide inputArtifactId (mutually exclusive with businessContext). Optional baselineArtifactId and referenceArtifactIds attach comparison and reference materials. Set promptVersion to 2.17.0 for current source coverage rules; when omitted, the configured active version is used. Discover available models and prompt releases through GET /api/v1.",
+        "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DecompositionRequest" }, "example": { "businessContext": "Сотрудник создаёт заявку. Руководитель согласует её или возвращает на доработку.", "model": "glm-5.3-flash", "temperature": 0.2, "promptVersion": "2.17.0" } } } },
+        "responses": {
+          "202": { "description": "Canonical job accepted", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JobAccepted" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "413": { "$ref": "#/components/responses/PayloadTooLarge" },
+          "415": { "description": "Referenced material has an unsupported MIME type" },
+          "429": { "$ref": "#/components/responses/Overloaded" },
+          "503": { "$ref": "#/components/responses/Unavailable" }
+        }
+      }
+    },
+    "/api/v1/requirements/versions/{versionId}/research": {
+      "post": {
+        "operationId": "startRequirementsResearch",
+        "summary": "Start research from an immutable requirements version",
+        "description": "The input artifact and source decomposition lineage are derived server-side.",
+        "parameters": [{ "$ref": "#/components/parameters/RequirementsVersionId" }, { "$ref": "#/components/parameters/IdempotencyKey" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RequirementsResearchRequest" } } } },
+        "responses": {
+          "202": { "description": "Canonical child job accepted", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JobAccepted" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "429": { "$ref": "#/components/responses/Overloaded" },
+          "503": { "$ref": "#/components/responses/Unavailable" }
+        }
+      }
+    },
+    "/api/v1/jobs": {
+      "get": {
+        "operationId": "listJobs",
+        "parameters": [
+          { "name": "cursor", "in": "query", "schema": { "type": "string" } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 20 } },
+          { "name": "status", "in": "query", "schema": { "$ref": "#/components/schemas/JobStatus" } },
+          {"name":"q","in":"query","schema":{"type":"string","maxLength":200}},
+          {"name":"groupBy","in":"query","schema":{"type":"string","enum":["workflow"]}},
+          {"name":"type","in":"query","schema":{"$ref":"#/components/schemas/JobType"}},
+          { "name": "parentJobId", "in": "query", "description": "Return direct child jobs in the ungrouped list.", "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tenant and user scoped job history",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JobPage" } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/v1/jobs/{jobId}/metadata": {
+      "patch": {
+        "operationId": "updateJobMetadata",
+        "parameters": [
+          {
+            "name": "jobId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "title",
+                  "expectedRevision"
+                ],
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120
+                  },
+                  "expectedRevision": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Workflow title updated; child references resolve to their authorized parent",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "jobId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "metadataRevision": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/api/v1/jobs/{jobId}/discussions": {
+      "post": {
+        "operationId": "openRequirementDiscussion",
+        "summary": "Open or resume a contextual requirements discussion",
+        "parameters": [{ "$ref": "#/components/parameters/JobId" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OpenRequirementDiscussion" } } } },
+        "responses": {
+          "201": { "description": "Discussion opened without starting generation", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RequirementDiscussion" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/v1/jobs/{jobId}/discussions/{anchorId}": {
+      "get": {
+        "operationId": "getRequirementDiscussion",
+        "summary": "Read scoped discussion history for an anchor",
+        "parameters": [{ "$ref": "#/components/parameters/JobId" }, { "$ref": "#/components/parameters/DiscussionAnchorId" }, { "name": "cursor", "in": "query", "schema": { "type": "string", "format": "date-time" } }, { "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 50 } }],
+        "responses": {
+          "200": { "description": "Messages in chronological order", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RequirementDiscussion" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/v1/jobs/{jobId}/discussions/{anchorId}/events": {
+      "get": {
+        "operationId": "streamRequirementDiscussionEvents",
+        "summary": "Stream recoverable discussion generation events",
+        "parameters": [{ "$ref": "#/components/parameters/JobId" }, { "$ref": "#/components/parameters/DiscussionAnchorId" }, { "name": "Last-Event-ID", "in": "header", "schema": { "type": "integer", "minimum": 0 } }],
+        "responses": {
+          "200": { "description": "SSE discussion events", "content": { "text/event-stream": { "schema": { "type": "string" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/v1/jobs/{jobId}/discussions/{anchorId}/messages": {
+      "post": {
+        "operationId": "sendRequirementDiscussionMessage",
+        "summary": "Submit one idempotent contextual discussion turn",
+        "parameters": [{ "$ref": "#/components/parameters/JobId" }, { "$ref": "#/components/parameters/DiscussionAnchorId" }, { "$ref": "#/components/parameters/IdempotencyKey" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DiscussionMessageRequest" } } } },
+        "responses": {
+          "202": { "description": "Generation completed or is recoverable by attempt id", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RequirementDiscussionTurn" } } } },
+          "200": { "description": "Idempotent replay of a prior turn", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RequirementDiscussionTurn" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "413": { "$ref": "#/components/responses/PayloadTooLarge" },
+          "502": { "$ref": "#/components/responses/Unavailable" }
+        }
+      }
+    },
+    "/api/v1/jobs/{jobId}/discussions/attempts/{attemptId}/retry": {
+      "post": {
+        "operationId": "retryRequirementDiscussion",
+        "summary": "Retry a failed or cancelled discussion attempt",
+        "parameters": [{ "$ref": "#/components/parameters/JobId" }, { "$ref": "#/components/parameters/DiscussionAttemptId" }],
+        "responses": { "202": { "description": "Retry result", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RequirementDiscussionTurn" } } } }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }, "409": { "$ref": "#/components/responses/Conflict" } }
+      }
+    },
+    "/api/v1/jobs/{jobId}/discussions/attempts/{attemptId}/cancel": {
+      "post": {
+        "operationId": "cancelRequirementDiscussion",
+        "summary": "Cancel active discussion generation",
+        "parameters": [{ "$ref": "#/components/parameters/JobId" }, { "$ref": "#/components/parameters/DiscussionAttemptId" }],
+        "responses": { "202": { "description": "Cancellation requested", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DiscussionAttempt" } } } }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }, "409": { "$ref": "#/components/responses/Conflict" } }
+      }
+    },
+    "/api/v1/jobs/{jobId}": {
+      "get": {
+        "operationId": "getJob",
+        "parameters": [{ "$ref": "#/components/parameters/JobId" }],
+        "responses": {
+          "200": { "description": "Current authoritative job state", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Job" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/v1/jobs/{jobId}/result": {
+      "get": {
+        "operationId": "getJobResult",
+        "parameters": [{ "$ref": "#/components/parameters/JobId" }],
+        "responses": {
+          "200": { "description": "Completed or partial result metadata", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JobResult" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/api/v1/jobs/{jobId}/result/content": {
+      "get": {
+        "operationId": "downloadJobResult",
+        "description": "Download the stored result in its original content type (raw, the default), or render a babok-requirements.v1 result as the full BABOK Markdown report. A babok-text-draft.v1 fallback exposes preserved model responses as Markdown; it is not an editable requirements registry. Result metadata is available separately at /api/v1/jobs/{jobId}/result.",
+        "parameters": [
+          { "$ref": "#/components/parameters/JobId" },
+          { "name": "format", "in": "query", "required": false, "description": "raw preserves the stored artifact; markdown is available for BABOK JSON results only.", "schema": { "type": "string", "enum": ["raw", "markdown"], "default": "raw" } }
+        ],
+        "responses": {
+          "200": { "description": "Stored result or rendered Markdown report. Raw responses retain the artifact Content-Type.", "content": {
+            "application/json": { "schema": { "type": "object", "additionalProperties": true }, "example": { "schemaVersion": "babok-requirements.v1" } },
+            "text/markdown": { "schema": { "type": "string" } },
+            "application/octet-stream": { "schema": { "type": "string", "contentEncoding": "binary" } }
+          } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "description": "Result is not yet available, or REPORT_FORMAT_UNAVAILABLE when the stored result cannot be rendered as BABOK Markdown.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } }
+        }
+      }
+    },
+    "/api/v1/jobs/{jobId}/cancel": {
+      "post": {
+        "operationId": "cancelJob",
+        "parameters": [{ "$ref": "#/components/parameters/JobId" }],
+        "responses": {
+          "202": { "description": "Cancellation requested", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Job" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/api/v1/jobs/{jobId}/retry": {
+      "post": {
+        "operationId": "retryJob",
+        "parameters": [{ "$ref": "#/components/parameters/JobId" }, { "$ref": "#/components/parameters/IdempotencyKey" }],
+        "responses": {
+          "202": { "description": "Retry accepted as a linked attempt", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JobAccepted" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/api/v1/jobs/{jobId}/events": {
+      "get": {
+        "operationId": "streamJobEvents",
+        "parameters": [
+          { "$ref": "#/components/parameters/JobId" },
+          { "name": "Last-Event-ID", "in": "header", "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "SSE progress stream", "content": { "text/event-stream": { "schema": { "type": "string" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/v1/jobs/{jobId}/trace": {
+      "get": {
+        "operationId": "getJobTrace",
+        "parameters": [
+          { "$ref": "#/components/parameters/JobId" },
+          { "name": "cursor", "in": "query", "schema": { "type": "string" } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 50 } }
+        ],
+        "responses": {
+          "200": { "description": "Safe execution summary and paginated diagnostic timeline", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JobTrace" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/v1/jobs/{jobId}/trace/{entryId}": {
+      "get": {
+        "operationId": "getJobTraceEntryDetail",
+        "parameters": [{ "$ref": "#/components/parameters/JobId" }, { "$ref": "#/components/parameters/TraceEntryId" }],
+        "responses": {
+          "200": { "description": "Audited trace-entry detail or an explicit unavailable state", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JobTraceDetail" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "413": { "$ref": "#/components/responses/PayloadTooLarge" }
+        }
+      }
+    },
+    "/api/v1/artifacts": {
+      "post": {
+        "operationId": "uploadArtifact",
+        "parameters": [
+          { "name": "X-Content-SHA256", "in": "header", "required": true, "schema": { "type": "string", "pattern": "^[a-fA-F0-9]{64}$" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/octet-stream": { "schema": { "type": "string", "contentEncoding": "binary", "maxLength": 104857600 } } }
+        },
+        "responses": {
+          "201": { "description": "Artifact stored", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Artifact" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "415": { "description": "Unsupported material MIME type; only UTF-8 text materials are accepted" },
+          "413": { "$ref": "#/components/responses/PayloadTooLarge" }
+        }
+      }
+    },
+    "/api/v1/artifacts/{artifactId}": {
+      "get": {
+        "operationId": "downloadArtifact",
+        "parameters": [{ "$ref": "#/components/parameters/ArtifactId" }],
+        "responses": {
+          "200": { "description": "Streamed artifact content", "content": { "application/octet-stream": { "schema": { "type": "string", "contentEncoding": "binary" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/v1/requirements/versions": {
+      "post": {
+        "operationId": "createRequirementsVersion",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateRequirementsVersion" } } } },
+        "responses": {
+          "201": { "description": "Immutable reviewed requirements version created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RequirementsVersion" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/api/v1/requirements/versions/{versionId}": {
+      "get": {
+        "operationId": "getRequirementsVersion",
+        "parameters": [{ "$ref": "#/components/parameters/RequirementsVersionId" }],
+        "responses": {
+          "200": { "description": "Persisted requirements version", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RequirementsVersion" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/v1/requirements/versions/{versionId}/export": {
+      "get": {
+        "operationId": "exportRequirementsVersion",
+        "description": "Exports the authorized immutable version, never a filtered view or an unsaved draft. PDF is browser printing of HTML, not a server format.",
+        "parameters": [{ "$ref": "#/components/parameters/RequirementsVersionId" }, { "name": "format", "in": "query", "schema": { "type": "string", "enum": ["markdown", "html", "docx"], "default": "markdown" } }],
+        "responses": {
+          "200": { "description": "Downloadable saved-version document; private, no-store", "content": { "text/markdown": { "schema": { "type": "string" } }, "text/html": { "schema": { "type": "string" } }, "application/vnd.openxmlformats-officedocument.wordprocessingml.document": { "schema": { "type": "string", "format": "binary" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/v1/jobs/{jobId}/requirements/versions": {
+      "get": {
+        "operationId": "listJobRequirementsVersions",
+        "parameters": [{ "$ref": "#/components/parameters/JobId" }],
+        "responses": {
+          "200": {
+            "description": "Requirements versions derived from the job",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": { "type": "array", "items": { "$ref": "#/components/schemas/RequirementsVersion" } },
+                    "workflowFinal": { "description": "Current finalized revision across the decomposition and linked research, or null before finalization.", "oneOf": [{ "$ref": "#/components/schemas/RequirementsVersion" }, { "type": "null" }] }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/v1/admin/webhooks/{deliveryId}/redeliver": {
+      "post": {
+        "operationId": "redeliverWebhook",
+        "summary": "Redeliver a webhook DLQ entry",
+        "parameters": [{ "name": "deliveryId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+        "responses": {
+          "202": { "description": "Delivery returned to pending state" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/v1/admin/workflows/{jobId}/reset": {
+      "post": {
+        "operationId": "resetWorkflow",
+        "summary": "Reset a Temporal workflow for an existing job",
+        "parameters": [{ "$ref": "#/components/parameters/JobId" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["runId", "workflowTaskFinishEventId", "reason"], "properties": { "runId": { "type": "string", "minLength": 1 }, "workflowTaskFinishEventId": { "type": "integer", "minimum": 1 }, "reason": { "type": "string", "minLength": 1 } }, "additionalProperties": false } } } },
+        "responses": {
+          "202": { "description": "Workflow reset accepted" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/v1/admin/operations/mode": {
+      "get": {
+        "operationId": "getOperationalMode",
+        "summary": "Read tenant operational mode",
+        "responses": {
+          "200": { "description": "Current operational mode", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OperationalMode" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" }
+        }
+      },
+      "put": {
+        "operationId": "setOperationalMode",
+        "summary": "Change tenant operational mode with optimistic concurrency",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["mode", "reason", "expectedVersion"], "properties": { "mode": { "type": "string", "enum": ["NORMAL", "ACCEPT_AND_QUEUE", "DRAIN", "REJECT_NEW", "FAILOVER_IN_PROGRESS"] }, "reason": { "type": "string", "minLength": 1 }, "expectedVersion": { "type": "integer", "minimum": 0 } }, "additionalProperties": false } } } },
+        "responses": {
+          "200": { "description": "Updated operational mode", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OperationalMode" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/health/live": {
+      "get": {
+        "operationId": "getLiveness",
+        "security": [],
+        "responses": { "200": { "description": "Process is live" }, "503": { "description": "Process is not live" } }
+      }
+    },
+    "/health/ready": {
+      "get": {
+        "operationId": "getReadiness",
+        "security": [],
+        "responses": { "200": { "description": "Dependencies are ready" }, "503": { "description": "One or more dependencies are unavailable" } }
+      }
+    },
+    "/metrics": {
+      "get": {
+        "operationId": "getPrometheusMetrics",
+        "security": [],
+        "responses": { "200": { "description": "Prometheus text exposition", "content": { "text/plain": { "schema": { "type": "string" } } } } }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT" }
+    },
+    "parameters": {
+      "IdempotencyKey": { "name": "Idempotency-Key", "in": "header", "required": true, "schema": { "type": "string", "minLength": 16, "maxLength": 128 } },
+      "JobId": { "name": "jobId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
+      "TraceEntryId": { "name": "entryId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
+      "ArtifactId": { "name": "artifactId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
+      "RequirementsVersionId": { "name": "versionId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
+      "DiscussionAnchorId": { "name": "anchorId", "in": "path", "required": true, "schema": { "type": "string", "pattern": "^(BR|SR|FR|NFR|TR|CON|GAP)-[A-Za-z0-9_-]{1,96}$" } },
+      "DiscussionAttemptId": { "name": "attemptId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+    },
+    "schemas": {
+      "JobType": { "type": "string", "enum": ["DECOMPOSITION", "RESEARCH"] },
+      "FeatureMode": { "type": "string", "enum": ["DECOMPOSITION", "REQUIREMENTS_INSIGHTS"] },
+      "ReasoningLevel": { "type": "string", "enum": ["disabled", "low", "high", "max"], "default": "disabled" },
+      "JobStatus": { "type": "string", "enum": ["ACCEPTED", "QUEUED", "RUNNING", "RETRY_WAIT", "SUCCEEDED", "FAILED", "CANCEL_REQUESTED", "CANCELLED"] },
+      "JobOutcome": { "type": ["string", "null"], "enum": ["COMPLETE", "PARTIAL", null] },
+      "ExecutionOptions": {
+        "type": "object",
+        "properties": {
+          "model": { "type": "string", "minLength": 1 },
+          "temperature": { "type": "number", "minimum": 0, "maximum": 2 },
+          "reasoning": { "$ref": "#/components/schemas/ReasoningLevel" },
+          "promptVersion": { "type": "string", "pattern": "^[1-9][0-9]*\\.[0-9]+\\.[0-9]+$" }
+        }
+      },
+      "DecompositionRequest": {
+        "oneOf": [
+          { "type": "object", "required": ["businessContext"], "properties": { "businessContext": { "type": "string", "minLength": 1, "maxLength": 1048576 }, "baselineArtifactId": { "type": "string", "format": "uuid" }, "referenceArtifactIds": { "type": "array", "maxItems": 20, "uniqueItems": true, "items": { "type": "string", "format": "uuid" } }, "model": { "type": "string", "minLength": 1 }, "temperature": { "type": "number", "minimum": 0, "maximum": 2 }, "reasoning": { "$ref": "#/components/schemas/ReasoningLevel" }, "criticEnabled": { "type": "boolean", "default": true }, "promptVersion": { "type": "string", "pattern": "^[1-9][0-9]*\\.[0-9]+\\.[0-9]+$" } }, "additionalProperties": false },
+          { "type": "object", "required": ["inputArtifactId"], "properties": { "inputArtifactId": { "type": "string", "format": "uuid" }, "baselineArtifactId": { "type": "string", "format": "uuid" }, "referenceArtifactIds": { "type": "array", "maxItems": 20, "uniqueItems": true, "items": { "type": "string", "format": "uuid" } }, "model": { "type": "string", "minLength": 1 }, "temperature": { "type": "number", "minimum": 0, "maximum": 2 }, "reasoning": { "$ref": "#/components/schemas/ReasoningLevel" }, "criticEnabled": { "type": "boolean", "default": true }, "promptVersion": { "type": "string", "pattern": "^[1-9][0-9]*\\.[0-9]+\\.[0-9]+$" } }, "additionalProperties": false }
+        ]
+      },
+      "RequirementsResearchRequest": {
+        "type": "object",
+        "properties": {
+          "model": { "type": "string", "minLength": 1 },
+          "temperature": { "type": "number", "minimum": 0, "maximum": 2 },
+          "reasoning": { "$ref": "#/components/schemas/ReasoningLevel" },
+          "criticEnabled": { "type": "boolean", "default": true, "description": "Run the independent AI review supported by the selected prompt profile." },
+          "promptVersion": { "type": "string", "pattern": "^[1-9][0-9]*\\.[0-9]+\\.[0-9]+$" }
+        },
+        "additionalProperties": false
+      },
+      "JobOptions": {
+        "type": "object",
+        "properties": {
+          "mode": { "type": "string", "const": "DECOMPOSITION" },
+          "model": { "type": "string" },
+          "temperature": { "type": "number", "minimum": 0, "maximum": 2, "default": 0.2 },
+          "reasoning": { "$ref": "#/components/schemas/ReasoningLevel" },
+          "promptVersion": { "type": "string", "pattern": "^[1-9][0-9]*\\.[0-9]+\\.[0-9]+$" }
+        },
+        "additionalProperties": false
+      },
+      "JobAccepted": {
+        "type": "object",
+        "required": ["jobId", "status", "statusUrl", "eventsUrl", "resultUrl", "cancelUrl"],
+        "properties": {
+          "jobId": { "type": "string", "format": "uuid" },
+          "status": { "$ref": "#/components/schemas/JobStatus" },
+          "statusUrl": { "type": "string" },
+          "eventsUrl": { "type": "string" },
+          "resultUrl": { "type": "string" },
+          "cancelUrl": { "type": "string" },
+          "idempotencyReplayed": { "type": "boolean" }
+        }
+      },
+      "Job": {
+        "type": "object",
+        "required": [
+          "jobId",
+          "type",
+          "status",
+          "outcome",
+          "progress",
+          "createdAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "jobId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "parentJobId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "inputArtifactId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "type": {
+            "$ref": "#/components/schemas/JobType"
+          },
+          "mode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobStatus"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/JobOutcome"
+          },
+          "reasonCode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "progress": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "currentStep": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "resultArtifactId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "metadataRevision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "metadataJobId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "children": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Job"
+            }
+          },
+          "savedVersions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "jobId": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "versionId": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "createdAt": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "final": {
+                  "type": [
+                    "boolean",
+                    "null"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "JobPage": {
+        "type": "object",
+        "required": [
+          "items",
+          "nextCursor"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Job"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "indexingPending": {
+            "type": "boolean",
+            "description": "Returned with grouped history while older authorized jobs still require metadata backfill."
+          }
+        }
+      },
+      "ModelAttempt": {
+        "type": "object",
+        "required": ["stepId", "model", "attempt", "result"],
+        "properties": {
+          "stepId": { "type": "string" },
+          "requestedModel": { "type": "string" },
+          "model": { "type": "string" },
+          "executionId": { "type": ["string", "null"], "format": "uuid" },
+          "attempt": { "type": "integer", "minimum": 1 },
+          "result": { "type": "string", "enum": ["SUCCEEDED", "FAILED", "CANCELLED"] },
+          "reasonCode": { "type": ["string", "null"] },
+          "tokenUsage": { "type": ["object", "null"], "additionalProperties": { "type": "integer" } },
+          "durationMs": { "type": ["integer", "null"], "minimum": 0 }
+        }
+      },
+      "JobResult": {
+        "type": "object",
+        "required": [
+          "jobId",
+          "status",
+          "outcome",
+          "failedSteps",
+          "modelAttempts"
+        ],
+        "properties": {
+          "jobId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "parentJobId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "inputArtifactId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "type": {
+            "$ref": "#/components/schemas/JobType"
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobStatus"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/JobOutcome"
+          },
+          "reasonCode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "mode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "summary": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "resultArtifactId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "resultContentUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "failedSteps": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "modelAttempts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ModelAttempt"
+            }
+          },
+          "executionSettings": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "requestedModel": {
+                "type": "string"
+              },
+              "requestedReasoning": {
+                "type": "string"
+              },
+              "effectiveReasoning": {
+                "type": "string"
+              },
+              "temperature": {
+                "type": "number"
+              }
+            }
+          }
+        }
+      },
+      "JobTraceEntry": {
+        "type": "object",
+        "required": ["id", "source", "category", "name", "status", "detail"],
+        "properties": {
+          "id": { "type": "string" },
+          "source": { "type": "string" },
+          "sequence": { "type": ["integer", "null"] },
+          "category": { "type": "string" },
+          "name": { "type": "string" },
+          "status": { "type": "string" },
+          "stepId": { "type": ["string", "null"] },
+          "startedAt": { "type": ["string", "null"], "format": "date-time" },
+          "completedAt": { "type": ["string", "null"], "format": "date-time" },
+          "durationMs": { "type": ["integer", "null"], "minimum": 0 },
+          "metadata": { "type": "object", "additionalProperties": true },
+          "detail": { "type": "object", "properties": { "state": { "type": "string", "enum": ["AVAILABLE", "NOT_RECORDED", "EXPIRED", "REDACTED"] }, "kind": { "type": ["string", "null"] }, "visibility": { "type": "string" } } }
+        }
+      },
+      "JobTrace": {
+        "type": "object",
+        "required": ["jobId", "status", "timeline", "nextCursor"],
+        "properties": {
+          "jobId": { "type": "string", "format": "uuid" },
+          "type": { "$ref": "#/components/schemas/JobType" },
+          "mode": { "type": ["string", "null"] },
+          "status": { "$ref": "#/components/schemas/JobStatus" },
+          "outcome": { "$ref": "#/components/schemas/JobOutcome" },
+          "reasonCode": { "type": ["string", "null"] },
+          "currentStep": { "type": ["string", "null"] },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "startedAt": { "type": ["string", "null"], "format": "date-time" },
+          "completedAt": { "type": ["string", "null"], "format": "date-time" },
+          "durationMs": { "type": ["integer", "null"], "minimum": 0 },
+          "skillUsage": { "type": "string" },
+          "executionSummary": {
+            "type": "object",
+            "description": "Observed stages from the entire authorized snapshot, independent of the timeline cursor",
+            "required": ["stages"],
+            "properties": {
+              "stages": {
+                "type": "array",
+                "maxItems": 5,
+                "items": { "$ref": "#/components/schemas/JobTraceStage" }
+              }
+            }
+          },
+          "timeline": { "type": "array", "items": { "$ref": "#/components/schemas/JobTraceEntry" } },
+          "nextCursor": { "type": ["string", "null"] }
+        }
+      },
+      "JobTraceStage": {
+        "type": "object",
+        "required": ["stage", "status", "startedAt", "completedAt", "attemptCount", "attempts", "reasonCode", "issues"],
+        "properties": {
+          "stage": { "enum": ["preparation", "generation", "assembly", "audit", "result"] },
+          "status": { "enum": ["running", "completed", "completed_after_retry", "partial", "failed", "skipped", "unknown"] },
+          "startedAt": { "type": ["string", "null"], "format": "date-time" },
+          "completedAt": { "type": ["string", "null"], "format": "date-time" },
+          "attemptCount": { "type": "integer", "minimum": 0 },
+          "attempts": {
+            "type": "array", "maxItems": 8, "description": "Most recent identifiable model calls in time order",
+            "items": {
+              "type": "object",
+              "required": ["id", "status", "startedAt", "durationMs", "model", "reasonCode"],
+              "properties": {
+                "id": { "type": "string" },
+                "status": { "enum": ["running", "received", "failed", "rejected", "accepted"] },
+                "startedAt": { "type": ["string", "null"], "format": "date-time" },
+                "durationMs": { "type": ["integer", "null"], "minimum": 0 },
+                "model": { "type": ["string", "null"] },
+                "reasonCode": { "type": ["string", "null"] }
+              }
+            }
+          },
+          "reasonCode": { "type": ["string", "null"] },
+          "issues": {
+            "type": "array", "maxItems": 8,
+            "items": {
+              "type": "object", "required": ["key", "code"],
+              "properties": { "key": { "type": ["string", "null"] }, "code": { "type": "string" } }
+            }
+          }
+        }
+      },
+      "JobTraceDetail": {
+        "type": "object",
+        "required": ["entryId", "state", "content"],
+        "properties": {
+          "entryId": { "type": "string", "format": "uuid" },
+          "state": { "type": "string", "enum": ["AVAILABLE", "NOT_RECORDED", "EXPIRED", "REDACTED"] },
+          "kind": { "type": "string" },
+          "contentType": { "type": "string" },
+          "content": {}
+        }
+      },
+      "Artifact": {
+        "type": "object",
+        "required": ["artifactId", "size", "sha256", "createdAt"],
+        "properties": {
+          "artifactId": { "type": "string", "format": "uuid" },
+          "size": { "type": "integer", "minimum": 0, "maximum": 104857600 },
+          "sha256": { "type": "string", "pattern": "^[a-fA-F0-9]{64}$" },
+          "contentType": { "type": "string" },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "RequirementItem": {
+        "type": "object",
+        "required": ["id", "text"],
+        "properties": { "id": { "type": "string" }, "text": { "type": "string" }, "fromResearch": { "type": "boolean" }, "researchEnhancementKey": { "type": "string", "maxLength": 200 } },
+        "additionalProperties": false
+      },
+      "RequirementsGroups": {
+        "type": "object",
+        "required": ["business", "functional", "nonfunctional"],
+        "properties": {
+          "business": { "type": "array", "maxItems": 500, "items": { "$ref": "#/components/schemas/RequirementItem" } },
+          "functional": { "type": "array", "maxItems": 500, "items": { "$ref": "#/components/schemas/RequirementItem" } },
+          "nonfunctional": { "type": "array", "maxItems": 500, "items": { "$ref": "#/components/schemas/RequirementItem" } }
+        },
+        "additionalProperties": false
+      },
+      "ReviewMetadata": {
+        "type": "object",
+        "required": ["schemaVersion"],
+        "description": "Additive review metadata, maximum serialized UTF-8 size 256 KiB. Omitted compatible fields inherit from the authorized base. New unknown fields are rejected; unchanged inherited extensions are preserved. Actor, time, fingerprints and source/research lineage are server-authoritative. Content changes invalidate previous completeness and issue acknowledgment.",
+        "properties": {
+          "schemaVersion": { "const": 1 },
+          "gaps": { "type": "object", "maxProperties": 500, "additionalProperties": { "type": "object", "required": ["state"], "properties": {
+            "state": { "enum": ["open", "answered", "closed"] },
+            "answer": { "type": "string", "maxLength": 20000 },
+            "reason": { "type": "string", "maxLength": 5000, "description": "Required for closing and reopening." },
+            "closureKind": { "type": ["string", "null"], "enum": ["resolved", "dismissed", null], "description": "Resolved requires current confirmations; dismissed records an explicit reason." },
+            "affectedIds": { "type": "array", "readOnly": true, "items": { "type": "string" } },
+            "actorUserId": { "type": "string", "readOnly": true },
+            "recordedAt": { "type": "string", "format": "date-time", "readOnly": true },
+            "resolutionHistory": { "type": "array", "readOnly": true, "items": { "type": "object", "additionalProperties": true } }
+          } } },
+          "gapRequirements": { "type": "object", "maxProperties": 500, "description": "Per-GAP confirmations. Every linked requirement must be explicitly incorporated or marked no-change with a reason before resolved closure.", "additionalProperties": { "type": "object", "additionalProperties": { "type": "object", "required": ["state"], "properties": { "state": { "enum": ["pending", "incorporated", "no-change"] }, "reason": { "type": "string", "maxLength": 5000 }, "questionHash": { "type": "string", "readOnly": true }, "answerHash": { "type": "string", "readOnly": true }, "requirementHash": { "type": "string", "readOnly": true }, "stale": { "type": "boolean", "readOnly": true }, "unresolved": { "type": "boolean", "readOnly": true }, "actorUserId": { "type": "string", "readOnly": true }, "recordedAt": { "type": "string", "format": "date-time", "readOnly": true } } } } },
+          "omissions": { "type": "array", "maxItems": 200, "items": { "type": "object", "required": ["id", "text", "requirementIds"], "properties": { "id": { "type": "string", "pattern": "^OMISSION-[a-zA-Z0-9_-]{1,80}$" }, "text": { "type": "string", "maxLength": 5000 }, "requirementIds": { "type": "array", "maxItems": 100, "items": { "type": "string" } } } } },
+          "completeness": { "type": "object", "description": "Send check:true to record a new manual check; checked/stale/contentHash/actor/time are authoritative output.", "properties": { "check": { "type": "boolean" }, "note": { "type": "string", "maxLength": 5000 }, "checked": { "type": "boolean", "readOnly": true }, "stale": { "type": "boolean" } } },
+          "acknowledgment": { "type": "object", "description": "Send confirm:true after reviewing the current open issue list. New-client finalization with open issues requires a current acknowledgment. It is not semantic approval.", "properties": { "confirm": { "type": "boolean" }, "confirmed": { "type": "boolean", "readOnly": true }, "stale": { "type": "boolean" }, "issueIds": { "type": "array", "readOnly": true, "items": { "type": "string" } } } },
+          "proposals": { "type": "object", "maxProperties": 500, "description": "Stable insight-id:index keys. Values retain operation add/replace, targetType/targetId, originalText, before/after and decision accepted/rejected; reversal is retain-manual or restore-before. Exact new records, replacement snapshots and original wording are validated against authorized lineage; unchanged historical evidence survives later manual edits.", "additionalProperties": { "type": "object" } },
+          "citationChecks": { "type": "object", "maxProperties": 600, "description": "Stable insight-id:citation-index keys. The server resolves the original citation and rejects checked:true for unsafe/non-HTTP(S) URLs. No external request occurs.", "additionalProperties": { "type": "object", "required": ["checked"], "properties": { "checked": { "type": "boolean" }, "note": { "type": "string", "maxLength": 5000 } } } },
+          "discussionProposals": { "type": "object", "maxProperties": 500, "description": "Local acceptance or rejection receipts for contextual AI proposal packages. The server stamps actor and time when persisted.", "additionalProperties": { "type": "object", "required": ["proposalId", "decision", "baseHash", "changes"], "properties": { "proposalId": { "type": "string" }, "decision": { "enum": ["accepted", "rejected"] }, "baseHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" }, "changes": { "type": "array", "maxItems": 20, "items": { "$ref": "#/components/schemas/DiscussionProposalChange" } }, "gapBases": { "type": "object", "additionalProperties": { "type": "object", "required": ["question", "answer"], "properties": { "question": { "type": "string" }, "answer": { "type": "string" } } } }, "discarded": { "type": "boolean" }, "actorUserId": { "type": "string", "readOnly": true }, "recordedAt": { "type": "string", "format": "date-time", "readOnly": true } } } }
+        }
+      },
+      "OpenRequirementDiscussion": {
+        "type": "object",
+        "required": ["anchorId"],
+        "properties": {
+          "anchorId": { "type": "string", "pattern": "^(BR|SR|FR|NFR|TR|CON|GAP)-[A-Za-z0-9_-]{1,96}$" },
+          "anchorType": { "type": "string", "enum": ["BR", "SR", "FR", "NFR", "TR", "CON", "GAP"] },
+          "baseVersionId": { "type": "string", "format": "uuid", "description": "Required when creating a new discussion; the version must belong to the task." }
+        },
+        "additionalProperties": false
+      },
+      "DiscussionContextSummary": {
+        "type": "object",
+        "required": ["manifest", "includedBytes", "unsavedDraft"],
+        "properties": {
+          "baseVersionId": { "type": ["string", "null"], "format": "uuid" },
+          "manifest": { "type": "object", "additionalProperties": true },
+          "includedBytes": { "type": "integer", "minimum": 0 },
+          "omitted": { "type": "array", "items": { "type": "string" } },
+          "unsavedDraft": { "type": "boolean" }
+        }
+      },
+      "DiscussionMessage": {
+        "type": "object",
+        "required": ["messageId", "role", "status", "text", "createdAt"],
+        "properties": {
+          "messageId": { "type": "string", "format": "uuid" },
+          "role": { "type": "string", "enum": ["user", "assistant", "system"] },
+          "status": { "type": "string", "enum": ["pending", "streaming", "completed", "failed", "cancelled"] },
+          "text": { "type": "string", "maxLength": 30000 },
+          "clientMessageId": { "type": ["string", "null"] },
+          "generationId": { "type": ["string", "null"], "format": "uuid" },
+          "contextSnapshotId": { "type": ["string", "null"], "format": "uuid" },
+          "errorCode": { "type": ["string", "null"] },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "completedAt": { "type": ["string", "null"], "format": "date-time" }
+        }
+      },
+      "DiscussionAttempt": {
+        "type": "object",
+        "required": ["attemptId", "discussionId", "status", "generationId", "model", "promptVersion"],
+        "properties": {
+          "attemptId": { "type": "string", "format": "uuid" },
+          "discussionId": { "type": "string", "format": "uuid" },
+          "userMessageId": { "type": "string", "format": "uuid" },
+          "assistantMessageId": { "type": "string", "format": "uuid" },
+          "contextSnapshotId": { "type": "string", "format": "uuid" },
+          "baseVersionId": { "type": ["string", "null"], "format": "uuid" },
+          "generationId": { "type": "string", "format": "uuid" },
+          "model": { "type": "string" },
+          "promptVersion": { "type": "string" },
+          "status": { "type": "string", "enum": ["running", "completed", "failed", "cancelled"] },
+          "errorCode": { "type": ["string", "null"] },
+          "startedAt": { "type": "string", "format": "date-time" },
+          "completedAt": { "type": ["string", "null"], "format": "date-time" }
+        }
+      },
+      "DiscussionProposalChange": {
+        "type": "object",
+        "required": ["targetId", "before", "after", "beforeHash"],
+        "properties": {
+          "targetId": { "type": "string" },
+          "targetType": { "type": "string" },
+          "before": { "type": "object", "additionalProperties": { "type": "string" } },
+          "after": { "type": "object", "additionalProperties": { "type": "string" } },
+          "beforeHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+          "rationale": { "type": "string", "maxLength": 5000 }
+        }
+      },
+      "DiscussionProposal": {
+        "type": "object",
+        "required": ["proposalId", "schemaVersion", "explanation", "changes", "baseHash"],
+        "properties": {
+          "proposalId": { "type": "string", "format": "uuid" },
+          "schemaVersion": { "type": "string", "const": "requirement-discussion-proposal.v1" },
+          "baseVersionId": { "type": ["string", "null"], "format": "uuid", "description": "Saved requirements version used as the proposal basis." },
+          "explanation": { "type": "string", "maxLength": 30000 },
+          "changes": { "type": "array", "maxItems": 20, "items": { "$ref": "#/components/schemas/DiscussionProposalChange" } },
+          "baseHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+          "gapBases": { "type": "object", "maxProperties": 500, "additionalProperties": { "type": "object", "required": ["question", "answer"], "properties": { "question": { "type": "string", "maxLength": 20000 }, "answer": { "type": "string", "maxLength": 20000 } }, "additionalProperties": false } }
+        }
+      },
+      "DiscussionMessageRequest": {
+        "type": "object",
+        "required": ["message", "baseVersionId"],
+        "properties": {
+          "message": { "type": "string", "minLength": 1, "maxLength": 12000 },
+          "clientMessageId": { "type": "string", "minLength": 8, "maxLength": 128 },
+          "baseVersionId": { "type": "string", "format": "uuid" },
+          "draft": { "type": "object", "description": "Optional current unsaved registry and review decisions; validated server-side.", "additionalProperties": true },
+          "model": { "type": "string" }
+        },
+        "additionalProperties": false
+      },
+      "RequirementDiscussion": {
+        "type": "object",
+        "required": ["discussionId", "jobId", "anchorId", "anchorType", "messages", "nextCursor"],
+        "properties": {
+          "discussionId": { "type": "string", "format": "uuid" },
+          "tenantId": { "type": "string", "readOnly": true },
+          "ownerUserId": { "type": "string", "readOnly": true },
+          "jobId": { "type": "string", "format": "uuid" },
+          "anchorId": { "type": "string" },
+          "anchorType": { "type": "string" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" },
+          "messages": { "type": "array", "items": { "$ref": "#/components/schemas/DiscussionMessage" } },
+          "nextCursor": { "type": ["string", "null"] },
+          "attempt": { "$ref": "#/components/schemas/DiscussionAttempt" },
+          "contextSummary": { "$ref": "#/components/schemas/DiscussionContextSummary" },
+          "proposal": { "$ref": "#/components/schemas/DiscussionProposal" }
+        }
+      },
+      "RequirementDiscussionTurn": {
+        "allOf": [
+          { "$ref": "#/components/schemas/RequirementDiscussion" },
+          { "type": "object", "properties": { "replayed": { "type": "boolean" }, "userMessage": { "$ref": "#/components/schemas/DiscussionMessage" }, "assistantMessage": { "$ref": "#/components/schemas/DiscussionMessage" } } }
+        ]
+      },
+      "CreateRequirementsVersion": {
+        "type": "object",
+        "required": [
+          "sourceJobId"
+        ],
+        "properties": {
+          "sourceJobId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "baseVersionId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "requirements": {
+            "$ref": "#/components/schemas/RequirementsGroups"
+          },
+          "decisions": {
+            "type": "object",
+            "properties": { "review": { "$ref": "#/components/schemas/ReviewMetadata" } },
+            "additionalProperties": true
+          },
+          "expectedLatestVersionId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Optional concurrency precondition; null requires no previous version."
+          },
+          "clientMutationId": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_-]{8,100}$",
+            "description": "Stable identity for retrying exactly the same save payload."
+          },
+          "registry": {
+            "type": "object",
+            "description": "Canonical BABOK registry validated by the versioned babok-requirements.v1 server contract.",
+            "required": [
+              "schemaVersion",
+              "groups"
+            ],
+            "properties": {
+              "schemaVersion": {
+                "const": "babok-requirements.v1"
+              },
+              "groups": {
+                "type": "object"
+              }
+            },
+            "additionalProperties": true
+          },
+          "babokRegistry": {
+            "type": "object",
+            "description": "Canonical BABOK registry validated by the versioned babok-requirements.v1 server contract.",
+            "required": [
+              "schemaVersion",
+              "groups"
+            ],
+            "properties": {
+              "schemaVersion": {
+                "const": "babok-requirements.v1"
+              },
+              "groups": {
+                "type": "object"
+              }
+            },
+            "additionalProperties": true,
+            "deprecated": true
+          },
+          "editedRecordIds": {
+            "type": "array",
+            "maxItems": 200,
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "requirements"
+            ]
+          },
+          {
+            "required": [
+              "registry"
+            ]
+          },
+          {
+            "required": [
+              "babokRegistry"
+            ]
+          }
+        ]
+      },
+      "RequirementsVersion": {
+        "type": "object",
+        "required": [
+          "versionId",
+          "sourceJobId",
+          "requirements",
+          "createdAt"
+        ],
+        "properties": {
+          "title": { "type": "string", "maxLength": 120, "description": "Optional authorized workflow title used by saved-version exports." },
+          "versionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sourceJobId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "baseVersionId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "researchJobId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "requirements": {
+            "$ref": "#/components/schemas/RequirementsGroups"
+          },
+          "decisions": {
+            "type": "object",
+            "properties": { "review": { "$ref": "#/components/schemas/ReviewMetadata" } },
+            "additionalProperties": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "registry": {
+            "type": "object",
+            "description": "Canonical BABOK registry validated by the versioned babok-requirements.v1 server contract.",
+            "required": [
+              "schemaVersion",
+              "groups"
+            ],
+            "properties": {
+              "schemaVersion": {
+                "const": "babok-requirements.v1"
+              },
+              "groups": {
+                "type": "object"
+              }
+            },
+            "additionalProperties": true
+          },
+          "revision": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": true
+          },
+          "contentSchemaVersion": {
+            "type": "string"
+          }
+        }
+      },
+      "ApiCapabilities": {
+        "type": "object",
+        "required": [
+          "name",
+          "version",
+          "requestId",
+          "userId",
+          "tenantId",
+          "capabilities"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "requestId": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          },
+          "tenantId": {
+            "type": "string"
+          },
+          "capabilities": {
+            "type": "object",
+            "required": [
+              "models",
+              "decompositionModes",
+              "researchModes",
+              "domainOperations",
+              "promptReleases",
+              "requirementDiscussion"
+            ],
+            "properties": {
+              "models": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "decompositionModes": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/FeatureMode"
+                }
+              },
+              "researchModes": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/FeatureMode"
+                }
+              },
+              "domainOperations": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "decomposition",
+                    "requirements-research"
+                  ]
+                }
+              },
+              "requirementDiscussion": {
+                "type": "boolean",
+                "description": "Whether contextual requirement discussion endpoints and UI entry points are enabled for this runtime."
+              },
+              "promptReleases": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "required": [
+                    "active",
+                    "selectable"
+                  ],
+                  "properties": {
+                    "active": {
+                      "type": "string"
+                    },
+                    "selectable": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              },
+              "inputMaxBytes": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "modelSettings": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "reasoningLevels": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "defaultReasoning": {
+                      "type": "string"
+                    },
+                    "disabledMapsTo": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "OperationalMode": {
+        "type": "object",
+        "properties": {
+          "mode": { "type": "string", "enum": ["NORMAL", "ACCEPT_AND_QUEUE", "DRAIN", "REJECT_NEW", "FAILOVER_IN_PROGRESS"] },
+          "reason": { "type": ["string", "null"] },
+          "version": { "type": "integer", "minimum": 0 },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        },
+        "additionalProperties": true
+      },
+      "ApiError": {
+        "type": "object",
+        "required": ["error"],
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": ["code", "message", "requestId"],
+            "properties": {
+              "code": { "type": "string" },
+              "message": { "type": "string" },
+              "requestId": { "type": "string" },
+              "retryable": { "type": "boolean" },
+              "details": { "type": "object", "additionalProperties": true }
+            }
+          }
+        }
+      }
+    },
+    "responses": {
+      "BadRequest": { "description": "Invalid request", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
+      "Unauthorized": { "description": "Authentication required", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
+      "Forbidden": { "description": "Insufficient privileges", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
+      "NotFound": { "description": "Resource not found or not visible", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
+      "Conflict": { "description": "State conflict", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
+      "Overloaded": { "description": "Admission or rate limit reached", "headers": { "Retry-After": { "schema": { "type": "integer" } } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
+      "PayloadTooLarge": { "description": "Artifact exceeds configured limit", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
+      "Unavailable": { "description": "Service unavailable or not accepting new jobs", "headers": { "Retry-After": { "schema": { "type": "integer" } } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } }
+    }
+  }
+}

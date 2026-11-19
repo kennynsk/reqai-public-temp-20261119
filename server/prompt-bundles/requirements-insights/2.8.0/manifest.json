@@ -1,0 +1,41 @@
+{
+  "id": "requirements-insights",
+  "version": "2.8.0",
+  "displayName": "Evidence-aware and internally consistent requirements research",
+  "workflowPurposes": [
+    "REQUIREMENTS_INSIGHTS"
+  ],
+  "outputSchemaVersion": "requirements-insights.v1",
+  "templates": {
+    "insights": {
+      "path": "insights.md",
+      "requiredVariables": [
+        "babokIdentifierSet",
+        "businessContext",
+        "requirementsSection",
+        "reviewContext",
+        "supportingMaterials"
+      ],
+      "sha256": "ba6142b56c7f0a7eb33f447e28d6645b58e9bf77c86dee967505959f28de0fbb"
+    },
+    "review": {
+      "path": "review.md",
+      "requiredVariables": [
+        "originalPrompt",
+        "draft",
+        "qualityFindings"
+      ],
+      "sha256": "1294b0e4e0cbe86b632e4e6f639e98291e2eebd86707664df7276b8f77d9ead3"
+    },
+    "semantic-audit": {
+      "path": "semantic-audit.md",
+      "requiredVariables": [
+        "semanticContext",
+        "candidates",
+        "qualityFindings"
+      ],
+      "sha256": "16d7b8753f7b3cb2616a292890242a3141db7ae7761ec6afdd2222d51dd0a63a"
+    }
+  },
+  "semanticPolicy": "babok-semantic.v1"
+}

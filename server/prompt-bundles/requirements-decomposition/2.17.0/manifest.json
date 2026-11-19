@@ -1,0 +1,70 @@
+{
+  "id": "requirements-decomposition",
+  "version": "2.17.0",
+  "displayName": "BABOK source coverage preserving dated metadata without fabricated obligations",
+  "workflowPurposes": [
+    "DECOMPOSITION"
+  ],
+  "outputSchemaVersion": "babok-requirements.v1",
+  "executionMode": "skill-bundle",
+  "templates": {
+    "decompose": {
+      "path": "decompose.md",
+      "requiredVariables": [
+        "baselineMaterial",
+        "businessContext",
+        "chunkContext",
+        "materialDescriptors",
+        "referenceMaterials",
+        "solutionContext",
+        "sourceMaterial"
+      ],
+      "sha256": "63b9fdef2b65ff13307cc8a1645e742c0c21d1558d73d02d3ad11992a4aa8641"
+    },
+    "consolidate": {
+      "path": "consolidate.md",
+      "requiredVariables": [
+        "baselineMaterial",
+        "businessContext",
+        "consolidationContext",
+        "materialDescriptors",
+        "referenceMaterials",
+        "sectionArtifacts",
+        "sourceMaterial"
+      ],
+      "sha256": "f7b69ae92c5351499f357f0ec7fd061139e60efa5ca27e87f66fb59864930faa"
+    },
+    "review": {
+      "path": "review.md",
+      "requiredVariables": [
+        "originalPrompt",
+        "draft",
+        "qualityFindings"
+      ],
+      "sha256": "1fa0b1ceff8c1269072d43176e6d3bc918fc7f5da0065d7825ef65de182af1ea"
+    },
+    "semantic-audit": {
+      "path": "semantic-audit.md",
+      "requiredVariables": [
+        "semanticContext",
+        "candidates",
+        "qualityFindings",
+        "revision",
+        "sourceCoverage"
+      ],
+      "sha256": "1142155e9d2af3aae9e09f9536b43939deb2d13e02694e98aaabbcf5db2b9a0f"
+    },
+    "semantic-repair": {
+      "path": "semantic-repair.md",
+      "requiredVariables": [
+        "semanticContext",
+        "draft",
+        "qualityFindings",
+        "revision"
+      ],
+      "sha256": "7219fd3e2144fdd930470ccc5cbf593856abdbb086134891398f3381edfc74d5"
+    }
+  },
+  "semanticPolicy": "babok-semantic.v2",
+  "performanceBudgetMs": 240000
+}

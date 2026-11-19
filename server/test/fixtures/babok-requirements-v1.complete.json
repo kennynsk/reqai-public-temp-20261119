@@ -1,0 +1,181 @@
+{
+  "schemaVersion": "babok-requirements.v1",
+  "mode": "DECOMPOSITION",
+  "outcome": "COMPLETE",
+  "summary": {
+    "text": "Процесс должен стать быстрее и наблюдаемее.",
+    "counts": {
+      "BR": 1,
+      "SR": 1,
+      "FR": 1,
+      "NFR": 1,
+      "TR": 1,
+      "CON": 1,
+      "CTX": 1,
+      "GAP": 1,
+      "HYP": 1,
+      "TERM": 1,
+      "DELTA": 1
+    },
+    "conclusions": ["Сценарий можно проверить по времени обработки."]
+  },
+  "context": [
+    {
+      "id": "CTX-001",
+      "kind": "scope",
+      "text": "Процесс относится к обработке заявок оператором.",
+      "source": { "artifactId": "primary-artifact", "locator": "§1", "quote": "Обработка заявок оператором" },
+      "provenance": "Извлечено",
+      "quality": "Готово",
+      "relatedIds": ["BR-001"]
+    }
+  ],
+  "groups": {
+    "BR": [
+      {
+        "id": "BR-001",
+        "text": "Сократить срок обработки заявки.",
+        "successIndicator": "95% заявок обрабатываются менее чем за 2 минуты.",
+        "source": { "artifactId": "primary-artifact", "locator": "§2", "quote": "Сократить срок обработки" },
+        "provenance": "Извлечено",
+        "quality": "Требует уточнения",
+        "relatedIds": ["SR-001"]
+      }
+    ],
+    "SR": [
+      {
+        "id": "SR-001",
+        "role": "Оператор",
+        "text": "Оператору нужен наблюдаемый результат обработки.",
+        "relatedTo": ["BR-001"],
+        "source": { "artifactId": "primary-artifact", "locator": "§3", "quote": "Наблюдаемый результат" },
+        "provenance": "Нормализовано",
+        "quality": "Готово"
+      }
+    ],
+    "FR": [
+      {
+        "id": "FR-001",
+        "text": "Система показывает статус обработки заявки.",
+        "relatedTo": ["SR-001"],
+        "source": { "artifactId": "primary-artifact", "locator": "§4", "quote": "Показывает статус" },
+        "provenance": "Нормализовано",
+        "quality": "Готово"
+      }
+    ],
+    "NFR": [
+      {
+        "id": "NFR-001",
+        "category": "Производительность",
+        "text": "Статус отображается не позднее 1 секунды после изменения.",
+        "scope": "Все заявки",
+        "relatedTo": ["FR-001"],
+        "source": { "artifactId": "primary-artifact", "locator": "§5", "quote": "Не позднее 1 секунды" },
+        "provenance": "Предложено — требует подтверждения",
+        "quality": "Требует уточнения",
+        "verificationMethod": "Нагрузочный тест"
+      }
+    ],
+    "TR": [
+      {
+        "id": "TR-001",
+        "text": "Добавить журнал событий обработки.",
+        "completionCriterion": "События доступны в журнале аудита.",
+        "relatedTo": ["FR-001"],
+        "source": { "artifactId": "primary-artifact", "locator": "§6", "quote": "Журнал событий" },
+        "provenance": "Нормализовано",
+        "quality": "Требует уточнения"
+      }
+    ],
+    "CON": [
+      {
+        "id": "CON-001",
+        "obligation": "Соблюдать политику хранения аудита.",
+        "text": "Журнал событий хранится не менее одного года.",
+        "source": { "artifactId": "policy-artifact", "locator": "§7", "quote": "Не менее одного года" },
+        "provenance": "Извлечено",
+        "scope": "Журнал аудита",
+        "relatedTo": ["TR-001"],
+        "quality": "Готово"
+      }
+    ]
+  },
+  "analysis": {
+    "GAP": [
+      {
+        "id": "GAP-001",
+        "kind": "acceptance",
+        "text": "Не согласован владелец показателя успеха.",
+        "affectedIds": ["BR-001"],
+        "nextStep": "Подтвердить показатель с владельцем бизнеса.",
+        "source": null
+      }
+    ],
+    "HYP": [
+      {
+        "id": "HYP-001",
+        "text": "Задержка возникает на ручной проверке.",
+        "affectedIds": ["FR-001"],
+        "nextStep": "Проверить длительность ручной проверки.",
+        "source": null
+      }
+    ],
+    "TERM": [
+      {
+        "id": "TERM-001",
+        "term": "Статус обработки",
+        "meaning": "Текущее состояние заявки, видимое оператору.",
+        "affectedIds": ["FR-001"],
+        "nextStep": null,
+        "source": { "artifactId": "primary-artifact", "locator": "§4", "quote": "Статус обработки" }
+      }
+    ],
+    "traceability": [
+      {
+        "from": "BR-001",
+        "to": "SR-001",
+        "relation": "уточняется",
+        "status": "Подтверждено источником",
+        "source": { "artifactId": "primary-artifact", "locator": "§2–§3", "quote": "Сократить срок и наблюдать результат" }
+      },
+      {
+        "from": "SR-001",
+        "to": "FR-001",
+        "relation": "реализуется",
+        "status": "Подтверждено источником",
+        "source": null
+      }
+    ],
+    "delta": [
+      {
+        "id": "DELTA-001",
+        "baselineId": "BR-001",
+        "newId": "FR-001",
+        "kind": "уточнено",
+        "comment": "Бизнес-цель получила проверяемую функциональную реализацию.",
+        "source": null
+      }
+    ],
+    "questions": [
+      {
+        "id": "QUESTION-001",
+        "gapId": "GAP-001",
+        "priority": "P1",
+        "addressee": "Владелец бизнеса",
+        "text": "Кто утверждает показатель успеха?"
+      }
+    ]
+  },
+  "materials": {
+    "primary": { "artifactId": "primary-artifact", "role": "primary", "name": "Описание процесса", "sha256": null, "status": "AVAILABLE" },
+    "baseline": {
+      "status": "AVAILABLE",
+      "artifacts": [{ "artifactId": "baseline-artifact", "role": "baseline", "name": "Текущие требования", "sha256": null, "status": "AVAILABLE" }]
+    },
+    "references": [{ "artifactId": "policy-artifact", "role": "reference", "name": "Политика хранения", "sha256": null, "status": "AVAILABLE" }]
+  },
+  "scope": {
+    "partial": false,
+    "units": [{ "id": "unit-001", "artifactId": "primary-artifact", "status": "COMPLETE", "section": "§1–§7", "note": null }]
+  }
+}

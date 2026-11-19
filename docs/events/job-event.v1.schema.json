@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:reqai:event:job-event:v1",
+  "title": "ReqAI Job Event v1",
+  "type": "object",
+  "required": [
+    "eventId",
+    "schemaVersion",
+    "eventType",
+    "tenantId",
+    "jobId",
+    "sequence",
+    "occurredAt",
+    "source",
+    "data"
+  ],
+  "properties": {
+    "eventId": { "type": "string", "format": "uuid" },
+    "schemaVersion": { "const": "1.0" },
+    "eventType": {
+      "type": "string",
+      "enum": [
+        "job.accepted",
+        "job.queued",
+        "job.started",
+        "job.progressed",
+        "job.retry_wait",
+        "job.completed",
+        "job.failed",
+        "job.cancel_requested",
+        "job.cancelled",
+        "job.status-changed",
+        "job.progress",
+        "job.cancel-requested",
+        "linked-research.created",
+        "requirements.version-created"
+      ]
+    },
+    "tenantId": { "type": "string", "minLength": 1 },
+    "jobId": { "type": "string", "format": "uuid" },
+    "sequence": { "type": "integer", "minimum": 1 },
+    "occurredAt": { "type": "string", "format": "date-time" },
+    "correlationId": { "type": ["string", "null"] },
+    "source": {
+      "type": "object",
+      "required": ["service", "site"],
+      "properties": {
+        "service": { "type": "string" },
+        "site": { "type": "string" },
+        "instance": { "type": ["string", "null"] }
+      },
+      "additionalProperties": false
+    },
+    "data": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["ACCEPTED", "QUEUED", "RUNNING", "RETRY_WAIT", "SUCCEEDED", "FAILED", "CANCEL_REQUESTED", "CANCELLED"]
+        },
+        "outcome": { "type": ["string", "null"], "enum": ["COMPLETE", "PARTIAL", null] },
+        "progress": { "type": "number", "minimum": 0, "maximum": 100 },
+        "currentStep": { "type": ["string", "null"] },
+        "message": { "type": ["string", "null"] },
+        "reasonCode": { "type": ["string", "null"] },
+        "resultArtifactId": { "type": ["string", "null"], "format": "uuid" },
+        "resultUrl": { "type": ["string", "null"] },
+        "linkedJobId": { "type": "string", "format": "uuid" },
+        "requirementsVersionId": { "type": "string", "format": "uuid" },
+        "versionId": { "type": "string", "format": "uuid" },
+        "baseVersionId": { "type": ["string", "null"], "format": "uuid" },
+        "researchJobId": { "type": ["string", "null"], "format": "uuid" }
+      },
+      "additionalProperties": true
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "eventType": { "enum": ["job.accepted", "job.queued", "job.started", "job.progressed", "job.retry_wait", "job.completed", "job.failed", "job.cancel_requested", "job.cancelled", "job.status-changed", "job.progress", "job.cancel-requested"] } } },
+      "then": { "properties": { "data": { "required": ["status"] } } }
+    },
+    {
+      "if": { "properties": { "eventType": { "const": "linked-research.created" } } },
+      "then": { "properties": { "data": { "required": ["linkedJobId", "requirementsVersionId"] } } }
+    },
+    {
+      "if": { "properties": { "eventType": { "const": "requirements.version-created" } } },
+      "then": { "properties": { "data": { "required": ["versionId"] } } }
+    }
+  ],
+  "additionalProperties": false
+}

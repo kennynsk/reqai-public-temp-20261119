@@ -1,0 +1,123 @@
+apiVersion: v1
+kind: ConfigMap
+metadata: { name: reqai-config }
+data:
+  ASYNC_PLATFORM_ENABLED: "true"
+  DEFAULT_TENANT_ID: default-enterprise
+  DEPLOYMENT_SITE_ID: "TBD-dc-a-or-dc-b"
+  WORKER_HEALTH_PORT: "8081"
+  LLM_PROVIDER_MODE: zai
+  ZAI_BASE_URL: "https://api.z.ai/api/coding/paas/v4"
+  ZAI_MODELS: "glm-5.3-flash,glm-5.3,glm-5.2,glm-5-turbo,glm-4.7,glm-4.7-flash"
+  LLM_MODEL_PRIORITY: "glm-5.3-flash,glm-5.3,glm-5.2"
+  ADMISSION_MAX_JOBS_PER_MINUTE: "30"
+  TEMPORAL_NAMESPACE: reqai
+  TEMPORAL_ADDRESS: "TBD-temporal:7233"
+  TEMPORAL_TLS_ENABLED: "true"
+  TEMPORAL_TLS_CERT_PATH: /var/run/secrets/temporal/tls.crt
+  TEMPORAL_TLS_KEY_PATH: /var/run/secrets/temporal/tls.key
+  TEMPORAL_TASK_QUEUE_DECOMPOSITION: requirements-decomposition
+  TEMPORAL_TASK_QUEUE_RESEARCH: requirements-research
+  KAFKA_BROKERS: "TBD-kafka-1:9092,TBD-kafka-2:9092,TBD-kafka-3:9092"
+  KAFKA_SSL_ENABLED: "true"
+  IAM_ISSUER: "https://iam.example.invalid/TBD"
+  IAM_AUDIENCE: reqai
+  IAM_JWKS_URI: "https://iam.example.invalid/TBD/.well-known/jwks.json"
+  DATABASE_SCHEMA: reqai
+  DATABASE_ARTIFACT_SCHEMA: reqai_artifacts
+---
+apiVersion: v1
+kind: Secret
+metadata: { name: reqai-data-secrets }
+type: Opaque
+stringData:
+  DATABASE_URL: "TBD"
+  KAFKA_PASSWORD: "TBD"
+  KAFKA_USERNAME: "TBD"
+---
+apiVersion: v1
+kind: Secret
+metadata: { name: reqai-llm-secrets }
+type: Opaque
+stringData:
+  ZAI_API_KEY: "TBD"
+---
+apiVersion: v1
+kind: Secret
+metadata: { name: reqai-api-secrets }
+type: Opaque
+stringData:
+  IAM_CLIENT_SECRET: "TBD"
+---
+apiVersion: v1
+kind: Secret
+metadata: { name: reqai-webhook-secrets }
+type: Opaque
+stringData:
+  WEBHOOK_SECRET: "TBD"
+---
+apiVersion: v1
+kind: Service
+metadata: { name: reqai-api }
+spec: { selector: { app: reqai, role: api }, ports: [{ port: 5178, targetPort: http }] }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: reqai-frontend }
+spec: { selector: { app: reqai, role: frontend }, ports: [{ port: 8080, targetPort: http }] }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: reqai-frontend }
+spec:
+  replicas: 4
+  selector: { matchLabels: { app: reqai, role: frontend } }
+  template:
+    metadata: { labels: { app: reqai, role: frontend } }
+    spec:
+      securityContext: { runAsNonRoot: true, runAsUser: 101, fsGroup: 101, seccompProfile: { type: RuntimeDefault } }
+      topologySpreadConstraints: [{ maxSkew: 1, topologyKey: topology.kubernetes.io/zone, whenUnsatisfiable: DoNotSchedule, labelSelector: { matchLabels: { app: reqai, role: frontend } } }]
+      containers: [{ name: frontend, image: "reqai/frontend:TBD", ports: [{ name: http, containerPort: 8080 }], resources: { requests: { cpu: 100m, memory: 128Mi }, limits: { cpu: "1", memory: 256Mi } }, securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }, livenessProbe: { httpGet: { path: /healthz, port: http } }, readinessProbe: { httpGet: { path: /healthz, port: http } }, volumeMounts: [{ name: nginx-cache, mountPath: /var/cache/nginx }, { name: nginx-run, mountPath: /var/run }] }]
+      volumes: [{ name: nginx-cache, emptyDir: {} }, { name: nginx-run, emptyDir: {} }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: reqai-api }
+spec:
+  replicas: 4
+  selector: { matchLabels: { app: reqai, role: api } }
+  template:
+    metadata: { labels: { app: reqai, role: api } }
+    spec:
+      serviceAccountName: reqai
+      securityContext: { runAsNonRoot: true, runAsUser: 10001, seccompProfile: { type: RuntimeDefault } }
+      topologySpreadConstraints: [{ maxSkew: 1, topologyKey: topology.kubernetes.io/zone, whenUnsatisfiable: DoNotSchedule, labelSelector: { matchLabels: { app: reqai, role: api } } }]
+      containers:
+      - name: api
+        image: "reqai/backend:TBD"
+        envFrom: [{ configMapRef: { name: reqai-config } }, { secretRef: { name: reqai-data-secrets } }, { secretRef: { name: reqai-llm-secrets } }, { secretRef: { name: reqai-api-secrets } }]
+        env: [{ name: APP_ROLE, value: api }]
+        ports: [{ name: http, containerPort: 5178 }]
+        startupProbe: { httpGet: { path: /health/live, port: http }, failureThreshold: 30, periodSeconds: 2 }
+        livenessProbe: { httpGet: { path: /health/live, port: http } }
+        readinessProbe: { httpGet: { path: /health/ready, port: http } }
+        resources: { requests: { cpu: 250m, memory: 512Mi }, limits: { cpu: "2", memory: 1Gi } }
+        securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+        volumeMounts: [{ name: temporal-tls, mountPath: /var/run/secrets/temporal, readOnly: true }]
+      volumes: [{ name: temporal-tls, secret: { secretName: reqai-temporal-tls } }]
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata: { name: reqai }
+automountServiceAccountToken: false
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: { name: reqai-api }
+spec: { minAvailable: 2, selector: { matchLabels: { app: reqai, role: api } } }
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata: { name: reqai, annotations: { nginx.ingress.kubernetes.io/proxy-body-size: 100m, nginx.ingress.kubernetes.io/proxy-read-timeout: "3600", ngam.example/TBD: "configure corporate auth" } }
+spec:
+  rules: [{ host: reqai.example.invalid, http: { paths: [{ path: /api, pathType: Prefix, backend: { service: { name: reqai-api, port: { number: 5178 } } } }, { path: /, pathType: Prefix, backend: { service: { name: reqai-frontend, port: { number: 8080 } } } }] } }]

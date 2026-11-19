@@ -1,0 +1,32 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: reqai-production
+resources:
+  - ../base
+  - migration-job.yaml
+  - namespace.yaml
+  - network-policy.yaml
+configMapGenerator:
+  - name: reqai-production-config
+    envs:
+      - runtime.env
+  - name: reqai-production-mcp
+    envs:
+      - mcp.env
+  - name: reqai-nginx
+    files:
+      - default.conf=nginx.conf
+images:
+  - name: reqai/frontend
+    newName: replace.registry.invalid/reqai/frontend
+    digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+  - name: reqai/backend
+    newName: replace.registry.invalid/reqai/backend
+    digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+  - name: registry.example/reqai-mcp-gateway
+    newName: replace.registry.invalid/reqai/mcp-gateway
+    digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+patches:
+  - path: remove-placeholders.yaml
+  - path: workloads.patch.yaml
+  - path: ingress.patch.yaml

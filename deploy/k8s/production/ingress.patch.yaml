@@ -1,0 +1,32 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: reqai
+  annotations:
+    ngam.example/TBD: null
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+spec:
+  ingressClassName: replace-ingress-class
+  tls:
+    - hosts:
+        - replace-app-host.invalid
+      secretName: reqai-web-tls
+  rules:
+    - host: replace-app-host.invalid
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: reqai-api
+                port:
+                  number: 5178
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: reqai-frontend
+                port:
+                  number: 8080

@@ -1,0 +1,70 @@
+{
+  "id": "requirements-decomposition",
+  "version": "2.14.0",
+  "displayName": "BABOK partial requirements with explicit GAPs and separate critic contract recovery",
+  "workflowPurposes": [
+    "DECOMPOSITION"
+  ],
+  "outputSchemaVersion": "babok-requirements.v1",
+  "executionMode": "skill-bundle",
+  "templates": {
+    "decompose": {
+      "path": "decompose.md",
+      "requiredVariables": [
+        "baselineMaterial",
+        "businessContext",
+        "chunkContext",
+        "materialDescriptors",
+        "referenceMaterials",
+        "solutionContext",
+        "sourceMaterial"
+      ],
+      "sha256": "3dd00cc69d7f4a4564b340b40869b58d6551fa3d84dbdbdf56a6a21413741252"
+    },
+    "consolidate": {
+      "path": "consolidate.md",
+      "requiredVariables": [
+        "baselineMaterial",
+        "businessContext",
+        "consolidationContext",
+        "materialDescriptors",
+        "referenceMaterials",
+        "sectionArtifacts",
+        "sourceMaterial"
+      ],
+      "sha256": "badee7d7bb9ff685634562c4b3e6ea76ca54c4f898009a29472f853cf7bb9f41"
+    },
+    "review": {
+      "path": "review.md",
+      "requiredVariables": [
+        "originalPrompt",
+        "draft",
+        "qualityFindings"
+      ],
+      "sha256": "d23571bc763594b9d34226156a0f8d015c5af3422a758134ed76a7b4d9551d9a"
+    },
+    "semantic-audit": {
+      "path": "semantic-audit.md",
+      "requiredVariables": [
+        "semanticContext",
+        "candidates",
+        "qualityFindings",
+        "revision",
+        "sourceCoverage"
+      ],
+      "sha256": "95b8a0e7c6988dbc9878e0f05a38a69058d8bc7d44089d8699dbc7cb1d800142"
+    },
+    "semantic-repair": {
+      "path": "semantic-repair.md",
+      "requiredVariables": [
+        "semanticContext",
+        "draft",
+        "qualityFindings",
+        "revision"
+      ],
+      "sha256": "15f51e6ea0de036fd81e642437a39aba172bdccbaa613ad33eaec62c5b93df22"
+    }
+  },
+  "semanticPolicy": "babok-semantic.v2",
+  "performanceBudgetMs": 240000
+}

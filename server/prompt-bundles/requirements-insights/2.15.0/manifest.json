@@ -1,0 +1,61 @@
+{
+  "id": "requirements-insights",
+  "version": "2.15.0",
+  "displayName": "Product-focused research without repetitive meta narration",
+  "workflowPurposes": [
+    "REQUIREMENTS_INSIGHTS"
+  ],
+  "outputSchemaVersion": "requirements-insights.v1",
+  "templates": {
+    "insights": {
+      "path": "insights.md",
+      "requiredVariables": [
+        "babokIdentifierSet",
+        "businessContext",
+        "requirementsSection",
+        "reviewContext",
+        "supportingMaterials"
+      ],
+      "sha256": "9988ab246cba5a9afda0fa7b91d4fa846ce6f2072e939ce1d6909797ec0c73b2"
+    },
+    "review": {
+      "path": "review.md",
+      "requiredVariables": [
+        "originalPrompt",
+        "draft",
+        "qualityFindings"
+      ],
+      "sha256": "92921564438fb9e49dc6023f502ebfe507ce1cdf017fe494db80e4039588c40e"
+    },
+    "semantic-audit": {
+      "path": "semantic-audit.md",
+      "requiredVariables": [
+        "semanticContext",
+        "candidates",
+        "qualityFindings",
+        "revision",
+        "narrativeCandidates"
+      ],
+      "sha256": "25aee0c6bb9762b6015e62daa9561a553485d110f73e3e8657f6d6d333a2298e"
+    },
+    "semantic-repair": {
+      "path": "semantic-repair.md",
+      "requiredVariables": [
+        "semanticContext",
+        "draft",
+        "qualityFindings",
+        "revision"
+      ],
+      "sha256": "531353c9753b5941d163f9d2fea7c9561164b8eebcf60215eb44746322059a22"
+    }
+  },
+  "semanticPolicy": "babok-semantic.v2",
+  "performanceBudgetMs": 900000,
+  "requiredResearchCategories": [
+    "trends",
+    "patterns",
+    "risks",
+    "competitors",
+    "standards"
+  ]
+}

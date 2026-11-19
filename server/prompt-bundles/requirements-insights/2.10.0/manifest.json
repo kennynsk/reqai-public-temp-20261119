@@ -1,0 +1,53 @@
+{
+  "id": "requirements-insights",
+  "version": "2.10.0",
+  "displayName": "Evidence-aware and internally consistent requirements research",
+  "workflowPurposes": [
+    "REQUIREMENTS_INSIGHTS"
+  ],
+  "outputSchemaVersion": "requirements-insights.v1",
+  "templates": {
+    "insights": {
+      "path": "insights.md",
+      "requiredVariables": [
+        "babokIdentifierSet",
+        "businessContext",
+        "requirementsSection",
+        "reviewContext",
+        "supportingMaterials"
+      ],
+      "sha256": "86b6f9f738eaf903088af932ca2f1f846c4f3ba9d01944426915d54f79e068a0"
+    },
+    "review": {
+      "path": "review.md",
+      "requiredVariables": [
+        "originalPrompt",
+        "draft",
+        "qualityFindings"
+      ],
+      "sha256": "1294b0e4e0cbe86b632e4e6f639e98291e2eebd86707664df7276b8f77d9ead3"
+    },
+    "semantic-audit": {
+      "path": "semantic-audit.md",
+      "requiredVariables": [
+        "semanticContext",
+        "candidates",
+        "qualityFindings",
+        "revision"
+      ],
+      "sha256": "c3525a4e60cdd0ee7bebe43c68f3460c5dce781a49efc2c48fd783383f22e6a7"
+    },
+    "semantic-repair": {
+      "path": "semantic-repair.md",
+      "requiredVariables": [
+        "semanticContext",
+        "draft",
+        "qualityFindings",
+        "revision"
+      ],
+      "sha256": "8905471acf8c848fc4364131897df7e5e4835e78f608f06f2e63f3f3003657c1"
+    }
+  },
+  "semanticPolicy": "babok-semantic.v2",
+  "performanceBudgetMs": 240000
+}

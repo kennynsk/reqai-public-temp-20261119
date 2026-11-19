@@ -1,0 +1,111 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: reqai-decomposition-worker }
+spec:
+  replicas: 4
+  selector: { matchLabels: { app: reqai, role: decomposition-worker } }
+  template:
+    metadata: { labels: { app: reqai, role: decomposition-worker } }
+    spec:
+      securityContext: { runAsNonRoot: true, runAsUser: 10001, seccompProfile: { type: RuntimeDefault } }
+      topologySpreadConstraints: [{ maxSkew: 1, topologyKey: topology.kubernetes.io/zone, whenUnsatisfiable: DoNotSchedule, labelSelector: { matchLabels: { app: reqai, role: decomposition-worker } } }]
+      containers:
+      - name: worker
+        image: "reqai/backend:TBD"
+        envFrom: [{ configMapRef: { name: reqai-config } }, { secretRef: { name: reqai-data-secrets } }, { secretRef: { name: reqai-llm-secrets } }]
+        env: [{ name: APP_ROLE, value: workflow-worker }, { name: TEMPORAL_WORKER_TASK_QUEUE, value: requirements-decomposition }]
+        ports: [{ name: health, containerPort: 8081 }]
+        startupProbe: { httpGet: { path: /health/live, port: health }, failureThreshold: 30, periodSeconds: 2 }
+        livenessProbe: { httpGet: { path: /health/live, port: health }, periodSeconds: 10 }
+        readinessProbe: { httpGet: { path: /health/ready, port: health }, periodSeconds: 5 }
+        resources: { requests: { cpu: "1", memory: 1Gi }, limits: { cpu: "4", memory: 4Gi } }
+        securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+        volumeMounts: [{ name: temporal-tls, mountPath: /var/run/secrets/temporal, readOnly: true }]
+      volumes: [{ name: temporal-tls, secret: { secretName: reqai-temporal-tls } }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: reqai-research-worker }
+spec:
+  replicas: 4
+  selector: { matchLabels: { app: reqai, role: research-worker } }
+  template:
+    metadata: { labels: { app: reqai, role: research-worker } }
+    spec:
+      securityContext: { runAsNonRoot: true, runAsUser: 10001, seccompProfile: { type: RuntimeDefault } }
+      topologySpreadConstraints: [{ maxSkew: 1, topologyKey: topology.kubernetes.io/zone, whenUnsatisfiable: DoNotSchedule, labelSelector: { matchLabels: { app: reqai, role: research-worker } } }]
+      containers:
+      - name: worker
+        image: "reqai/backend:TBD"
+        envFrom: [{ configMapRef: { name: reqai-config } }, { secretRef: { name: reqai-data-secrets } }, { secretRef: { name: reqai-llm-secrets } }]
+        env: [{ name: APP_ROLE, value: workflow-worker }, { name: TEMPORAL_WORKER_TASK_QUEUE, value: requirements-research }]
+        ports: [{ name: health, containerPort: 8081 }]
+        startupProbe: { httpGet: { path: /health/live, port: health }, failureThreshold: 30, periodSeconds: 2 }
+        livenessProbe: { httpGet: { path: /health/live, port: health }, periodSeconds: 10 }
+        readinessProbe: { httpGet: { path: /health/ready, port: health }, periodSeconds: 5 }
+        resources: { requests: { cpu: "1", memory: 1Gi }, limits: { cpu: "4", memory: 4Gi } }
+        securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+        volumeMounts: [{ name: temporal-tls, mountPath: /var/run/secrets/temporal, readOnly: true }]
+      volumes: [{ name: temporal-tls, secret: { secretName: reqai-temporal-tls } }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: reqai-event-worker }
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: reqai, role: event-worker } }
+  template:
+    metadata: { labels: { app: reqai, role: event-worker } }
+    spec:
+      securityContext: { runAsNonRoot: true, runAsUser: 10001, seccompProfile: { type: RuntimeDefault } }
+      topologySpreadConstraints: [{ maxSkew: 1, topologyKey: topology.kubernetes.io/zone, whenUnsatisfiable: DoNotSchedule, labelSelector: { matchLabels: { app: reqai, role: event-worker } } }]
+      containers:
+      - name: worker
+        image: "reqai/backend:TBD"
+        envFrom: [{ configMapRef: { name: reqai-config } }, { secretRef: { name: reqai-data-secrets } }, { secretRef: { name: reqai-webhook-secrets } }]
+        env: [{ name: APP_ROLE, value: event-worker }]
+        ports: [{ name: health, containerPort: 8081 }]
+        startupProbe: { httpGet: { path: /health/live, port: health }, failureThreshold: 30, periodSeconds: 2 }
+        livenessProbe: { httpGet: { path: /health/live, port: health }, periodSeconds: 10 }
+        readinessProbe: { httpGet: { path: /health/ready, port: health }, periodSeconds: 5 }
+        resources: { requests: { cpu: 250m, memory: 512Mi }, limits: { cpu: "2", memory: 1Gi } }
+        securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+        volumeMounts: [{ name: temporal-tls, mountPath: /var/run/secrets/temporal, readOnly: true }]
+      volumes: [{ name: temporal-tls, secret: { secretName: reqai-temporal-tls } }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: reqai-maintenance-worker }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: reqai, role: maintenance-worker } }
+  template:
+    metadata: { labels: { app: reqai, role: maintenance-worker } }
+    spec:
+      securityContext: { runAsNonRoot: true, runAsUser: 10001, seccompProfile: { type: RuntimeDefault } }
+      containers:
+      - name: worker
+        image: "reqai/backend:TBD"
+        envFrom: [{ configMapRef: { name: reqai-config } }, { secretRef: { name: reqai-data-secrets } }]
+        env: [{ name: APP_ROLE, value: maintenance-worker }]
+        ports: [{ name: health, containerPort: 8081 }]
+        startupProbe: { httpGet: { path: /health/live, port: health }, failureThreshold: 30, periodSeconds: 2 }
+        livenessProbe: { httpGet: { path: /health/live, port: health }, periodSeconds: 10 }
+        readinessProbe: { httpGet: { path: /health/ready, port: health }, periodSeconds: 5 }
+        resources: { requests: { cpu: 100m, memory: 256Mi }, limits: { cpu: "1", memory: 512Mi } }
+        securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: { name: reqai-decomposition-worker }
+spec: { minAvailable: 2, selector: { matchLabels: { app: reqai, role: decomposition-worker } } }
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: { name: reqai-research-worker }
+spec: { minAvailable: 2, selector: { matchLabels: { app: reqai, role: research-worker } } }
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: { name: reqai-event-worker }
+spec: { minAvailable: 1, selector: { matchLabels: { app: reqai, role: event-worker } } }

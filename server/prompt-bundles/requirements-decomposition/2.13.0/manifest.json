@@ -1,0 +1,70 @@
+{
+  "id": "requirements-decomposition",
+  "version": "2.13.0",
+  "displayName": "BABOK decomposition with bounded priority questions and complete SR coverage",
+  "workflowPurposes": [
+    "DECOMPOSITION"
+  ],
+  "outputSchemaVersion": "babok-requirements.v1",
+  "executionMode": "skill-bundle",
+  "templates": {
+    "decompose": {
+      "path": "decompose.md",
+      "requiredVariables": [
+        "baselineMaterial",
+        "businessContext",
+        "chunkContext",
+        "materialDescriptors",
+        "referenceMaterials",
+        "solutionContext",
+        "sourceMaterial"
+      ],
+      "sha256": "75704a5c4e89a2288d525d352d622944da63f2875a1fb61d8360a7a6d4477b43"
+    },
+    "consolidate": {
+      "path": "consolidate.md",
+      "requiredVariables": [
+        "baselineMaterial",
+        "businessContext",
+        "consolidationContext",
+        "materialDescriptors",
+        "referenceMaterials",
+        "sectionArtifacts",
+        "sourceMaterial"
+      ],
+      "sha256": "b60cf64d74f58c5fbfd8a1c6d73a8c60053af1fbc74cf3ad69ce14595b3549aa"
+    },
+    "review": {
+      "path": "review.md",
+      "requiredVariables": [
+        "originalPrompt",
+        "draft",
+        "qualityFindings"
+      ],
+      "sha256": "4ce07cb8f5fe2cad2ab2d02479816adcefd46d14d9cc206746620877329460c5"
+    },
+    "semantic-audit": {
+      "path": "semantic-audit.md",
+      "requiredVariables": [
+        "semanticContext",
+        "candidates",
+        "qualityFindings",
+        "revision",
+        "sourceCoverage"
+      ],
+      "sha256": "cf0cfc1604813353846e85f549af31f2a45e29bf05d8e821ca40064888e34e86"
+    },
+    "semantic-repair": {
+      "path": "semantic-repair.md",
+      "requiredVariables": [
+        "semanticContext",
+        "draft",
+        "qualityFindings",
+        "revision"
+      ],
+      "sha256": "9f3e3103697243ee9d1b0172e68a8e428dfbce3dc0519c5d522bbd23397d3357"
+    }
+  },
+  "semanticPolicy": "babok-semantic.v2",
+  "performanceBudgetMs": 240000
+}

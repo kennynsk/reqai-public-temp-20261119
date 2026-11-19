@@ -1,0 +1,45 @@
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Logs / runtime
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Build artifacts
+dist/
+build/
+coverage/
+**/dist/
+**/build/
+**/coverage/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+!.env*.example
+
+# Local caches / temp
+.npm-cache/
+.cache/
+tmp/
+temp/
+
+# Notebooks checkpoints
+.ipynb_checkpoints/
+
+# Local UI test screenshots
+/gui-test-screenshots/

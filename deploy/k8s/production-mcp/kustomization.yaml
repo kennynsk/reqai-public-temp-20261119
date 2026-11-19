@@ -1,0 +1,27 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: reqai-production
+resources:
+  - ../production
+  - ingress.yaml
+patches:
+  - target:
+      kind: Deployment
+      name: reqai-mcp-gateway
+    patch: |
+      - op: replace
+        path: /spec/replicas
+        value: 2
+  - target:
+      kind: ConfigMap
+      name: reqai-production-mcp
+    patch: |
+      - op: replace
+        path: /data/MCP_ENABLED
+        value: "true"
+      - op: replace
+        path: /data/MCP_PUBLIC_ENDPOINT
+        value: https://replace-mcp-host.invalid/mcp
+      - op: replace
+        path: /data/MCP_ALLOWED_HOSTS
+        value: replace-mcp-host.invalid

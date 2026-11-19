@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:reqai:event:webhook-event:v1",
+  "title": "ReqAI Terminal Webhook Event v1",
+  "type": "object",
+  "required": ["eventId", "schemaVersion", "eventType", "tenantId", "jobId", "occurredAt", "delivery", "result"],
+  "properties": {
+    "eventId": { "type": "string", "format": "uuid" },
+    "schemaVersion": { "const": "1.0" },
+    "eventType": { "type": "string", "enum": ["job.completed", "job.failed", "job.cancelled"] },
+    "tenantId": { "type": "string", "minLength": 1 },
+    "jobId": { "type": "string", "format": "uuid" },
+    "occurredAt": { "type": "string", "format": "date-time" },
+    "delivery": {
+      "type": "object",
+      "required": ["attempt"],
+      "properties": { "attempt": { "type": "integer", "minimum": 1 } },
+      "additionalProperties": false
+    },
+    "result": {
+      "type": "object",
+      "required": ["status", "outcome", "url"],
+      "properties": {
+        "status": { "type": "string", "enum": ["SUCCEEDED", "FAILED", "CANCELLED"] },
+        "outcome": { "type": ["string", "null"], "enum": ["COMPLETE", "PARTIAL", null] },
+        "reasonCode": { "type": ["string", "null"] },
+        "url": { "type": "string" },
+        "artifactId": { "type": ["string", "null"], "format": "uuid" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

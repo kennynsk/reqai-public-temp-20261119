@@ -1,0 +1,39 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: reqai-data-secrets
+$patch: delete
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: reqai-llm-secrets
+$patch: delete
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: reqai-api-secrets
+$patch: delete
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: reqai-webhook-secrets
+$patch: delete
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: reqai-mcp-gateway
+$patch: delete
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: reqai-config}
+$patch: delete
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: reqai-mcp-gateway}
+$patch: delete

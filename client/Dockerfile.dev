@@ -1,0 +1,17 @@
+FROM node:22-alpine
+ARG TARGETARCH
+WORKDIR /app
+
+COPY package*.json ./
+COPY client/package.json client/package.json
+COPY server/package.json server/package.json
+COPY mcp-gateway/package.json mcp-gateway/package.json
+
+RUN npm ci --ignore-scripts -w client
+# npm can omit platform optional packages from a lock generated on macOS.
+# Match the JavaScript wrappers in package-lock.json.
+RUN if [ "$TARGETARCH" = "arm64" ]; then npm install --ignore-scripts --no-save @rollup/rollup-linux-arm64-musl@4.64.7 @esbuild/linux-arm64@0.27.2 @rolldown/binding-linux-arm64-musl@1.2.14; else npm install --ignore-scripts --no-save @rollup/rollup-linux-x64-musl@4.64.7 @esbuild/linux-x64@0.27.2 @rolldown/binding-linux-x64-musl@1.2.14; fi
+
+COPY client client
+
+CMD ["npm", "-w", "client", "run", "dev", "--", "--host", "0.0.0.0"]

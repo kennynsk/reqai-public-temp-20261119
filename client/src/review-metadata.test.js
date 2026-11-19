@@ -1,0 +1,160 @@
+import { describe, expect, test } from 'vitest';
+import { invalidateReviewEvidence, openReviewItems, updateReviewMetadata } from './review-metadata.js';
+
+describe('review metadata', () => {
+  test('creates a versioned review and preserves unrelated decisions', () => {
+    const decisions = { BR: [{ id: 'BR-1' }], other: true };
+
+    expect(updateReviewMetadata(decisions, { note: 'draft' })).toEqual({
+      BR: [{ id: 'BR-1' }],
+      other: true,
+      review: { schemaVersion: 1, note: 'draft' },
+    });
+  });
+
+  test('marks acknowledgement and completeness stale when gaps or omissions change', () => {
+    const decisions = {
+      review: {
+        schemaVersion: 1,
+        acknowledgment: { confirm: true, actor: 'user-1' },
+        completeness: { check: true, recordedAt: '2026-08-30T10:00:00Z' },
+      },
+    };
+
+    expect(updateReviewMetadata(decisions, { gaps: { 'GAP-1': { state: 'open' } } }).review).toEqual({
+      schemaVersion: 1,
+      gaps: { 'GAP-1': { state: 'open' } },
+      acknowledgment: { confirm: false, actor: 'user-1', stale: true },
+      completeness: { check: true, recordedAt: '2026-08-30T10:00:00Z' },
+    });
+
+    expect(updateReviewMetadata(decisions, { omissions: [{ id: 'OM-1' }] }).review).toEqual({
+      schemaVersion: 1,
+      omissions: [{ id: 'OM-1' }],
+      acknowledgment: { confirm: false, actor: 'user-1', stale: true },
+      completeness: { check: false, recordedAt: '2026-08-30T10:00:00Z', stale: true },
+    });
+  });
+
+  test('keeps unrelated GAP confirmations when a complete gap map changes one answer', () => {
+    const decisions = {
+      review: {
+        schemaVersion: 1,
+        gaps: {
+          'GAP-1': { state: 'answered', answer: 'Первый' },
+          'GAP-2': { state: 'answered', answer: 'Второй' },
+        },
+        gapRequirements: {
+          'GAP-1': { 'FR-1': { state: 'incorporated' } },
+          'GAP-2': { 'FR-2': { state: 'incorporated' } },
+        },
+      },
+    };
+    const next = updateReviewMetadata(decisions, {
+      gaps: { ...decisions.review.gaps, 'GAP-1': { state: 'answered', answer: 'Изменённый' } },
+    });
+    expect(next.review.gapRequirements).toEqual({
+      'GAP-2': { 'FR-2': { state: 'incorporated' } },
+    });
+  });
+
+  test('keeps confirmations when only the gap state or closure changes (resolve keeps the checklist)', () => {
+    const check = { state: 'incorporated', reason: '' };
+    const decisions = {
+      review: {
+        schemaVersion: 1,
+        gaps: { 'GAP-1': { state: 'answered', answer: 'Канал — сайт банка' } },
+        gapRequirements: { 'GAP-1': { 'FR-1': check, 'FR-2': check } },
+      },
+    };
+    const next = updateReviewMetadata(decisions, {
+      gaps: { 'GAP-1': { state: 'closed', closureKind: 'resolved', answer: 'Канал — сайт банка', reason: 'Проверены все связанные требования: FR-1, FR-2.' } },
+    });
+    expect(next.review.gapRequirements).toEqual({ 'GAP-1': { 'FR-1': check, 'FR-2': check } });
+  });
+
+  test('invalidates only evidence that exists and is a no-op without a review', () => {
+    const withoutReview = { BR: [] };
+    expect(invalidateReviewEvidence(withoutReview)).toBe(withoutReview);
+
+    const decisions = {
+      review: {
+        completeness: { check: true, owner: 'user-1' },
+        acknowledgment: { confirm: true, owner: 'user-1' },
+        note: 'keep me',
+      },
+    };
+    expect(invalidateReviewEvidence(decisions)).toEqual({
+      review: {
+        completeness: { check: false, owner: 'user-1', stale: true },
+        acknowledgment: { confirm: false, owner: 'user-1', stale: true },
+        note: 'keep me',
+      },
+    });
+  });
+
+  test('lists open gaps, low-quality records, and manual omissions', () => {
+    const content = {
+      groups: {
+        BR: [
+          { id: 'BR-1', text: 'Готовое требование', quality: 'Готово' },
+          { id: 'BR-2', text: 'Требует уточнения', quality: 'Требует уточнения' },
+        ],
+        FR: [{ id: 'FR-1', text: 'Конфликт', quality: 'Конфликтует' }],
+      },
+      analysis: {
+        GAP: [
+          { id: 'GAP-1', text: 'Открытый вопрос' },
+          { id: 'GAP-2', text: 'Закрытый вопрос' },
+        ],
+      },
+    };
+
+    expect(openReviewItems(content, {
+      gaps: { 'GAP-2': { state: 'closed' } },
+      omissions: [
+        { id: 'OM-1', text: 'Ручной пропуск', requirementIds: [] },
+        { id: 'OM-2', text: 'Уже добавлен', requirementIds: ['FR-2'] },
+      ],
+    })).toEqual([
+      { id: 'GAP-1', text: 'Открытый вопрос' },
+      { id: 'BR-2', text: 'Требует уточнения · Требует уточнения' },
+      { id: 'FR-1', text: 'Конфликт · Конфликтует' },
+      { id: 'OM-1', text: 'Отмеченный пропуск: Ручной пропуск' },
+    ]);
+  });
+
+  test('accepts the legacy flat content shape and defaults missing content', () => {
+    expect(openReviewItems({
+      BR: [{ id: 'BR-1', text: 'Не готово', quality: 'Не тестируемо' }],
+      summary: 'not a group',
+    })).toEqual([{ id: 'BR-1', text: 'Не готово · Не тестируемо' }]);
+    expect(openReviewItems(null)).toEqual([]);
+  });
+});
+
+test('current completed checklist supersedes historical invalidation hint', async () => {
+  const { gapReviewHint } = await import('./review-metadata.js');
+  const gap = { id: 'GAP-004', affectedIds: ['BR-001', 'NFR-001'] };
+  const content = { groups: { BR: [{ id: 'BR-001' }], NFR: [{ id: 'NFR-001' }] }, analysis: { GAP: [gap] } };
+  const metadata = { gaps: { 'GAP-004': { state: 'answered', answer: 'Полная заявка без ручной проверки', stale: true, reason: 'Нужна повторная проверка: NFR-001' } }, gapRequirements: { 'GAP-004': { 'BR-001': { state: 'incorporated' }, 'NFR-001': { state: 'pending', stale: true } } } };
+  expect(gapReviewHint(content, gap, metadata)).toContain('Нужна повторная проверка');
+  metadata.gapRequirements['GAP-004']['NFR-001'] = { state: 'incorporated', stale: false };
+  expect(gapReviewHint(content, gap, metadata)).toBe('Ответ и требования проверены — можно закрыть вопрос');
+});
+
+test('soft-stale decisions stay collected but block completion until reconfirmed', async () => {
+  const { gapChecklist, gapChecklistComplete, gapReviewHint } = await import('./review-metadata.js');
+  const gap = { id: 'GAP-004', affectedIds: ['BR-001', 'NFR-001'] };
+  const content = { groups: { BR: [{ id: 'BR-001' }], NFR: [{ id: 'NFR-001' }] }, analysis: { GAP: [gap] } };
+  const metadata = { gaps: { 'GAP-004': { state: 'answered', answer: 'Готово', stale: true, reason: 'Изменился внешний контекст: CON-001.' } },
+    gapRequirements: { 'GAP-004': { 'BR-001': { state: 'incorporated', reason: '', stale: true }, 'NFR-001': { state: 'no-change', reason: 'ок', stale: true } } } };
+  expect(gapChecklist(content, gap, metadata).every((item) => item.state !== 'pending')).toBe(true);
+  expect(gapChecklistComplete(content, gap, metadata)).toBe(false);
+  expect(gapReviewHint(content, gap, metadata)).toContain('повторного подтверждения');
+  metadata.gapRequirements['GAP-004']['BR-001'].stale = false;
+  expect(gapChecklistComplete(content, gap, metadata)).toBe(false);
+  metadata.gapRequirements['GAP-004']['NFR-001'].stale = false;
+  expect(gapChecklistComplete(content, gap, metadata)).toBe(true);
+  expect(gapReviewHint(content, gap, metadata)).toBe('Ответ и требования проверены — можно закрыть вопрос');
+});

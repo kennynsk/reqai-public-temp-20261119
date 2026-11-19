@@ -1,0 +1,217 @@
+{
+  "language": "ru",
+  "branch": "main",
+  "head": "397418004e40e782cf91362b71172e552dedfa08",
+  "mode": "working-tree-only",
+  "releaseBlockers": {
+    "F01": {
+      "status": "исправлено в коде / выполнен triage",
+      "change": "Отмена больше не инвалидирует решения; фактические правки и новые подтверждения учитываются отдельно",
+      "file": "client/src/review-state.js"
+    },
+    "F02": {
+      "status": "исправлено в коде / выполнен triage",
+      "change": "Сохранённые metadataUnits для однозначных датированных меток и объяснимый non_obligation; новые immutable 2.16.0/2.17.0, прежние bundles не изменены",
+      "file": "server/src/domain/babok-semantics.js"
+    },
+    "F03": {
+      "status": "исправлено в коде / выполнен triage",
+      "change": "Streaming UTF-8 decoder, CRLF state и защита от разрыва surrogate pair при логическом chunking",
+      "file": "server/src/activities/enterprise-handlers.js"
+    },
+    "F04": {
+      "status": "исправлено в коде / выполнен triage",
+      "change": "Разделены data/LLM/API/webhook Secrets; event и maintenance не получают ZAI_API_KEY",
+      "file": "deploy/k8s/workers.yaml"
+    },
+    "F05": {
+      "status": "исправлено в коде / выполнен triage",
+      "change": "Write/read redaction, безопасные Temporal failures и reference-only lifecycle DTO; rename outbox без title. Исторические хранилища не переписаны",
+      "file": "server/src/activities/checkpointed-activities.js"
+    },
+    "F06": {
+      "status": "исправлено в коде / выполнен triage",
+      "change": "Удалён generic POST /jobs и 3 лишних MCP tools; UI, OpenAPI, schema 3.0.0, exact inventory и безопасный DTO projection согласованы",
+      "file": "mcp-gateway/src/tools.js"
+    },
+    "F07": {
+      "status": "исправлено в коде / выполнен triage",
+      "change": "Nginx writable emptyDir для cache/PID с UID/fsGroup 101 при read-only root",
+      "file": "deploy/k8s/platform.yaml"
+    },
+    "F08": {
+      "status": "исправлено в коде / выполнен triage",
+      "change": "Все роли материалов проверяются как непустой UTF-8 текст; PDF/DOCX/invalid/empty отклоняются до model job; форматы показаны до загрузки",
+      "file": "server/src/domain/text-material.js"
+    },
+    "F09": {
+      "status": "исправлено в коде / выполнен triage",
+      "change": "Совместимые lock updates, MCP SDK 1.32.1, Vitest 4.1.11, native pins согласованы; runtime advisories 15 → 0; 7 dev findings оценены",
+      "file": "package-lock.json"
+    },
+    "F10": {
+      "status": "исправлено в коде / выполнен triage",
+      "change": "Frontend builder теперь копирует все shared server/src модули: исходный COPY одного файла не покрывал imports review/quality/report. Эквивалентный source context собран на Node22. README честно описывает отдельные frontend/API/workers. Compose явно локальный: .env.prod не отменяет AUTH_ENABLED=false и локальные credentials",
+      "file": "README.md"
+    }
+  },
+  "checks": {
+    "serverPassed": 378,
+    "serverDefaultSkipped": 2,
+    "postgresOptInPassed": 2,
+    "clientPassed": 422,
+    "mcpPassed": 34,
+    "deploymentManifestPassed": 1,
+    "runtimeAdvisories": 0,
+    "devAdvisories": 7,
+    "lint": "passed",
+    "build": "passed",
+    "prompts": "passed",
+    "surface": "passed",
+    "openspec": "passed"
+  },
+  "evidenceDirectory": "/Users/am/.codex/visualizations/2026/10/15/01a13ec0-c435-7233-a7f2-710c1c54f58b/reqai-audit/release-evidence",
+  "report": "/Users/am/.codex/visualizations/2026/10/15/01a13ec0-c435-7233-a7f2-710c1c54f58b/reqai-audit/fixes.html",
+  "functionalE2E": {
+    "decompositionJobId": "34ff7c7c-127e-4f0e-80f9-230077bcb93e",
+    "versionId": "817f7ef1-8444-4947-888e-86d281e2bbd3",
+    "research": {
+      "jobId": "cebceb7e-7caa-4bda-b30f-7dab3ca5c233",
+      "status": "ACCEPTED",
+      "statusUrl": "/api/v1/jobs/cebceb7e-7caa-4bda-b30f-7dab3ca5c233",
+      "eventsUrl": "/api/v1/jobs/cebceb7e-7caa-4bda-b30f-7dab3ca5c233/events",
+      "resultUrl": "/api/v1/jobs/cebceb7e-7caa-4bda-b30f-7dab3ca5c233/result",
+      "cancelUrl": "/api/v1/jobs/cebceb7e-7caa-4bda-b30f-7dab3ca5c233/cancel",
+      "idempotencyReplayed": false
+    },
+    "counts": {
+      "BR": 1,
+      "SR": 5,
+      "FR": 7,
+      "NFR": 0,
+      "TR": 0,
+      "CON": 0
+    },
+    "persistenceExact": true,
+    "saveReplayExact": true,
+    "researchStatus": "SUCCEEDED",
+    "researchOutcome": "COMPLETE",
+    "finalVersionId": "c4e66f23-ee08-4ca8-a478-8bb7f3baacb7",
+    "finalRecordCount": 14,
+    "openGaps": 6,
+    "accepted": [
+      "INS-001:0"
+    ],
+    "rejected": [
+      "INS-001:1"
+    ],
+    "initialVersionUnchanged": true,
+    "finalRereadExact": true,
+    "insights": 7,
+    "enhancements": 10,
+    "exports": [
+      {
+        "format": "markdown",
+        "bytes": 15789,
+        "status": 200
+      },
+      {
+        "format": "html",
+        "bytes": 17731,
+        "status": 200
+      },
+      {
+        "format": "docx",
+        "bytes": 13908,
+        "status": 200
+      }
+    ],
+    "traces": [
+      {
+        "jobId": "34ff7c7c-127e-4f0e-80f9-230077bcb93e",
+        "entries": 45,
+        "sourceTextAbsent": true
+      },
+      {
+        "jobId": "cebceb7e-7caa-4bda-b30f-7dab3ca5c233",
+        "entries": 41,
+        "sourceTextAbsent": true
+      },
+      {
+        "jobId": "d526d52c-4466-4998-bc64-388c06813869",
+        "entries": 47,
+        "sourceTextAbsent": true
+      }
+    ]
+  },
+  "temporalPostFix": [
+    {
+      "jobId": "e6a896c8-6475-4988-9ec9-10f77dfcbccf",
+      "events": 49,
+      "sourcePhrasesAbsent": true,
+      "jobStatus": "SUCCEEDED",
+      "referenceOnlyLifecycle": true
+    },
+    {
+      "jobId": "66a91823-9557-43d0-b4d4-70f8a5794fb4",
+      "events": 37,
+      "sourcePhrasesAbsent": true,
+      "jobStatus": "CANCELLED",
+      "referenceOnlyLifecycle": true
+    }
+  ],
+  "remainingGates": [
+    "Production-конфигурация целевой среды: images, IAM/TLS/ingress, secrets и отдельные empty stores (спеки prepare-production-configuration готовы, реализация не выполнена)",
+    "Фактический Kubernetes/Nginx runtime, auth/tenant isolation, backup/restore/rollback; optional MCP target canary при включении"
+  ],
+  "noCommit": true,
+  "noPush": true,
+  "noDeploy": true,
+  "noNewContainers": true,
+  "tailwindFollowUp": {
+    "version": "4.3.3",
+    "npmAuditAll": 0,
+    "npmAuditProd": 0,
+    "clientTests": 422,
+    "node": "22.23.2",
+    "productionBuild": [
+      "macOS",
+      "existing reqai Alpine frontend"
+    ],
+    "responsiveWidths": [
+      320,
+      768,
+      1024,
+      1440
+    ],
+    "productionConsoleErrors": 0,
+    "newContainers": 0,
+    "commitPushDeploy": false,
+    "evidence": "/tmp/reqai-tailwind-fix-20261015"
+  },
+  "freshStartDecision": {
+    "devDataMigrated": false,
+    "devDataDeleted": false,
+    "newProductionStoresRequired": true,
+    "historicalDevDiagnosticCleanupBlocksFreshLaunch": false
+  },
+  "cleanupFollowUp": {
+    "serverModulesRemoved": 5,
+    "unusedUiHelpersRemoved": 2,
+    "mcpToolSchema": "3.0.0",
+    "mcpSdk": "1.32.1",
+    "serverTests": {
+      "passed": 375,
+      "skipped": 2
+    },
+    "clientTestsPassed": 422,
+    "mcpTestsPassed": 30,
+    "qualificationAndManifestTestsPassed": 7,
+    "npmAudit": 0,
+    "actualReqaiMcpRead": true,
+    "actualReqaiBrowserSmoke": true,
+    "noNewContainers": true,
+    "noCommitPushDeploy": true,
+    "evidence": "/tmp/reqai-cleanup-20261015"
+  }
+}
