@@ -1,58 +1,20 @@
-# ReqAI — подготовка и исследование требований
+# ReqAI
 
-[![Node.js](https://img.shields.io/badge/Node.js-22-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
-[![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=000)](https://react.dev/)
-[![Vite](https://img.shields.io/badge/Vite-7-646CFF?logo=vite&logoColor=white)](https://vitejs.dev/)
-
-ReqAI превращает бизнес-контекст в проверенные требования. Текущий продукт состоит из одного управляемого workflow поверх асинхронных jobs, immutable artifacts, PostgreSQL, Kafka и Temporal; LLM-ключи доступны workflow workers и API, который выполняет AI-обсуждение требований; event и maintenance workers их не получают.
-
-## Основной workflow «Подготовка требований»
-
-1. «Контекст» — ввод бизнес-задачи или загрузка файла.
-2. «Требования» — AI-декомпозиция на бизнес-, функциональные и нефункциональные требования, ручная проверка и сохранение immutable-версии.
-3. «AI-исследование» — необязательное исследование сохранённой версии с карточками предложений.
-4. «Финальная версия» — применение выбранных улучшений и сохранение результата.
-
-История, постоянные ссылки `/tasks/{jobId}`, SSE-обновления, отмена и Debug работают через канонический job API. Ранее созданные задачи удалённых режимов доступны только для чтения и скачивания сохранившихся артефактов; повторный запуск не поддерживается. Подробности — в [описании workflow](docs/functional-parity.md) и [заметке о breaking change](docs/legacy-mode-retirement.md).
+ReqAI формирует черновик требований из описания бизнес-задачи. Пользователь проверяет реестр и уточняет открытые вопросы, при необходимости запускает AI-исследование, затем сохраняет и экспортирует финальную версию.
 
 ## Быстрый старт
 
+Нужны Node.js 22 и Docker с Compose. Если в корне репозитория ещё нет `.env.dev`, скопируйте шаблон.
+
 ```bash
-git clone https://github.com/kennynsk/arai.git
-cd arai
-npm install
 cp server/env.example .env.dev
-npm run dev
 ```
 
-Заполните в `.env.dev` как минимум настройки выбранного LLM-провайдера. Для Z.AI:
+Укажите `ZAI_API_KEY` в `.env.dev` и запустите `npm run dev`. Интерфейс откроется на [localhost:5177](http://localhost:5177). Для остановки используйте `npm run dev:stop`.
 
-```env
-LLM_PROVIDER_MODE=zai
-ZAI_API_KEY=...
-ZAI_BASE_URL=https://api.z.ai/api/coding/paas/v4
-ZAI_MODELS=glm-5.3-flash,glm-5.3,glm-5.2,glm-5-turbo,glm-4.7,glm-4.7-flash
-LLM_MODEL_PRIORITY=glm-5.3-flash,glm-5.3,glm-5.2
-```
+## Документация
 
-Откройте `http://localhost:5177`. `npm run dev` запускает полный enterprise-стек через Docker Compose, а frontend работает через Vite с hot reload. Изменения backend и workers подхватываются Node watch. Фоновый режим: `npm run dev:detached`; остановка: `npm run dev:stop`. Полная инструкция — [docs/local-development.md](docs/local-development.md), каталог переменных — [docs/configuration.md](docs/configuration.md).
-
-## MCP
-
-MCP gateway выключен по умолчанию и запускается отдельным профилем:
-
-```bash
-docker compose --profile mcp up --build
-```
-
-Endpoint `http://localhost:5180/mcp` предоставляет четыре инструмента: декомпозицию, исследование сохранённой версии, чтение статуса и metadata результата. См. [MCP gateway](docs/mcp-requirements-adapter.md).
-
-## Production
-
-`npm run build:prod` только собирает frontend; `npm run start:prod` запускает только API и не раздаёт `client/dist`. Frontend обслуживает отдельный Nginx; также необходимы PostgreSQL, Kafka, Temporal и workers.
-
-`compose.yaml` — полный **локальный** стек: в нём отключены авторизация и TLS, заданы development-пароли. Даже с `--env-file .env.prod` эти жёстко заданные значения не превращают Compose в production-конфигурацию. Для целевой среды подготовлены [Kubernetes production-конфиги](deploy/k8s/production/README.md): Kustomize overlay, HTTPS/Secret references, приостановленный migration Job и optional MCP. Заполните параметры целевой среды и image digests, выполните `npm run qualify:kubernetes -- production`, затем окруженческие gates по [runbook](docs/runbooks/enterprise-operations.md). Первый запуск использует отдельные пустые хранилища без переноса dev-данных. Offline pass не подтверждает готовность к deploy; автоматического применения к кластеру нет.
-
-Machine-readable REST-контракт находится в [OpenAPI v1](docs/api/openapi.v1.json).
-
-Исполнение оригинального BABOK-скилла, формат отчёта и реальная GLM-проверка описаны в [документации](docs/babok-skill-execution.md).
+- [Работа с требованиями](docs/functional-parity.md)
+- [Локальная разработка](docs/local-development.md) и [настройки](docs/configuration.md)
+- [REST API](docs/api/openapi.v1.json) и [MCP](docs/mcp-requirements-adapter.md)
+- [Развёртывание в Kubernetes](deploy/k8s/production/README.md). Docker Compose настроен для локальной разработки.
